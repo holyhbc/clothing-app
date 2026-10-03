@@ -103,12 +103,28 @@ async def test_healthz_reports_alive(client: AsyncClient, path: str) -> None:
     assert resp.json() == {"status": "alive"}
 
 
-async def test_readyz_reports_not_ready_when_dependencies_unavailable(client: AsyncClient) -> None:
+def _blank_out_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
+    """把数据库与 Redis 显式置为未配置，并刷新 Settings 单例。
+
+    用 monkeypatch 而不是依赖环境里"恰好没有配置"，否则测试结果会随环境漂移
+    （连了库就变绿、不连就变红），违背 docs/10 §2.1 的"用例零依赖"。
+    """
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("DATABASE_URL", "")
+    monkeypatch.setenv("REDIS_URL", "")
+    get_settings.cache_clear()
+
+
+async def test_readyz_reports_not_ready_when_dependencies_unavailable(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """依赖不可用（含"未配置"）时 /readyz 返回 503，绝不谎报 ready。
 
     理由：进程连不上数据库时任何业务接口都无法服务，此时报 ready 会让编排器
     继续往里打流量。``checks`` 保留具体原因供人区分"未配置"与"连不上"。
     """
+    _blank_out_dependencies(monkeypatch)
     resp = await client.get("/readyz")
     assert resp.status_code == 503
     payload = resp.json()
@@ -116,12 +132,16 @@ async def test_readyz_reports_not_ready_when_dependencies_unavailable(client: As
     assert payload["checks"] == {"database": "not_configured", "redis": "not_configured"}
 
 
-async def test_healthz_and_readyz_are_distinct(client: AsyncClient) -> None:
-    """/healthz 只表示进程活着：依赖全挂时它仍必须 200（docs/05 §1）。"""
-    alive = await client.get("/healthz")
-    ready = await client.get("/readyz")
-    assert alive.status_code == 200
-    assert ready.status_code == 503
+async def test_healthz_stays_200_while_dependencies_down(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """/healthz 只表示进程活着：依赖全挂时它仍必须 200（docs/05 §1）。
+
+    存活与就绪必须分开，否则数据库抖动会导致容器被判定为死亡并被反复重启。
+    """
+    _blank_out_dependencies(monkeypatch)
+    assert (await client.get("/healthz")).status_code == 200
+    assert (await client.get("/readyz")).status_code == 503
 
 
 async def test_unknown_route_returns_unified_envelope(client: AsyncClient) -> None:
