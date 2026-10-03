@@ -55,6 +55,43 @@ export type PageData<T> = {
   page_size: number
 }
 
+// ---- 认证（docs/07 §1.1；T-WEB-002 起前端要用）----
+
+/** 登录请求（`POST /api/v1/auth/login`）。 */
+export type LoginRequest = ApiModel<'LoginRequest'>
+
+/** 登录响应。⚠️ 只含 access token，refresh token 走 HttpOnly Cookie。 */
+export type LoginResponse = ApiModel<'LoginResponse'>
+
+/** 刷新响应（`POST /api/v1/auth/refresh`，成功即轮换 refresh token）。 */
+export type RefreshResponse = ApiModel<'RefreshResponse'>
+
+/** 登录态自描述（`GET /api/v1/auth/me`）：权限明细**只在这里**返回一次。 */
+export type MeResponse = ApiModel<'MeResponse'>
+
+/** 用户概要。刻意不含 `password_hash` 与 `phone`（docs/05 §3）。 */
+export type UserBrief = ApiModel<'UserBrief'>
+
+/** 角色概要。 */
+export type RoleBrief = ApiModel<'RoleBrief'>
+
+/** 修改本人口令（`PUT /api/v1/auth/password`）。 */
+export type ChangePasswordRequest = ApiModel<'ChangePasswordRequest'>
+
+/** 登出响应（`POST /api/v1/auth/logout`）：本次吊销的 refresh token 数量。 */
+export type LogoutResponse = ApiModel<'LogoutResponse'>
+
+/**
+ * 数据范围枚举（docs/07 §3.2）。
+ *
+ * ⚠️ 后端**每次请求查库**装配权限（docs/07 §1.1），前端这份只用于控制界面，
+ *    真正拦得住的是后端 403 —— 前端隐藏不是安全边界。
+ */
+export type DataScope = ApiModel<'DataScope'>
+
+/** 认证渠道（`LoginRequest.channel`）。PC 端固定 `PC`。 */
+export type AuthChannel = ApiModel<'AuthChannel'>
+
 /**
  * 单据创建 / 修改请求体的公共形状（docs/05 §2：PATCH 必传 `version`）。
  *

@@ -1,0 +1,67 @@
+/**
+ * Design Token —— **唯一来源**（docs/06 §1）。
+ *
+ * ⚠️ 组件里禁止出现 `#1677ff`、`rgb(...)`、`16px` 这类字面量，一律 `var(--...)`。
+ *    新增颜色先加到这里，禁止在页面里自定义。
+ *
+ * 数值逐条抄自 docs/06 §1，**不要凭手感调**：规范里写死的目的就是让所有页面
+ * 长成一个样，页面私自调色 = 破坏一致性且无人能发现。
+ */
+
+:root {
+  /* 品牌色：工业蓝，稳、不刺眼 */
+  --color-primary: #1668dc;
+  --color-primary-hover: #3c89e8;
+  --color-primary-active: #0e4fb0;
+  --color-primary-bg: #e6f0fc;
+
+  /* 功能色 */
+  --color-success: #1f9e5a; /* 已审核 / 入库 */
+  --color-warning: #d99a00; /* 待审核 / 低库存 */
+  --color-danger: #d4380d; /* 反审核 / 不足 / 错误 */
+  --color-info: #6b7785; /* 已作废 */
+
+  /* 中性色（工厂长时间作业，降低对比疲劳） */
+  --color-text: #1d2129;
+  --color-text-second: #4e5969;
+  --color-text-third: #86909c;
+  --color-border: #e5e6eb;
+  --color-bg: #f5f6f7;
+  --color-bg-card: #ffffff;
+
+  /* 间距（4 的倍数） */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* 圆角 / 阴影 */
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 6%), 0 1px 2px rgb(0 0 0 / 4%);
+
+  /* 字体 */
+  --font-sans: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'SF Mono', Consolas, 'Courier New', monospace;
+  --font-size-sm: 12px;
+  --font-size-base: 13px;
+  --font-size-lg: 15px;
+  --font-size-xl: 18px;
+  --font-size-2xl: 22px;
+
+  /* 布局（docs/06 §2.1：Header 48 / Sider 200 / 内容最大 1680 居中） */
+  --header-height: 48px;
+  --sider-width: 200px;
+  --page-max-width: 1680px;
+
+  /* Z-index 层级表 */
+  --z-sticky: 10;
+  --z-dropdown: 1000;
+  --z-modal: 1000;
+  --z-toast: 1100;
+  --z-scanner: 2000;
+}

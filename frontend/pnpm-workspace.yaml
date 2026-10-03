@@ -8,3 +8,8 @@ linkWorkspacePackages: true
 # 只批准白名单内的包，禁止 `pnpm approve-builds --all` 一键全批准。
 allowBuilds:
   esbuild: true
+  # core-js 的 postinstall 只打印一条赞助提示，不下载、不执行第三方代码。
+  # 它是 ant-design-vue 的传递依赖（T-WEB-002 引入 antd 之后才出现）。
+  # 不加这一行 `pnpm install` 直接失败 —— 批准它不代表认可它的构建脚本，
+  # 只是承认「这个包的 postinstall 可以跑」。
+  core-js: true

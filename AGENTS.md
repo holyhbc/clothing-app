@@ -12,7 +12,7 @@
 | 项目 | 服装厂 ERP（裁剪 / 打菲 / 扫码计件 / 计件工资 / 物料+成衣库存 / 销售 / 应收应付 / 凭证） |
 | 组织 | 单厂多车间（数据范围隔离，非多租户） |
 | 后端 | Python 3.12 + FastAPI + SQLAlchemy 2.0 + Alembic + PostgreSQL 16 + Redis 7 |
-| 前端 | Vue 3 + TypeScript + Vite + Pinia；PC 端 Ant Design Vue 5；员工端 Vant 4（H5） |
+| 前端 | Vue 3 + TypeScript + Vite + Pinia；PC 端 Ant Design Vue 4.2；员工端 Vant 4（H5） |
 | 部署 | Docker Compose，VPS 2C/12G |
 | 语言 | 文档与业务字段中文；代码标识符英文；数据库 snake_case |
 | 状态 | 规范体系搭建中，规范未定稿前禁止写业务代码 |

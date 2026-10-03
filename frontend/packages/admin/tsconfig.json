@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["vite/client"],
+    // ⚠️ admin 把 `@garment/shared` 的**源码**编进同一个 program（见 vite.config.ts
+    //   的 alias），而 shared 内部 import 全部带 `.ts` 扩展名。没有这一项，
+    //   typecheck 会在 `../shared/src/index.ts` 里报 TS5097，与 admin 自己的代码无关。
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts", "vitest.config.ts"]
+}

@@ -129,4 +129,41 @@ services:
     build:
       context: .
       dockerfile: docker/frontend/Dockerfile
-    command: ["nginx", "-t"]
+    # 前端镜像的闸门 = **产物真的拷进 runtime 了** + **nginx 配置语法正确**。
+    # 只跑 `nginx -t` 不够：它压根不碰静态产物，而历史上真正炸的正是这一步
+    # （builder 阶段 install 失败 → dist 根本没生成 → COPY 拿不到）。
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        test -f /usr/share/nginx/html/index.html   || { echo "缺 PC 端入口 index.html"; exit 1; }
+        test -f /usr/share/nginx/mobile/index.html || { echo "缺员工端入口 index.html"; exit 1; }
+        nginx -t
+        # ⚠️ **光有 nginx -t 不算过**。它只做配置语法与 upstream 解析，
+        #    启动期才发生的问题一个都测不到 —— 本仓库已经踩了三次：
+        #      ① upstream 主机名解析不到 → 容器直接 Exited(1)
+        #      ② 非 root 跑时 /var/cache/nginx 不可写 → mkdir 失败
+        #      ③ builder 阶段 install 失败 → dist 压根没生成
+        #    所以真起一次 nginx 并探测首页能拿到 200。
+        nginx
+        # ⚠️ 这里**不能出现任何美元符号**：docker compose 在**解析 yaml 时**就会把
+        #    美元符号后面的东西当环境变量替换掉，连注释里的也一样（会打
+        #    `The "i" variable is not set` 警告）。第一版探测循环用 shell 变量计数，
+        #    结果容器里收到的是 `sh: 20: unknown operand`，循环一次都没执行就判失败 ——
+        #    闸门红了，但红的原因跟被测的东西毫无关系。
+        #    真要用变量必须写成双美元符号（compose 的转义），这里干脆不用。
+        if wget -q -T 3 -t 15 -O /dev/null http://127.0.0.1/; then
+          echo "web smoke ok: 首页 200"
+          nginx -s quit
+          exit 0
+        fi
+        echo "web smoke 失败：容器没退出，但 80 端口没有响应"
+        nginx -s quit || true
+        exit 1
+    extra_hosts:
+      # `nginx -t` 解析 upstream 时会做一次 DNS。`compose run` 不会把 api 服务拉起来，
+      # 容器里就没有 `api` 这个主机名 → 配置校验 emerg 失败，
+      # 而那个失败与镜像本身无关（运行期 compose 网络里才有 api）。
+      # 给个假解析让校验能跑完。
+      - "api:127.0.0.1"

@@ -113,5 +113,10 @@ echo "=== 闸门 4：迁移往返 ==="
 echo "=== 闸门 5：生产镜像可构建且可导入 ==="
 "${COMPOSE[@]}" build api-image
 "${COMPOSE[@]}" run --rm api-image
+# ⚠️ web-image 以前**不在闸门 5 里**（T-WEB-002 修）：前端镜像因此从未被任何
+#    闸门验证过，`docker/frontend/Dockerfile` 漏拷 workspace 包清单这种一眼可见的
+#    错误才一直没被发现。`nginx -t` 顺带验证 runtime 阶段的 COPY 与配置语法。
+"${COMPOSE[@]}" build web-image
+"${COMPOSE[@]}" run --rm web-image
 
 echo "=== 5 道闸门全部通过 ==="
