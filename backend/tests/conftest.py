@@ -27,7 +27,9 @@ from sqlalchemy.ext.asyncio import (
 
 # 必须在导入 app.* 之前设置：Settings 在导入期就会读环境变量
 os.environ.setdefault("APP_ENV", "test")
-os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production")
+# HS256 要求密钥 ≥32 字节，否则 pyjwt 发 InsecureKeyLengthWarning；
+# 本项目把警告当错误，所以这里必须给够长度（生产用 openssl rand -hex 32）
+os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production-0123456789abcdef")
 os.environ.setdefault("JWT_EXPIRE_MINUTES", "15")
 os.environ.setdefault("DATABASE_URL", "")
 os.environ.setdefault("REDIS_URL", "")
@@ -106,6 +108,29 @@ def _schema(migration_url: str) -> Iterator[None]:
 async def db_session(_schema: None, app_database_url: str) -> AsyncIterator[AsyncSession]:
     """每个用例一个独立事务，结束回滚（docs/10 §2.2）。"""
     engine = create_async_engine(app_database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    connection: AsyncConnection = await engine.connect()
+    transaction = await connection.begin()
+    try:
+        yield session_factory(bind=connection, join_transaction_mode="create_savepoint")
+    finally:
+        await transaction.rollback()
+        await connection.close()
+        await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def ddl_session(_schema: None, migration_url: str) -> AsyncIterator[AsyncSession]:
+    """以**迁移账号**（erp_ddl）连接的 session。
+
+    为什么需要它：``seed_baseline`` / ``restore_builtin`` 是**运维操作**，生产上用
+    ``DATABASE_URL_MIGRATION`` 执行。而 ``erp_app`` 被 init 脚本 REVOKE 掉了全部
+    DELETE 权限（docs/04 §6.2.1「生产库不给应用账号任何硬删能力」），因此
+    「删除一行权限点以模拟被删」这类用例**只能**用迁移账号。
+
+    事务回滚语义与 :func:`db_session` 相同，测试仍零污染。
+    """
+    engine = create_async_engine(migration_url, pool_pre_ping=True)
     session_factory = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
     connection: AsyncConnection = await engine.connect()
     transaction = await connection.begin()

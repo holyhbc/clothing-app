@@ -24,7 +24,10 @@
   - `product_categories`（内置 6 类，seed）
   - `colors` / `sizes`（+ `CREATE TYPE size_class`）/ `size_groups` / `size_group_items`
   - `operations`（04 §7.8.1 DDL）
-  - **补 T-AUTH-001 遗留**：`ALTER TABLE users ADD CONSTRAINT fk_users_workshops`（04 §1 外键强制）
+  - **补 T-AUTH-001 遗留（两条 FK，缺一不可）**：
+    - `ALTER TABLE users ADD CONSTRAINT fk_users_workshops`（04 §1 外键强制）
+    - `ALTER TABLE role_workshops ADD CONSTRAINT fk_role_workshops_workshops`
+      （T-AUTH-001 建该表时 `workshops` 还不存在，故未加 FK；**不加则数据范围过滤可能读到不存在的车间**）
   - **索引**：04 §5.1 的 `idx_colors_trgm` / `idx_sizes_trgm` GIN；`uq_colors_code` / `uq_sizes_code` / `uq_size_groups_name` / `uq_size_group_items` / `idx_size_group_items_sort_order` / `idx_sizes_active_sort_order` / `idx_size_groups_size_class` / `idx_operations_workshop_id_is_active` / `idx_styles_*` 暂缓（T-BASE-002）
   - **权限（ADR-0025）**：`GRANT DELETE ON colors, sizes, size_groups, size_group_items TO erp_app;`，其余表仍只 `SELECT/INSERT/UPDATE`
 - [ ] `app/modules/base/{models,schemas,repository,service,router}.py`：9 个资源统一形状（§4.4）
@@ -96,6 +99,7 @@
 | TC-B24 | 非白名单表 DELETE | 权限拒绝 | |
 | TC-B25 | `document_logs` 的 UPDATE/DELETE | 权限拒绝 | |
 | TC-B26 | `size_groups` 删除 vs 建款引用并发 | 无悬空引用 | |
+| TC-B31 | **补 FK 后**：`pg_constraint` 里存在 `fk_users_workshops` 与 `fk_role_workshops_workshops` | 两条都在（T-AUTH-001 遗留项验收） | |
 | TC-B27 | 候选接口 `size=21` | 截断为 20 | |
 | TC-B28 | `offset > 10000` | `10001` | |
 | TC-B29 | `sort_by=unknown_field` | `10001`（不 500、不拼 SQL） | |
