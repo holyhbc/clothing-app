@@ -44,6 +44,9 @@ jobs:
       - name: 闸门 3 单测（覆盖率 ≥ 80%）
         run: uv run --frozen pytest -q --cov=app --cov-report=term-missing --cov-fail-under=80
 
+      - name: 闸门 3 单测（容器内复跑，验证镜像依赖完整）
+        run: docker compose -f ../docker-compose.ci.yml run --rm test
+
       - name: 闸门 4 迁移往返
         run: docker compose -f ../docker-compose.ci.yml run --rm migrate-check
 
