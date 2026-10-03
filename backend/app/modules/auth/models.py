@@ -60,9 +60,14 @@ class User(BaseModel):
     password_hash: Mapped[str | None] = mapped_column(
         Text(), nullable=True, comment="argon2id 哈希；员工端短信登录可空"
     )
+    # ⚠️ 这里**故意不声明** ForeignKey("workshops.id")，与迁移 0002 保持一致
+    #    （workshops 表在 T-BASE-001 才建，本迁移无法加 FK）。
+    #    声明了反而会坏：SQLAlchemy 解析任意涉及 users 的查询都要先解析这张
+    #    目标表，表不存在直接抛 NoReferencedTableError —— 登录功能会被打死。
+    #    且模型有 FK 而迁移没有，autogenerate 会反复产生同一份 diff。
+    #    T-BASE-001 必须补：ALTER TABLE users ADD CONSTRAINT fk_users_workshops
     workshop_id: Mapped[UUID | None] = mapped_column(
         PgUUID(as_uuid=True),
-        ForeignKey("workshops.id", name="fk_users_workshops"),
         nullable=True,
         comment="所属车间；非车间人员为空",
     )
@@ -94,6 +99,7 @@ class User(BaseModel):
         Index("uq_users_employee_no", "employee_no", unique=True),
         Index("uq_users_phone", "phone", unique=True),
         Index("idx_users_workshop_id_is_active", "workshop_id", "is_active"),
+        {"comment": "员工 / 用户（docs/04 §6.1 硬删禁令表）"},
     )
 
     def to_auth_context(
@@ -140,6 +146,7 @@ class Role(BaseModel):
     __table_args__ = (
         CheckConstraint("version > 0", name="ck_roles_version_positive"),
         Index("uq_roles_code", "code", unique=True),
+        {"comment": "角色（硬删禁令表）"},
     )
 
 
@@ -165,6 +172,7 @@ class Permission(BaseModel):
         CheckConstraint("version > 0", name="ck_permissions_version_positive"),
         Index("uq_permissions_code", "code", unique=True),
         Index("idx_permissions_module_sort", "module", "sort_order"),
+        {"comment": "权限点，取值必须来自 docs/07 §2.2（硬删禁令表）"},
     )
 
 
@@ -186,6 +194,7 @@ class UserRole(IdMixin, Base):
     __table_args__ = (
         Index("pk_user_roles", "user_id", "role_id", unique=True),
         Index("idx_user_roles_role_id", "role_id"),
+        {"comment": "用户↔角色"},
     )
 
 
@@ -211,6 +220,7 @@ class RolePermission(IdMixin, Base):
     __table_args__ = (
         Index("pk_role_permissions", "role_id", "permission_id", unique=True),
         Index("idx_role_permissions_permission_id", "permission_id"),
+        {"comment": "角色↔权限"},
     )
 
 
@@ -227,11 +237,9 @@ class RoleWorkshop(IdMixin, Base):
         ForeignKey("roles.id", name="fk_role_workshops_roles"),
         nullable=False,
     )
-    workshop_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True),
-        ForeignKey("workshops.id", name="fk_role_workshops_workshops"),
-        nullable=False,
-    )
+    # ⚠️ 同 users.workshop_id：不声明 FK（workshops 表 T-BASE-001 才建），
+    #    原因与 T-BASE-001 待补项见该处注释
+    workshop_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), nullable=False
     )
@@ -239,6 +247,7 @@ class RoleWorkshop(IdMixin, Base):
     __table_args__ = (
         Index("pk_role_workshops", "role_id", "workshop_id", unique=True),
         Index("idx_role_workshops_workshop_id", "workshop_id"),
+        {"comment": "角色可用车间（超集场景）"},
     )
 
 
@@ -276,6 +285,7 @@ class EmployeeExternalIdentity(IdMixin, Base):
             unique=True,
         ),
         Index("idx_employee_external_identities_user_id", "user_id"),
+        {"comment": "外部身份绑定（ADR-0003 预留，阶段一不写入）"},
     )
 
 
@@ -314,6 +324,7 @@ class AuthLoginLog(IdMixin, Base):
     __table_args__ = (
         Index("idx_auth_login_logs_employee_no", "employee_no", text("created_at DESC")),
         Index("idx_auth_login_logs_created_at", text("created_at DESC")),
+        {"comment": "登录日志 append-only（DDL 为本卡新增，待回写 docs/07 §2.1）"},
     )
 
 
@@ -334,8 +345,14 @@ class AuthRefreshToken(IdMixin, Base):
     token_hash: Mapped[str] = mapped_column(
         String(64), nullable=False, comment="sha256 十六进制；绝不存明文"
     )
+    # server_default 与迁移 0002 保持一致：0002 建了默认值而模型只写了 Python 侧
+    # ``default``，autogenerate 会把它报成"模型要删掉这个默认值"
     channel: Mapped[str] = mapped_column(
-        String(16), nullable=False, default=AuthChannel.PC.value, comment="PC / H5_SMS"
+        String(16),
+        server_default=text("'PC'"),
+        nullable=False,
+        default=AuthChannel.PC.value,
+        comment="PC / H5_SMS",
     )
     device_id: Mapped[str | None] = mapped_column(
         String(64), nullable=True, comment="员工端设备绑定（docs/07 §1.2）"
@@ -353,6 +370,7 @@ class AuthRefreshToken(IdMixin, Base):
         Index(
             "idx_auth_refresh_tokens_user", "user_id", postgresql_where=text("revoked_at IS NULL")
         ),
+        {"comment": "刷新令牌 append-only（DDL 为本卡新增，待回写 docs/07 §2.1）"},
     )
 
 

@@ -21,7 +21,8 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import DateTime, Integer, func, text
+from sqlalchemy import DateTime, Index, Integer, String, Text, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID  # noqa: N811 —— 别名照抄 docs/04 §2
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -48,7 +49,9 @@ class AuditMixin:
         nullable=False,
     )
     updated_by: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
-    remark: Mapped[str | None] = mapped_column(nullable=True)
+    # ⚠️ 必须显式 Text()：``Mapped[str | None]`` 不给显式类型时 SQLAlchemy 推断成
+    # VARCHAR，autogenerate 于是报"模型要改列类型"，而 docs/04 §2 与迁移都写的是 text
+    remark: Mapped[str | None] = mapped_column(Text(), nullable=True)
 
 
 class SoftDeleteMixin:
@@ -102,3 +105,55 @@ class BaseModel(IdMixin, AuditMixin, SoftDeleteMixin, VersionMixin, Base):
             for column in self.__table__.columns
             if column.name not in exclude
         }
+
+
+class DocumentLog(Base):
+    """全模块 append-only 审计表（docs/04 §7.9）。
+
+    ⚠️ 这个模型以前**不存在** —— 表由迁移 0001 建出，但代码里没有任何 ORM 映射它，
+    于是 ``alembic check`` 认为这张表"应该在模型里没有"，任何人执行
+    ``alembic revision --autogenerate`` 都会拿到一条 ``drop_table('document_logs')``。
+    审计表被 autogenerate 掉一次，全厂操作日志就没了，而命令本身不会有任何提示。
+    本模型就是为了消除这个漂移，也让"写日志"这件事在类型层面是安全的。
+
+    两条约束：
+    1. **append-only**：无 ``version`` / ``deleted_at`` / ``updated_*``（docs/04 §2 例外）
+    2. **永不改写**：迁移 0001 里已 ``REVOKE UPDATE, DELETE ... FROM erp_app``，
+       应用账号连改都不行（docs/04 §6.2.1）
+    """
+
+    __tablename__ = "document_logs"
+    __table_args__ = (
+        Index(
+            "idx_document_logs_doc",
+            "doc_type",
+            "doc_id",
+            text("created_at DESC"),
+        ),
+        {"comment": "全模块 append-only 审计表（docs/04 §7.9）"},
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    doc_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, comment="CuttingOrder / BundlingOrder / ..."
+    )
+    doc_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
+    doc_no: Mapped[str] = mapped_column(String(32), nullable=False)
+    action: Mapped[str] = mapped_column(
+        String(32), nullable=False, comment="CREATE/UPDATE/SUBMIT/APPROVE/..."
+    )
+    from_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    to_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    operator_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
+    operator_name: Mapped[str] = mapped_column(
+        String(64), nullable=False, comment="冗余姓名：用户改名后日志仍可读"
+    )
+    reason: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    changed_fields: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True, comment="字段级 diff"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), nullable=False
+    )
