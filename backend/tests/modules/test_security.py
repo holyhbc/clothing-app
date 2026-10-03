@@ -7,8 +7,10 @@
     - ``JWT_SECRET`` 缺失时拒绝签发，不静默用弱密钥
 """
 
+import inspect
 import time
 
+import jwt
 import pytest
 
 from app.common.enums import AuthChannel
@@ -165,7 +167,6 @@ def test_access_tokens_have_unique_jti() -> None:
 
 def test_expired_token_raises_unauthorized() -> None:
     """过期令牌 → 11001（docs/05 §4）。"""
-    import jwt
 
     from app.core.config import get_settings
 
@@ -210,12 +211,47 @@ def test_type_mismatch_is_rejected() -> None:
     assert exc.value.message == "登录凭证类型错误，请重新登录"
 
 
-def test_extra_claims_are_merged() -> None:
-    """附加声明（如未来的 device_id）可合并进载荷。"""
-    token, _ = create_access_token(
-        user_id="u1", role_ids=[], data_scope="SELF", extra_claims={"device_id": "dev-1"}
-    )
-    assert decode_token(token)["device_id"] == "dev-1"
+def test_access_token_has_no_extra_claims_parameter() -> None:
+    """签发接口**不许**接受任意附加声明。
+
+    ⚠️ 这是 T-AUTH-002 移除 ``extra_claims`` 参数的原因：留了这个口子，
+    将来有人传 ``extra_claims={"permissions": ["*"]}`` 就会把 docs/07 §1.1
+    「令牌不放权限明细、权限查库」这条硬规则悄悄绕过去 —— 代码不报错、
+    只是静默越权，直到出事才发现。所以用签名断言把口子焊死。
+    """
+    assert "extra_claims" not in inspect.signature(create_access_token).parameters
+    token, _ = create_access_token(user_id="u1", role_ids=[], data_scope="SELF")
+    assert set(decode_token(token)) == {
+        "sub",
+        "role_ids",
+        "data_scope",
+        "type",
+        "jti",
+        "iat",
+        "exp",
+    }
+
+
+def test_claim_allowlist_is_explicit_and_guards_signing() -> None:
+    """白名单覆盖签发的全部字段，且多出来的字段会被拒绝。
+
+    白名单用 ``raise`` 而不是 ``assert`` —— assert 在 ``python -O`` 下会被整条
+    优化掉，安全检查不能那样写。
+    """
+    import app.core.security as security_module
+
+    token, _ = create_access_token(user_id="u1", role_ids=[], data_scope="SELF")
+    issued = set(decode_token(token))
+    assert issued <= security_module._ALLOWED_CLAIMS
+    # 白名单必须比实际签发的字段更完整，否则将来加字段时会静默失效
+    assert issued == {"sub", "role_ids", "data_scope", "type", "jti", "iat", "exp"}
+
+    # 白名单外的字段直接被拒。用 raise 而非 assert：assert 在 -O 下会被优化掉
+    from app.core.security import validate_claims
+
+    with pytest.raises(BusinessError) as excinfo:
+        validate_claims({"sub": "u1", "permissions": ["*"]})
+    assert excinfo.value.code is ErrorCode.INTERNAL
 
 
 def test_missing_jwt_secret_refuses_to_sign(monkeypatch: pytest.MonkeyPatch) -> None:
