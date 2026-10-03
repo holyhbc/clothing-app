@@ -1,0 +1,170 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "AGENTS.md"
+  ],
+  "permission": {
+    "edit": "allow",
+    "bash": {
+      "*": "ask",
+      "git status": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "git add*": "allow",
+      "git commit*": "ask",
+      "git push*": "ask",
+      "git checkout*": "ask",
+      "git switch*": "ask",
+      "git reset*": "deny",
+      "git push --force*": "deny",
+      "uv run *": "allow",
+      "uv sync*": "allow",
+      "pnpm *": "allow",
+      "npm run *": "allow",
+      "npm ci": "allow",
+      "npm install": "allow",
+      "alembic *": "allow",
+      "pytest*": "allow",
+      "mypy *": "allow",
+      "ruff *": "allow",
+      "vue-tsc*": "allow",
+      "vitest*": "allow",
+      "curl *": "allow",
+      "ls*": "allow",
+      "cat *": "allow",
+      "grep*": "allow",
+      "find*": "allow",
+      "mkdir*": "allow",
+      "cp *": "allow",
+      "rm -rf *": "deny",
+      "docker compose down*": "deny",
+      "docker volume *": "deny",
+      "dropdb*": "deny",
+      "psql -c*DROP*": "deny",
+      "*TRUNCATE*": "deny"
+    },
+    "webfetch": "allow",
+    "websearch": "allow"
+  },
+  "agent": {
+    "architect": {
+      "description": "架构师：产出设计稿与 ADR，只写 docs/，绝不写业务代码",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "docs/**": "allow",
+          "*": "deny"
+        },
+        "bash": "ask"
+      }
+    },
+    "backend-dev": {
+      "description": "后端开发：实现后端任务卡（迁移/模型/Service/Router/测试）",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "backend/**": "allow",
+          "docs/modules/**": "allow",
+          "docs/adr/**": "allow",
+          "docs/12-*": "allow",
+          "*": "deny"
+        },
+        "bash": {
+          "*": "ask",
+          "uv run *": "allow",
+          "pytest*": "allow",
+          "alembic *": "allow",
+          "ruff *": "allow",
+          "mypy *": "allow",
+          "git status": "allow",
+          "git diff*": "allow"
+        }
+      }
+    },
+    "frontend-dev": {
+      "description": "前端开发：实现前端任务卡（shared/admin/mobile + 组件测试）",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "frontend/**": "allow",
+          "docs/modules/**": "allow",
+          "docs/06-*": "allow",
+          "*": "deny"
+        },
+        "bash": {
+          "*": "ask",
+          "pnpm *": "allow",
+          "npm run *": "allow",
+          "vitest*": "allow",
+          "vue-tsc*": "allow",
+          "git status": "allow",
+          "git diff*": "allow"
+        }
+      }
+    },
+    "qa": {
+      "description": "测试工程师：补测试、跑 5 道闸门、出测试报告，只改 tests/ 与覆盖率配置",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "backend/tests/**": "allow",
+          "frontend/**/*.test.ts": "allow",
+          "frontend/**/*.spec.ts": "allow",
+          "frontend/**/tests/**": "allow",
+          "playwright.config.ts": "allow",
+          "*": "deny"
+        },
+        "bash": {
+          "*": "ask",
+          "pytest*": "allow",
+          "uv run *": "allow",
+          "pnpm *": "allow",
+          "npm run *": "allow",
+          "ruff *": "allow",
+          "mypy *": "allow",
+          "alembic *": "allow",
+          "git status": "allow",
+          "git diff*": "allow"
+        }
+      }
+    },
+    "reviewer": {
+      "description": "规范审查：只读。对照 AGENTS.md 与 docs 规范审查改动并列出违规项",
+      "mode": "subagent",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "ask",
+          "git diff*": "allow",
+          "git status": "allow",
+          "git log*": "allow",
+          "grep*": "allow",
+          "ls*": "allow"
+        }
+      }
+    },
+    "releaser": {
+      "description": "发布执行：按 docs/11 走发布单，每条命令先给用户确认",
+      "mode": "subagent",
+      "permission": {
+        "edit": {
+          "docs/releases/**": "allow",
+          "docs/12-*": "allow",
+          "*": "deny"
+        },
+        "bash": {
+          "*": "ask",
+          "docker compose *": "ask",
+          "curl *": "allow",
+          "git status": "allow",
+          "git diff*": "allow"
+        }
+      }
+    }
+  },
+  "compaction": {
+    "auto": true,
+    "tail_turns": 20
+  },
+  "formatter": false
+}
