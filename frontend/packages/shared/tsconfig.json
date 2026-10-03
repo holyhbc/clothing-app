@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node", "vitest/globals"],
+    // ⚠️ 显式写 `.ts` 扩展名导入：Vite / Vitest 与 node 都能解析，
+    // 而 tsc 在 `noEmit` 下也允许（TS 5.0+）。写 `./x` 不写扩展名会让
+    // tsc 与 bundler 的解析结果在边界情况上不一致
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {}
+  },
+  "include": ["src/**/*.ts", "vitest.config.ts"]
+}

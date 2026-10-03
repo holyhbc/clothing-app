@@ -1,0 +1,27 @@
+{
+  "name": "@garment/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "前端唯一类型来源与统一请求层（docs/06 §7、§1）",
+  "exports": {
+    ".": "./src/index.ts",
+    "./api": "./src/api/index.ts",
+    "./client": "./src/api/client.ts",
+    "./types": "./src/types/index.ts",
+    "./enums/*": "./src/enums/*",
+    "./utils/*": "./src/utils/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run",
+    "build": "tsc --noEmit",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "@vitest/coverage-v8": "^2.1.8"
+  }
+}

@@ -38,6 +38,21 @@ export default tseslint.config(
     },
   },
   {
+    // ⚠️ 构建脚本跑在 **Node**（跑在浏览器的东西有 `window`，这里反过来）。
+    //    不声明 globals 的话 `process` 会报 no-undef —— 而它确实是 Node 提供的，
+    //    不是"忘了导入"。
+    files: ['**/*.mjs', '**/*.cjs', '**/scripts/**'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        URL: 'readonly',
+        fetch: 'readonly',
+        globalThis: 'readonly',
+      },
+    },
+  },
+  {
     rules: {
       // 提交前 lint 拦截 console 残留（docs/03 §2.1 第 10 条）
       'no-console': 'error',

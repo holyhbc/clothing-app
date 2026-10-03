@@ -12,9 +12,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "pnpm -r --if-present typecheck",
-    "test:unit": "vitest run --passWithNoTests",
+    "test:unit": "pnpm -r --if-present test:unit",
     "test:e2e": "playwright test",
-    "generate:api": "openapi-typescript ../backend/openapi.json -o packages/shared/src/api/schema.d.ts",
+    "generate:api": "node scripts/generate-frontend-contract.mjs",
     "build": "pnpm -r --if-present build",
     "dev": "pnpm -r --if-present dev"
   },

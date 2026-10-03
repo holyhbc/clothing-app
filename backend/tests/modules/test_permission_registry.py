@@ -9,6 +9,11 @@ docs/07 §2.2 明确「三处不一致视为**闸门 1 失败**」：
 
 本文件逐对双向断言（差集必须为空）。任何一处漂移都会让闸门 1 失败。
 
+末尾另有「一致性 5：状态枚举映射」—— `packages/shared/src/enums/status.ts` 的键
+集合必须与后端 `DocumentStatus` 完全相等（docs/06 §1「枚举值来自后端，前端只做
+中文映射」）。放在本文件而不是新建一个，是因为这里已经是"跨语言契约漂移"的
+收口处，两处漂移的修法与排查手段相同。
+
 ⚠️ 解析规范表格的三个坑（都踩过）：
     1. 权限点 code 里**含下划线**（``base:rate_template:manage``）——
        用 ``[a-z]+`` 会漏掉它
@@ -315,4 +320,31 @@ def test_frontend_constants_match_registry() -> None:
     assert frontend_codes == permission_codes(), (
         f"前端常量与 registry 不一致：缺 {sorted(permission_codes() - frontend_codes)[:5]}，"
         f"多 {sorted(frontend_codes - permission_codes())[:5]}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 一致性 5：状态枚举映射（docs/06 §1，2026-10-03 / T-WEB-001 落地后生效）
+# ---------------------------------------------------------------------------
+
+FRONTEND_STATUS = REPO_ROOT / "frontend" / "packages" / "shared" / "src" / "enums" / "status.ts"
+
+
+@pytest.mark.skipif(
+    not FRONTEND_STATUS.exists(),
+    reason="前端状态映射待 T-WEB-001 落地（packages/shared/src/enums/status.ts）",
+)
+def test_frontend_status_keys_match_backend_enum() -> None:
+    """前端状态映射的键集合必须与后端 ``DocumentStatus`` 完全相等。
+
+    ⚠️ 后端加一档而前端没跟上时，界面会显示**空白标签**（而不是报错）——
+    用户以为系统坏了，而后端返回的数据完全正确。所以必须双向断言。
+    """
+    from app.common.enums import DocumentStatus
+
+    content = FRONTEND_STATUS.read_text(encoding="utf-8")
+    keys = set(re.findall(r"^\s{2}([A-Z_]+):\s*\{", content, re.M))
+    backend = {member.value for member in DocumentStatus}
+    assert keys == backend, (
+        f"状态映射与后端枚举不一致：缺 {sorted(backend - keys)}，多 {sorted(keys - backend)}"
     )

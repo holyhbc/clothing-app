@@ -1,0 +1,94 @@
+/**
+ * 接口类型的**唯一出口**（docs/06 §7「页面禁止手写接口 DTO」）。
+ *
+ * 规则：
+ *   1. 需要什么类型就在这里加一个**别名**，指向 `api/schema.d.ts` 里的生成物；
+ *      **不重新描述字段** —— 手写的字段表和后端分叉时没有任何东西会报错。
+ *   2. 确实需要裁剪时用 `Omit` / `Pick` 组合，不写新接口。
+ *   3. 页面从 `@garment/shared/types` 导入，不直接 import `schema.d.ts`
+ *      —— 直接 import 的话生成路径一改，全站 import 都要跟着改。
+ *
+ * ⚠️ 后端还没实现的端点不在这里出现。缺类型时**先确认端点是否已存在**
+ * （各模块目录下的 `router.py`），不要为了"让页面能跑"先手写一个占位 DTO。
+ */
+
+import type { components } from '../api/schema.d.ts'
+
+type Schemas = components['schemas']
+
+/**
+ * 取 schema 里的一个具名模型。
+ *
+ * @example type StyleOut = ApiModel<'StyleOut'>
+ *
+ * ⚠️ 叫 `ApiModel` 而不是 `Schema`：全局作用域已有一个 DOM 的 `Schema` 接口，
+ * 同名会让 `Schema<'X'>` 在部分解析路径下被当成模块声明而报 TS1443。
+ */
+export type ApiModel<Name extends keyof Schemas> = Schemas[Name]
+
+/** 候选下拉项（docs/05 §9.5.2 `{value,label,sub?,disabled}`）。 */
+export type OptionOut = ApiModel<'OptionOut'>
+
+/** 款号详情（`GET /api/v1/styles/{style_no}`）。 */
+export type StyleDetailOut = ApiModel<'StyleDetailOut'>
+
+/** 款号列表行。 */
+export type StyleListOut = ApiModel<'StyleListOut'>
+
+/** 尺码比例查询结果（含 `hands_total` 与 `missing_size_codes`）。 */
+export type RatioListOut = ApiModel<'RatioListOut'>
+
+/** 款号工序配置行。 */
+export type StyleOperationOut = ApiModel<'StyleOperationOut'>
+
+/** 单价区间行（`is_current` 与 `rate_source` 都是派生字段）。 */
+export type OperationRateOut = ApiModel<'OperationRateOut'>
+
+/** 取价预演结果。 */
+export type RateResolveOut = ApiModel<'RateResolveOut'>
+
+/** 分页结构（docs/05 §3：所有列表统一 `{items,total,page,page_size}`）。 */
+export type PageData<T> = {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+}
+
+/**
+ * 单据创建 / 修改请求体的公共形状（docs/05 §2：PATCH 必传 `version`）。
+ *
+ * ⚠️ 这里只声明**通用字段**，具体字段仍从生成物取 —— 列全字段就是手写 DTO，
+ * 那正是本规范要禁掉的东西。
+ */
+export type Versioned = {
+  version: number
+}
+
+/** 统一响应包装（docs/05 §3）。 */
+export type ApiEnvelope<T> = {
+  code: number
+  message: string
+  data: T | null
+  details?: Record<string, unknown> | null
+  request_id?: string | null
+}
+
+/** 排序方向（docs/05 §2：`sort_order` 只能是这两个值，不接受自由文本）。 */
+export type SortOrder = 'asc' | 'desc'
+
+/** 启停筛选（`is_active` 查询参数）。 */
+export type ActiveFilter = boolean | undefined
+
+/** 常用列表查询参数（各端点另有自己的业务筛选字段）。 */
+export interface ListQuery extends Record<string, string | number | boolean | null | undefined> {
+  q?: string
+  page?: number
+  size?: number
+  sort_by?: string
+  sort_order?: SortOrder
+  is_active?: boolean
+}
+
+export type { components } from '../api/schema.d.ts'
+export type { paths, operations } from '../api/schema.d.ts'

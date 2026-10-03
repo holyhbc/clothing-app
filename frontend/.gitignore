@@ -18,6 +18,9 @@ htmlcov/
 playwright-report/
 test-results/
 blob-report/
+# vitest 覆盖率报告目录（docs/10 §8 的阈值由 vitest.config.ts 强制；
+# 报告本身是产物 —— 入库后每跑一次测试就产生一整片与本次改动无关的 diff）
+coverage/
 
 # 本地覆盖编排（不入库，模板见 docker-compose.override.example.yml）
 docker-compose.override.yml
