@@ -385,6 +385,8 @@ def test_no_physical_delete_resource_relies_on_db_revoke():
         "uom-units",
         "product-categories",
         "operations",
+        # 组 D（T-BASE-002）：客户被 styles / 销售 / 应收引用，真删会造成悬空引用
+        "customers",
     }
 
 
