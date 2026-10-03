@@ -227,9 +227,28 @@ async def test_get_active_user_rejects_unknown(db_session) -> None:
     assert excinfo.value.code is ErrorCode.UNAUTHORIZED
 
 
-def test_data_scope_string_is_accepted_for_scope_resolution(db_session) -> None:
-    """``users.data_scope`` 是 String 列，读出来是 str；各处都要能吃下 str。"""
-    assert DataScope("FACTORY") is DataScope.FACTORY
+async def test_token_is_signed_when_data_scope_comes_back_as_str(db_session) -> None:
+    """``users.data_scope`` 映射的是 String 列，所以**重新查出来的**值是 ``str``。
+
+    这不是"DataScope 能吃 str"这种语言特性（那是废话），而是一条真实回归：
+    登录时若直接写 ``user.data_scope.value``，第二次登录（对象从库里重载）
+    就会抛 ``AttributeError: 'str' object has no attribute 'value'``。
+    第一条用例恰好用的是刚 ``create`` 出来、属性还是枚举的对象，测不出来。
+    """
+    user = await _seed(db_session, employee_no="STR001", data_scope=DataScope.WORKSHOP)
+    await db_session.flush()
+    await db_session.refresh(user)  # 强制从库里重载，data_scope 变成 str
+    assert isinstance(user.data_scope, str)
+    assert not isinstance(user.data_scope, DataScope)
+
+    outcome = await AuthService(db_session).authenticate(
+        employee_no="STR001", password=DEFAULT_PASSWORD, channel=AuthChannel.PC
+    )
+    assert outcome.tokens.access_token
+
+    from app.core.security import decode_token
+
+    assert decode_token(outcome.tokens.access_token)["data_scope"] == "WORKSHOP"
 
 
 async def test_refresh_rejects_expired_token(db_session) -> None:

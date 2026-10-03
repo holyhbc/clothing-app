@@ -17,9 +17,20 @@ from sqlalchemy import select
 from app.common.enums import DataScope
 from app.core.errors import BusinessError
 from app.core.permissions import AuthContext
-from app.core.scope import SCOPE_SPECS, ScopeSpec, apply_data_scope, assert_in_scope, in_scope
+from app.core.scope import (
+    PENDING_TABLES,
+    SCOPE_EXEMPT_TABLES,
+    SCOPE_SPECS,
+    ScopeSpec,
+    apply_data_scope,
+    assert_in_scope,
+    in_scope,
+)
 from app.modules.auth.models import User
 from tests.factories.user import UserFactory
+
+#: 用于构造"未登记资源"用例的固定 owner
+_OWNER = uuid4()
 
 
 def _ctx(
@@ -202,12 +213,17 @@ async def test_assert_in_scope_raises_12002(db_session):
 
 
 async def test_in_scope_unregistered_resource_is_strict(db_session):
-    """没在 ``SCOPE_SPECS`` 登记的资源不允许"默认放行"。"""
-    user = await UserFactory.create(db_session, employee_no="U001")
-    await db_session.flush()
-    # 未登记表名 → resolved 为 None → 非 FACTORY 一律拒绝
+    """没在 ``SCOPE_SPECS`` 登记的资源不允许"默认放行"。
+
+    ⚠️ 这里用 ``AuthLoginLog``（确实未登记），**不能**用 ``User`` —— ``users``
+    早就登记过了，拿它来测这条分支会因为 ``workshop_id`` 为空而"碰巧"返回
+    False，看起来通过、实际没走到 ``resolved is None`` 那条路径。
+    """
+    from app.modules.auth.models import AuthLoginLog
+
+    row = AuthLoginLog(employee_no="U001", channel="PC", is_success=True)
     ctx = AuthContext(
-        user_id=user.id,
+        user_id=uuid4(),
         name="x",
         employee_no="U001",
         workshop_id=None,
@@ -215,10 +231,73 @@ async def test_in_scope_unregistered_resource_is_strict(db_session):
         permissions=frozenset(),
         data_scope=DataScope.WORKSHOP,
     )
-    assert in_scope(user, ctx) is False
+    assert "auth_login_logs" not in SCOPE_SPECS
+    assert in_scope(row, ctx) is False
 
 
-def test_scope_specs_all_are_scope_spec():
-    """每个登记项都要能说明 SELF 语义，避免留空占位。"""
-    for table, spec in SCOPE_SPECS.items():
-        assert isinstance(spec, ScopeSpec), table
+async def test_unregistered_resource_self_scope_falls_back_to_created_by(db_session):
+    """未登记资源在 ``SELF`` 下按 ``created_by`` 判定 —— 最严但可解释。"""
+
+    mine = _log_row(created_by=_OWNER)
+    theirs = _log_row(created_by=uuid4())
+    ctx = AuthContext(
+        user_id=_OWNER,
+        name="x",
+        employee_no="U001",
+        workshop_id=None,
+        group_no=None,
+        permissions=frozenset(),
+        data_scope=DataScope.SELF,
+    )
+    assert in_scope(mine, ctx) is True
+    assert in_scope(theirs, ctx) is False
+
+
+def _log_row(*, created_by) -> object:
+    """构造一个内存态的 AuthLoginLog（只用于 ``in_scope`` 的属性判定，不落库）。"""
+    from app.modules.auth.models import AuthLoginLog
+
+    row = AuthLoginLog(employee_no="U001", channel="PC", is_success=True)
+    object.__setattr__(row, "created_by", created_by)
+    return row
+
+
+def test_scope_specs_keys_are_real_or_declared_pending():
+    """登记项要么是真实表，要么在 ``PENDING_TABLES`` 里显式声明为待建。
+
+    守卫的是**拼写错误**：``SCOPE_SPECS`` 里写了个不存在的表名（``style`` 而不是
+    ``styles``），数据范围会静默失效而没有任何报错。这比原来那句
+    ``isinstance(spec, ScopeSpec)`` 有用得多 —— 后者对一个字面量字典永远成立，
+    是条纯噪声用例。
+    """
+    import app.modules.auth.models  # noqa: F401 —— 确保 auth 表已注册
+    from app.common.models import Base
+
+    known = set(Base.metadata.tables) | PENDING_TABLES
+    for table in SCOPE_SPECS:
+        assert table in known, f"SCOPE_SPECS 里的 {table} 既不是真实表名也没声明为待建"
+
+
+def test_pending_tables_use_plural_convention():
+    """待建表名必须是复数（docs/04 表名约定），否则建表时会对不上。"""
+    for table in PENDING_TABLES:
+        assert table.endswith("s"), f"待建表名 {table} 不是复数"
+
+
+def test_scope_specs_declares_workshop_resources():
+    """凡是有 ``workshop_id`` 列的表，都必须登记车间映射或**显式豁免**。
+
+    这是本模块最重要的一条守卫：漏登记一张单据表，它就会走"未登记 → 查不到
+    数据"的路径，表现为**界面一片空白**而不是越权 —— 那种 bug 极难从日志发现。
+    """
+    import app.modules.auth.models  # noqa: F401
+    from app.common.models import Base
+
+    missing = [
+        name
+        for name, table in Base.metadata.tables.items()
+        if "workshop_id" in table.columns
+        and name not in SCOPE_SPECS
+        and name not in SCOPE_EXEMPT_TABLES
+    ]
+    assert missing == [], f"这些表有车间列但既未登记数据范围也没写进 SCOPE_EXEMPT_TABLES：{missing}"

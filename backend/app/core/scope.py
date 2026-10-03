@@ -11,7 +11,7 @@
 """
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Final
 from uuid import UUID
 
 from sqlalchemy import Select, false
@@ -51,6 +51,41 @@ def visible_workshops(ctx: AuthContext) -> frozenset[UUID]:
     own = frozenset({ctx.workshop_id}) if ctx.workshop_id else frozenset()
     return granted | own
 
+
+#: ⚠️ **前瞻登记**的表：这些表由后续卡片创建，现在还不在库里。
+#:
+#: 提前写在这里而不是等建表时再写，有两个理由：
+#:   1. 建表那张卡片如果忘了登记，数据范围会**静默失效**（表现为界面一片空白，
+#:      而不是越权）—— 那类 bug 从日志里根本看不出来
+#:   2. 契约先于实现，能在建表时就看出设计是否自洽
+#:
+#: 代价是表名可能与最终设计不一致，所以测试
+#: ``test_scope_specs_keys_are_real_tables`` 会要求它们出现在这里（而不是随便
+#: 一个名字蒙混过关）。
+PENDING_TABLES: Final[frozenset[str]] = frozenset(
+    {
+        "cutting_orders",  # T-BASE-002（基础资料）→ 裁剪单在 P1
+        "bundling_orders",
+        "piecework_logs",
+        "stock_ledgers",
+        "styles",
+        "customers",
+        "operations",
+        "colors",
+        "sizes",
+    }
+)
+
+#: 有车间列但**不做**数据范围过滤的表，及豁免理由。
+#: 显式列出而不是靠"没登记就算豁免" —— 后者会让人以为漏登记是安全的。
+SCOPE_EXEMPT_TABLES: Final[dict[str, str]] = {
+    # 角色可用车间是**角色配置**，本身就是"哪些车间可见"的定义。
+    # 再按车间过滤它，超管以外的人就没法给自己配车间了。
+    # 它的访问控制靠 system:role:manage 权限点，不靠数据范围。
+    "role_workshops": "角色配置表，访问控制靠 system:role:manage 权限点",
+    # append-only 台账，只进不出，不参与列表查询。
+    "auth_refresh_tokens": "append-only 台账，无列表查询",
+}
 
 #: 常用资源的映射。**新增单据时必须在这里登记**，否则数据范围会静默失效。
 SCOPE_SPECS: dict[str, ScopeSpec] = {

@@ -207,11 +207,29 @@ async def test_me_returns_roles_permissions_and_scope(client, db_session, auth_h
     assert len(body["data"]["permissions"]) == 122
 
 
-async def test_me_rejects_refresh_token(client, db_session, auth_headers):
-    headers = await auth_headers(role="employee")
-    tampered = headers["Authorization"].replace("ey", "eyJ9")
-    response = await client.get(f"{PREFIX}/me", headers={"Authorization": tampered})
-    assert response.status_code in (401, 403)
+async def test_me_rejects_refresh_token_as_bearer(client, db_session):
+    """把 **refresh token 当 access token 用**必须被拒 —— 端到端验证。
+
+    ⚠️ 原来这条用例是错的：它拿 access token 做字符串替换去测"篡改令牌"，
+    名字却写着 refresh token，实际根本没走到 type 校验。而且断言写成
+    ``in (401, 403)``，任何一种拒绝都能过，等于没断言。真正的 type 互斥测试在
+    ``test_permissions.test_token_type_cannot_be_swapped``，那条是准的。
+    """
+    await _seed_user(db_session, employee_no="A001")
+    login = await client.post(f"{PREFIX}/login", json=make_login_payload())
+    cookie = _cookies(login)
+    assert cookie
+
+    response = await client.get(f"{PREFIX}/me", headers={"Authorization": f"Bearer {cookie}"})
+    assert response.status_code == 401
+    assert response.json()["code"] == 11002
+
+
+async def test_me_rejects_garbage_bearer(client):
+    """垃圾令牌同样是 11002，且**必须**是具体码而不是范围断言。"""
+    response = await client.get(f"{PREFIX}/me", headers={"Authorization": "Bearer garbage"})
+    assert response.status_code == 401
+    assert response.json()["code"] == 11002
 
 
 async def test_me_disabled_user_loses_access(client, db_session, auth_headers):

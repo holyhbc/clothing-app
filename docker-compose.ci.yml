@@ -14,6 +14,23 @@ x-ci-env: &ci-env
   JWT_SECRET: ci-only-not-a-secret-ci-only-not-a-secret
   JWT_EXPIRE_MINUTES: "15"
 
+# ⚠️ 三个闸门服务**必须共用同一个镜像 tag**。
+#
+# 踩过的坑：原先三个服务各自写 `build:`，Compose 会给每个服务建**各自的镜像**
+# （garment-erp-ci-lint / -test / -migrate-check）。于是 `docker compose build test lint`
+# 之后，`migrate-check` 用的还是上一次构建的镜像 —— 表现为莫名其妙的
+# "Can't locate revision identified by '0003'"：明明刚加了迁移，闸门却说找不到。
+# 根因是"构建集合"与"运行集合"不一致，而这类失败每次都长得像代码 bug。
+#
+# 现在显式声明同一个 image tag，Compose 只构建一次、三个服务指向同一份镜像，
+# 从根上消除镜像分叉。
+x-gate-image: &gate-image
+  image: garment-erp-ci-backend:dev
+  build:
+    context: .
+    dockerfile: docker/backend/Dockerfile
+    target: dev
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -64,20 +81,14 @@ services:
 
   # ---- 闸门 1 / 2：lint + typecheck ----
   lint:
-    build:
-      context: .
-      dockerfile: docker/backend/Dockerfile
-      target: dev
+    <<: *gate-image
     environment: *ci-env
     command: ["bash", "-c", "ruff check . && ruff format --check . && mypy app"]
     working_dir: /app
 
   # ---- 闸门 3：单测 + 覆盖率（docs/10 §8 阈值 fail_under=80）----
   test:
-    build:
-      context: .
-      dockerfile: docker/backend/Dockerfile
-      target: dev
+    <<: *gate-image
     environment: *ci-env
     depends_on:
       postgres:
@@ -92,10 +103,7 @@ services:
 
   # ---- 闸门 4：迁移往返（up → down → 再 up，docs/04 §6.2）----
   migrate-check:
-    build:
-      context: .
-      dockerfile: docker/backend/Dockerfile
-      target: dev
+    <<: *gate-image
     environment: *ci-env
     depends_on:
       postgres:
@@ -108,6 +116,8 @@ services:
 
   # ---- 闸门 5：镜像构建（生产 compose 无 build，故在 CI 编排里验证）----
   api-image:
+    # runtime 目标单独构建（闸门 5：生产镜像能构建且能 import）
+    image: garment-erp-ci-backend:runtime
     build:
       context: .
       dockerfile: docker/backend/Dockerfile
