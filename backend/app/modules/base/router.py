@@ -12,10 +12,12 @@ OpenAPI 里用 ``x-permission`` 标注九个资源的实际权限点。
 import inspect
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from enum import Enum
 from typing import Annotated, Any
+from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, Path, Query
+from fastapi import APIRouter, Body, Depends, Path, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,8 +25,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_db
 from app.core.errors import BusinessError, ErrorCode
 from app.core.excel import Column, stream_xlsx
+from app.core.idempotency import load_idempotent, store_idempotent
+from app.core.numbering import business_today
 from app.core.permissions import AuthContext, get_auth_context
-from app.core.responses import ApiResponse, ok, page_ok
+from app.core.responses import ApiResponse, PageData, ok, page_ok
 from app.modules.base.repository import ListQuery
 from app.modules.base.resources import RESOURCES, DictResource
 from app.modules.base.schemas import (
@@ -34,9 +38,35 @@ from app.modules.base.schemas import (
     DictRow,
     DisableIn,
     DisableOut,
+    OperationRateCreate,
+    OperationRateOut,
+    OperationRateSetOut,
     OptionOut,
+    RateResolveOut,
+    RatioListOut,
+    RatioReplaceIn,
+    StyleColorCreate,
+    StyleColorOut,
+    StyleCreate,
+    StyleDetailOut,
+    StyleListOut,
+    StyleOperationOut,
+    StyleOperationsListOut,
+    StyleOperationsReplaceIn,
+    StyleOut,
+    StylePatch,
+    StyleSizeCreate,
+    StyleSizeOut,
+    TemplateCopyIn,
+    TemplateCopyOut,
 )
-from app.modules.base.service import DictService
+from app.modules.base.service import (
+    DictService,
+    RateQuery,
+    RateService,
+    StyleQuery,
+    StyleService,
+)
 
 logger = logging.getLogger("app.base.router")
 
@@ -410,6 +440,17 @@ _EXPORT_COLUMN_MAP: dict[str, list[Column]] = {
         Column("sort_order", "排序"),
         Column("is_active", "启用"),
     ],
+    "customers": [
+        Column("code", "客户编码"),
+        Column("name", "客户全称"),
+        Column("short_name", "简称"),
+        Column("contact", "联系人"),
+        Column("phone", "联系电话"),
+        Column("tax_no", "税号"),
+        Column("settlement_period_days", "账期天数"),
+        Column("remark", "备注"),
+        Column("is_active", "启用"),
+    ],
 }
 
 
@@ -570,6 +611,486 @@ def _signature_without_resource(handler: Callable[..., EndpointResult]) -> inspe
             param = param.replace(annotation=Annotated[str, Path(min_length=1, max_length=64)])
         parameters.append(param)
     return signature.replace(parameters=parameters)
+
+
+# ==================================================================
+# 组 D：款号、色码尺码、比例、款号工序、模板复制、工序单价（§4.5）
+# ==================================================================
+
+#: 模板复制成功后必须回给前端的那句提示（modules/01 §5.1 前端表现）。
+#: 在**服务端**再兜一次：前端漏渲染这句，用户就会以为"比例也配好了"。
+
+STYLE_TAGS: list[str | Enum] = ["基础资料"]
+
+#: 单价导出的列。⚠️ 顺序即表头顺序；金额 / 单价导出为**字符串**（docs/05 §3）
+RATE_EXPORT_COLUMNS: list[Column] = [
+    Column("style_no", "款号"),
+    Column("operation_no", "工序号"),
+    Column("product_category_id", "商品分类ID"),
+    Column("rate_source", "取价档位"),
+    Column("unit_price", "单价"),
+    Column("effective_from", "生效起"),
+    Column("effective_to", "生效止"),
+    Column("is_current", "当前有效"),
+    Column("reason", "原因"),
+]
+
+
+def _style_service(session: AsyncSession, ctx: AuthContext) -> StyleService:
+    return StyleService(session, ctx)
+
+
+def _rate_service(session: AsyncSession, ctx: AuthContext) -> RateService:
+    return RateService(session, ctx)
+
+
+@router.get(
+    "/styles",
+    response_model=ApiResponse[PageData[StyleListOut]],
+    summary="款号列表（跟单只查本人款号）",
+    openapi_extra={"x-permission": "base:read"},
+    tags=STYLE_TAGS,
+)
+async def list_styles(
+    ctx: ContextDep,
+    session: SessionDep,
+    q: Annotated[str | None, Query(max_length=64, description="款号或款名模糊搜索")] = None,
+    is_active: bool | None = None,
+    customer_id: UUID | None = None,
+    category_id: UUID | None = None,
+    merchandiser_id: UUID | None = None,
+    sort_by: Annotated[str | None, Query(description="可排序字段")] = None,
+    sort_order: Annotated[str, Query(pattern="^(asc|desc)$")] = "asc",
+    page: Annotated[int, Query(ge=1)] = 1,
+    size: Annotated[int, Query(ge=1, le=200)] = 20,
+) -> dict[str, object]:
+    """款号分页列表。数据范围在 service 层过滤（跟单 SELF → 本人款号）。"""
+    _require_base(ctx, "base:read", "查看款号")
+    items, total = await _style_service(session, ctx).list_styles(
+        StyleQuery(
+            q=q,
+            is_active=is_active,
+            customer_id=customer_id,
+            category_id=category_id,
+            merchandiser_id=merchandiser_id,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            page=page,
+            size=size,
+        )
+    )
+    return page_ok([item.model_dump(mode="json") for item in items], total, page, size)
+
+
+@router.get(
+    "/styles/options",
+    response_model=ApiResponse[list[OptionOut]],
+    summary="款号候选（默认按最近使用倒序，size ≤ 20）",
+    openapi_extra={"x-permission": "base:read"},
+    tags=STYLE_TAGS,
+)
+async def list_style_options(
+    ctx: ContextDep,
+    session: SessionDep,
+    q: Annotated[str | None, Query(max_length=64)] = None,
+    size: Annotated[int, Query(ge=1, le=20)] = 20,
+    offset: Annotated[int, Query(ge=0, le=10000)] = 0,
+) -> dict[str, object]:
+    """款号候选。``q`` 为空时按 ``last_used_at DESC NULLS LAST`` 返回前 N 条。"""
+    _require_base(ctx, "base:read", "查看款号")
+    options = await _style_service(session, ctx).list_options(q, size, offset)
+    return ok([item.model_dump(mode="json") for item in options])
+
+
+@router.post(
+    "/styles",
+    status_code=201,
+    response_model=ApiResponse[StyleOut],
+    summary="新建款号（style_no 必填、用户自定义；可附带建议号）",
+    openapi_extra={
+        "x-permission": "base:create",
+        "x-request-schema": StyleCreate.model_json_schema(),
+    },
+    tags=STYLE_TAGS,
+)
+async def create_style(
+    payload: StyleCreate, ctx: ContextDep, session: SessionDep
+) -> dict[str, object]:
+    """新建款号。``suggest_style_no=true`` 时额外返回建议号（用户输入仍然优先）。"""
+    _require_base(ctx, "base:create", "新建款号")
+    style = await _style_service(session, ctx).create(payload)
+    return ok(style.model_dump(mode="json"))
+
+
+@router.get(
+    "/styles/{style_no}",
+    response_model=ApiResponse[StyleDetailOut],
+    summary="款号详情（款号 + 色组 + 尺码 + 工序 + 现行价）",
+    openapi_extra={"x-permission": "base:read"},
+    tags=STYLE_TAGS,
+)
+async def get_style(
+    style_no: Annotated[str, Path(min_length=1, max_length=32)],
+    ctx: ContextDep,
+    session: SessionDep,
+) -> dict[str, object]:
+    """款号详情。不存在 → ``20001``；不在数据范围 → ``12002``。"""
+    _require_base(ctx, "base:read", "查看款号")
+    detail = await _style_service(session, ctx).get_detail(style_no)
+    return ok(detail.model_dump(mode="json"))
+
+
+@router.patch(
+    "/styles/{style_no}",
+    response_model=ApiResponse[StyleOut],
+    summary="修改款号（必传 version；style_no 不可改）",
+    openapi_extra={
+        "x-permission": "base:update",
+        "x-request-schema": StylePatch.model_json_schema(),
+    },
+    tags=STYLE_TAGS,
+)
+async def patch_style(
+    style_no: Annotated[str, Path(min_length=1, max_length=32)],
+    payload: StylePatch,
+    ctx: ContextDep,
+    session: SessionDep,
+) -> dict[str, object]:
+    """修改款号。``version`` 不匹配 → ``10003``。"""
+    _require_base(ctx, "base:update", "修改款号")
+    style = await _style_service(session, ctx).patch(style_no, payload)
+    return ok(style.model_dump(mode="json"))
+
+
+@router.post(
+    "/styles/{style_no}/colors",
+    status_code=201,
+    response_model=ApiResponse[list[StyleColorOut]],
+    summary="新增款号色组",
+    openapi_extra={
+        "x-permission": "base:create",
+        "x-request-schema": StyleColorCreate.model_json_schema(),
+    },
+    tags=STYLE_TAGS,
+)
+async def create_style_color(
+    style_no: Annotated[str, Path(min_length=1, max_length=32)],
+    payload: StyleColorCreate,
+    ctx: ContextDep,
+    session: SessionDep,
+) -> dict[str, object]:
+    """新增色组行。色码重复 → ``10001``。"""
+    _require_base(ctx, "base:create", "新建款号色组")
+    rows = await _style_service(session, ctx).add_colors(style_no, payload)
+    return ok([item.model_dump(mode="json") for item in rows])
+
+
+@router.post(
+    "/styles/{style_no}/sizes",
+    status_code=201,
+    response_model=ApiResponse[list[StyleSizeOut]],
+    summary="新增款号尺码（单码，或 size_group_name 一键带出整套）",
+    openapi_extra={
+        "x-permission": "base:create",
+        "x-request-schema": StyleSizeCreate.model_json_schema(),
+    },
+    tags=STYLE_TAGS,
+)
+async def create_style_size(
+    style_no: Annotated[str, Path(min_length=1, max_length=32)],
+    payload: StyleSizeCreate,
+    ctx: ContextDep,
+    session: SessionDep,
+) -> dict[str, object]:
+    """新增尺码。``size_group_name`` 与 ``size_code`` **二选一**（Schema 层就拒）。"""
+    _require_base(ctx, "base:create", "新建款号尺码")
+    rows = await _style_service(session, ctx).add_sizes(style_no, payload)
+    return ok([item.model_dump(mode="json") for item in rows])
+
+
+@router.get(
+    "/style-color-size-ratios",
+    response_model=ApiResponse[RatioListOut],
+    summary="查尺码比例（hands_total + missing_size_codes）",
+    openapi_extra={"x-permission": "base:read"},
+    tags=STYLE_TAGS,
+)
+async def list_style_ratios(
+    ctx: ContextDep,
+    session: SessionDep,
+    style_no: Annotated[str, Query(min_length=1, max_length=32, description="款号（必填）")],
+    color_code: Annotated[str | None, Query(max_length=32)] = None,
+    size_code: Annotated[str | None, Query(max_length=32)] = None,
+) -> dict[str, object]:
+    """比例查询。**不抛 20006** —— 查询必须永远能返回空集（R24 / ADR-0014）。"""
+    _require_base(ctx, "base:read", "查看尺码比例")
+    payload = await _style_service(session, ctx).list_ratios(style_no, color_code, size_code)
+    return ok(payload.model_dump(mode="json"))
+
+
+@router.put(
+    "/style-color-size-ratios",
+    response_model=ApiResponse[RatioListOut],
+    summary="按 (款号, 颜色) 全量替换尺码比例（≤100 行，必传 version）",
+    openapi_extra={
+        "x-permission": "base:update",
+        "x-request-schema": RatioReplaceIn.model_json_schema(),
+    },
+    tags=STYLE_TAGS,
+)
+async def replace_style_ratios(
+    payload: RatioReplaceIn, ctx: ContextDep, session: SessionDep
+) -> dict[str, object]:
+    """全量替换比例。
+
+    - 比例出现款号没有的尺码 → ``20007``
+    - ``version`` 不匹配 → ``10003``（TC-B31：并发一成一败）
+    """
+    _require_base(ctx, "base:update", "维护尺码比例")
+    result = await _style_service(session, ctx).replace_ratios(payload)
+    return ok(result.model_dump(mode="json"))
+
+
+@router.get(
+    "/styles/{style_no}/operations",
+    response_model=ApiResponse[list[StyleOperationOut]],
+    summary="款号工序配置列表（按 sequence 升序）",
+    openapi_extra={"x-permission": "base:read"},
+    tags=STYLE_TAGS,
+)
+async def list_style_operations(
+    style_no: Annotated[str, Path(min_length=1, max_length=32)],
+    ctx: ContextDep,
+    session: SessionDep,
+    is_piecework: bool | None = None,
+    include_inactive: Annotated[bool, Query(description="是否包含工序字典已停用的行")] = False,
+) -> dict[str, object]:
+    """款号工序配置列表。"""
+    _require_base(ctx, "base:read", "查看款号工序")
+    rows = await _style_service(session, ctx).list_style_operations(
+        style_no, is_piecework=is_piecework, include_inactive=include_inactive
+    )
+    return ok([item.model_dump(mode="json") for item in rows])
+
+
+@router.put(
+    "/styles/{style_no}/operations",
+    response_model=ApiResponse[StyleOperationsListOut],
+    summary="全量替换款号工序（≤500 行，必传 version）",
+    openapi_extra={
+        "x-permission": "base:update",
+        "x-request-schema": StyleOperationsReplaceIn.model_json_schema(),
+    },
+    tags=STYLE_TAGS,
+)
+async def replace_style_operations(
+    style_no: Annotated[str, Path(min_length=1, max_length=32)],
+    payload: StyleOperationsReplaceIn,
+    ctx: ContextDep,
+    session: SessionDep,
+) -> dict[str, object]:
+    """全量替换款号工序。
+
+    - ``operation_no`` 不存在或已停用 → ``10001``
+    - ``is_final_operation`` 超过一道 → ``10001``
+    - ``version`` 不匹配 → ``10003``
+    """
+    _require_base(ctx, "base:update", "维护款号工序")
+    result = await _style_service(session, ctx).replace_style_operations(style_no, payload)
+    return ok(result.model_dump(mode="json"))
+
+
+@router.post(
+    "/styles/{style_no}/operations/copy-from/{source_style_no}",
+    response_model=ApiResponse[TemplateCopyOut],
+    summary="工序与单价模板复制（支持 Idempotency-Key；档位2 分类价不复制）",
+    openapi_extra={
+        "x-permission": "base:rate_template:manage",
+        "x-request-schema": TemplateCopyIn.model_json_schema(),
+    },
+    tags=STYLE_TAGS,
+)
+async def copy_style_template(
+    style_no: Annotated[str, Path(min_length=1, max_length=32, description="目标款号")],
+    source_style_no: Annotated[str, Path(min_length=1, max_length=32, description="源款号")],
+    request: Request,
+    payload: TemplateCopyIn,
+    ctx: ContextDep,
+    session: SessionDep,
+) -> dict[str, object]:
+    """把源款号的工序结构与当前有效价整套复制到目标款号（单事务）。
+
+    ⚠️ 支持 ``Idempotency-Key``（docs/05 §5）：同键同 body 返回**首次结果**
+    （HTTP 200，不报错）；同键不同 body → ``10002``。前端重复点击靠这个兜底。
+    """
+    _require_base(ctx, "base:rate_template:manage", "工序单价模板复制")
+    idempotent = await load_idempotent(request)
+    if idempotent is not None and idempotent.cached is not None:
+        return idempotent.cached
+    result = await _style_service(session, ctx).copy_template(style_no, source_style_no, payload)
+    response = ok(result.model_dump(mode="json"))
+    if idempotent is not None:
+        await store_idempotent(idempotent, response)
+    return response
+
+
+# ------------------------------------------------------------------ 单价
+
+
+@router.get(
+    "/operation-rates",
+    response_model=ApiResponse[PageData[OperationRateOut]],
+    summary="工序单价区间列表（含历史区间 + 派生 is_current / rate_source）",
+    openapi_extra={"x-permission": "base:read"},
+    tags=STYLE_TAGS,
+)
+async def list_operation_rates(
+    ctx: ContextDep,
+    session: SessionDep,
+    style_no: Annotated[
+        str | None,
+        Query(max_length=32, description="款号；不传 = 全部档位（含分类价 / 全厂统一价）"),
+    ] = None,
+    operation_no: Annotated[str | None, Query(max_length=16)] = None,
+    product_category_id: UUID | None = None,
+    effective_from: date | None = None,
+    effective_to: date | None = None,
+    sort_by: Annotated[str | None, Query(description="可排序字段")] = "effective_from",
+    sort_order: Annotated[str, Query(pattern="^(asc|desc)$")] = "desc",
+    page: Annotated[int, Query(ge=1)] = 1,
+    size: Annotated[int, Query(ge=1, le=200)] = 20,
+) -> dict[str, object]:
+    """单价历史区间列表。⚠️ ``style_no`` 可选 —— 档位 2 / 3 的行它就是 NULL。"""
+    _require_base(ctx, "base:read", "查看工序单价")
+    items, total = await _rate_service(session, ctx).list_rates(
+        RateQuery(
+            style_no=style_no,
+            operation_no=operation_no,
+            product_category_id=product_category_id,
+            effective_from=effective_from,
+            effective_to=effective_to,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            page=page,
+            size=size,
+        )
+    )
+    return page_ok([item.model_dump(mode="json") for item in items], total, page, size)
+
+
+# ⚠️ **必须注册在 ``/operation-rates`` 之后、任何 ``/operation-rates/{x}`` 之前**：
+# FastAPI 按注册顺序匹配（与字典路由同一坑，见 :func:`_register_one` 的说明）。
+@router.get(
+    "/operation-rates/resolve",
+    response_model=ApiResponse[RateResolveOut],
+    summary="按 work_date 预演取价（三档优先，返回 rate_source；只读不写库）",
+    openapi_extra={"x-permission": "base:read"},
+    tags=STYLE_TAGS,
+)
+async def resolve_operation_rate(
+    ctx: ContextDep,
+    session: SessionDep,
+    style_no: Annotated[str, Query(min_length=1, max_length=32, description="款号（必填）")],
+    operation_no: Annotated[str, Query(min_length=1, max_length=16, description="工序号（必填）")],
+    work_date: date | None = Query(default=None, description="计件日期；缺省 = 今天"),
+) -> dict[str, object]:
+    """取价预演。三档优先级见 ADR-0026 §2；未命中 → ``20004`` + ``details``。"""
+    _require_base(ctx, "base:read", "查看工序单价")
+    result = await _rate_service(session, ctx).resolve(
+        style_no, operation_no, work_date or business_today()
+    )
+    return ok(result.model_dump(mode="json"))
+
+
+@router.get(
+    "/operation-rates/exports",
+    response_class=StreamingResponse,
+    summary="导出工序单价 xlsx（与列表同一套筛选）",
+    openapi_extra={
+        "x-permission": f"base:export 且 {EXPORT_GLOBAL_PERMISSION}",
+    },
+    tags=STYLE_TAGS,
+)
+async def export_operation_rates(
+    ctx: ContextDep,
+    session: SessionDep,
+    style_no: Annotated[str | None, Query(max_length=32)] = None,
+    operation_no: Annotated[str | None, Query(max_length=16)] = None,
+    product_category_id: UUID | None = None,
+    effective_from: date | None = None,
+    effective_to: date | None = None,
+    sort_by: Annotated[str | None, Query()] = "effective_from",
+    sort_order: Annotated[str, Query(pattern="^(asc|desc)$")] = "desc",
+) -> StreamingResponse:
+    """导出单价历史区间。
+
+    ⚠️ **必须与列表共用同一个 service 方法**（docs/07 §3.2 铁律 3）：另写一条导出
+    路径的话，"列表看到的"与"导出的"会不一致，而那只有在对账时才发现。
+
+    ⚠️ 需要**两个**权限点同时具备：``base:export`` + ``system:export:manage``。
+    """
+    for required in ("base:export", EXPORT_GLOBAL_PERMISSION):
+        if not ctx.has(required):
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, f"无导出权限：缺少 {required}")
+    rows = await _rate_service(session, ctx).export_rates(
+        RateQuery(
+            style_no=style_no,
+            operation_no=operation_no,
+            product_category_id=product_category_id,
+            effective_from=effective_from,
+            effective_to=effective_to,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+    )
+    payload = [row.model_dump(mode="json") for row in rows]
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="operation-rates-'
+            f'{datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")}.xlsx"'
+        ),
+        "X-Row-Count": str(len(payload)),
+    }
+    return StreamingResponse(
+        stream_xlsx(RATE_EXPORT_COLUMNS, iter(payload)),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
+@router.post(
+    "/operation-rates",
+    status_code=201,
+    response_model=ApiResponse[OperationRateSetOut],
+    summary="设价 / 调价（只追加：旧行只关 effective_to，禁 UPDATE unit_price）",
+    openapi_extra={
+        "x-permission": "piecework:rate:manage",
+        "x-request-schema": OperationRateCreate.model_json_schema(),
+    },
+    tags=STYLE_TAGS,
+)
+async def create_operation_rate(
+    payload: OperationRateCreate, ctx: ContextDep, session: SessionDep
+) -> dict[str, object]:
+    """设价或调价。
+
+    - 区间重叠 → ``20005`` + ``details``（R18）
+    - 调价未填 ``reason`` → ``10006``（R20）
+    - 同一生效日已有行 → ``20002``（R11：只追加不修改）
+    """
+    _require_base(ctx, "piecework:rate:manage", "维护工序单价")
+    result = await _rate_service(session, ctx).set_rate(payload)
+    return ok(result.model_dump(mode="json"))
+
+
+def _require_base(ctx: AuthContext, permission: str, action: str) -> None:
+    """校验权限点。失败时**同时报出缺哪个权限**，否则前端只能猜。"""
+    if not ctx.has(permission):
+        raise BusinessError(
+            ErrorCode.PERMISSION_DENIED,
+            f"无权限{action}",
+            details={"required_permission": permission},
+        )
 
 
 # 导入即注册：资源路由在模块加载时挂上具体路径
