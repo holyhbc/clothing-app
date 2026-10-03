@@ -1,0 +1,58 @@
+default_language_version:
+  python: python3.12
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # ⚠️ 禁止执行 `pre-commit run --all-files`：
+      #    仓库内既有 docs/ 与 prototype/ 存在行尾空格与缺末行换行（见 docs/12 §5 遗留问题），
+      #    --all-files 会一次性改掉几十个与当前任务无关的文件，违反 AGENTS.md「禁止顺手重构」。
+      #    正常使用：`git commit` 时只对已暂存文件生效；清理历史文件需单开任务并经确认。
+      - id: check-added-large-files
+        args: [--maxkb=512]
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: local
+    hooks:
+      # 密钥绝不入库（docs/11 §2 红线）：.env 存在即拦截
+      - id: forbid-env-file
+        name: 禁止提交 .env
+        entry: bash -c 'git ls-files --error-unmatch .env .env.local 2>/dev/null && echo ".env 已被跟踪，违反 docs/11 §2" && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+
+      # 5 道闸门 1-2：后端 lint + typecheck（docs/02 §3）
+      - id: backend-gate-1-2
+        name: 闸门 1-2（ruff + mypy）
+        entry: >-
+          bash -c 'uv run --project backend ruff check backend
+          && uv run --project backend ruff format --check backend
+          && { [ -d backend/app ] && uv run --project backend mypy backend/app
+          || echo "[skip] backend/app 尚未创建，mypy 闸门待 T-INFRA-003 首次跑通"; }'
+        language: system
+        files: ^backend/
+        pass_filenames: false
+
+      # 5 道闸门 1-2：前端 lint + typecheck
+      - id: frontend-gate-1-2
+        name: 闸门 1-2（eslint + vue-tsc）
+        entry: bash -c 'cd frontend && pnpm lint && pnpm typecheck'
+        language: system
+        files: ^frontend/
+        pass_filenames: false
+
+ci:
+  autofix_commit_msg: "[pre-commit] 自动修复"

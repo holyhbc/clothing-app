@@ -1,0 +1,9 @@
+# 本地端口映射覆盖（11 §3：override 不进 git）
+# 需要映射端口调试时启用：docker compose -f docker-compose.yml -f docker-compose.override.yml up
+services:
+  api:
+    ports:
+      - "8000:8000"
+  web:
+    ports:
+      - "8080:80"

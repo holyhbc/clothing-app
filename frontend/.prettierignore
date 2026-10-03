@@ -1,0 +1,19 @@
+node_modules/
+dist/
+coverage/
+
+# 锁文件由包管理器生成，不做格式化
+pnpm-lock.yaml
+package-lock.json
+uv.lock
+
+# 工作区配置由 pnpm 维护，保持原样
+pnpm-workspace.yaml
+
+# API 类型为生成物
+packages/shared/src/api/schema.d.ts
+
+# 测试产物
+playwright-report/
+test-results/
+blob-report/

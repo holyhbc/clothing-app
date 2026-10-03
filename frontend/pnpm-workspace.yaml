@@ -1,0 +1,10 @@
+packages:
+  - "packages/*"
+
+# 依赖只允许提升到工作区根声明的版本，禁止隐式提升（docs/03 §2.1）
+linkWorkspacePackages: true
+
+# pnpm 要求显式批准依赖的安装期构建脚本，否则 install 直接失败（ERR_PNPM_IGNORED_BUILDS）。
+# 只批准白名单内的包，禁止 `pnpm approve-builds --all` 一键全批准。
+allowBuilds:
+  esbuild: true

@@ -1,0 +1,29 @@
+# Node / pnpm
+node_modules/
+.pnpm-store/
+dist/
+.vite/
+*.tsbuildinfo
+.eslintcache
+
+# 质量工具缓存
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# 测试产物
+playwright-report/
+test-results/
+blob-report/
+
+# 本地覆盖编排（不入库，模板见 docker-compose.override.example.yml）
+docker-compose.override.yml
+
+# 环境与密钥（.env.example 由根 .gitignore 放行）
+.env
+.env.*
+!.env.example
+*.local
