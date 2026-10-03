@@ -76,15 +76,12 @@ def visible_workshops(ctx: AuthContext) -> frozenset[UUID]:
 #: 一个名字蒙混过关）。
 PENDING_TABLES: Final[frozenset[str]] = frozenset(
     {
-        "cutting_orders",  # T-BASE-002（基础资料）→ 裁剪单在 P1
+        # P1 的单据表
+        "cutting_orders",
         "bundling_orders",
         "piecework_logs",
         "stock_ledgers",
-        "styles",
-        "customers",
-        "operations",
-        "colors",
-        "sizes",
+        # T-BASE-002 已建（迁移 0005），从待建清单移出
     }
 )
 

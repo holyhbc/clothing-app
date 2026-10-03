@@ -81,6 +81,7 @@ def upgrade() -> None:
     _create_style_operations()
     _create_operation_rates()
     _create_sequences()
+    _create_soft_delete_indexes()
 
 
 def downgrade() -> None:
@@ -95,6 +96,25 @@ def downgrade() -> None:
         "customers",
     ):
         op.drop_table(table)
+
+
+def _create_soft_delete_indexes() -> None:
+    """补 8 个 ``ix_<table>_deleted_at``。
+
+    ``SoftDeleteMixin`` 在模型上声明了 ``index=True``，所以每张软删表都必须有。
+    列表查询恒带 ``WHERE deleted_at IS NULL``，没索引就是全表扫 ——
+    0002 漏建过、0003 补过，别再漏第三次。
+    """
+    for table in (
+        "customers",
+        "styles",
+        "style_colors",
+        "style_sizes",
+        "style_color_size_ratios",
+        "style_operations",
+        "operation_rates",
+    ):
+        op.create_index(f"ix_{table}_deleted_at", table, ["deleted_at"], unique=False)
 
 
 # ------------------------------------------------------------------ 客户
@@ -196,7 +216,7 @@ def _create_styles() -> None:
             ["category_id"], ["product_categories.id"], name="fk_styles_product_categories"
         ),
         sa.ForeignKeyConstraint(["merchandiser_id"], ["users.id"], name="fk_styles_merchandiser"),
-        comment="款号（modules/01 §3.2；R2 已产生计件或库存的款号只能停用）",
+        comment="款号（modules/01 §3.2；R2：已产生计件或库存的款号只能停用）",
     )
     # ⚠️ **部分唯一索引**（04 §7.11 / R2）：软删的款号不占用唯一键，
     # 否则删掉一个款号就再也建不了同号的
@@ -500,7 +520,16 @@ def _create_sequences() -> None:
     op.create_table(
         "style_no_sequences",
         sa.Column(
-            "customer_id", PgUUID(as_uuid=True), nullable=True, comment="客户；空 = 全厂序列"
+            "id",
+            PgUUID(as_uuid=True),
+            server_default=sa.text("gen_random_uuid()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "customer_id",
+            PgUUID(as_uuid=True),
+            nullable=True,
+            comment="客户；空 = 全厂序列",
         ),
         sa.Column("year", sa.Integer(), nullable=False, comment="年份，如 2026"),
         sa.Column(
@@ -510,9 +539,29 @@ def _create_sequences() -> None:
             nullable=False,
             comment="下一个可用序号，从 1 开始",
         ),
-        sa.PrimaryKeyConstraint("customer_id", "year", name="pk_style_no_sequences"),
+        # ⚠️ **不能**用 ``PRIMARY KEY (customer_id, year)``：主键列隐式 NOT NULL，
+        # 而"客户为空 = 全厂序列"要求 customer_id 真的能是 NULL —— 用主键的话
+        # 全厂序列那一行永远插不进去。改成两条**部分唯一索引**，各管一段。
+        sa.PrimaryKeyConstraint("id", name="pk_style_no_sequences"),
         sa.ForeignKeyConstraint(
             ["customer_id"], ["customers.id"], name="fk_style_no_sequences_customers"
         ),
+        sa.CheckConstraint("next_no >= 1", name="ck_style_no_sequences_next_no"),
         comment="建议货号序号计数器（Q-P0-05：序号按客户分组递增）",
+    )
+    # ① 有客户的：(customer_id, year) 唯一
+    op.create_index(
+        "uq_style_no_sequences_customer",
+        "style_no_sequences",
+        ["customer_id", "year"],
+        unique=True,
+        postgresql_where=sa.text("customer_id IS NOT NULL"),
+    )
+    # ② 全厂的：每年只允许一行（customer_id IS NULL）
+    op.create_index(
+        "uq_style_no_sequences_factory",
+        "style_no_sequences",
+        ["year"],
+        unique=True,
+        postgresql_where=sa.text("customer_id IS NULL"),
     )
