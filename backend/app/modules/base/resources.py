@@ -19,6 +19,7 @@ from sqlalchemy import ColumnElement, literal, or_, select
 from app.common.enums import DataScope
 from app.modules.base.models import (
     Color,
+    Customer,
     Operation,
     ProductCategory,
     Size,
@@ -225,6 +226,21 @@ RESOURCES: tuple[DictResource, ...] = (
         # 只能停用。这三张表 P1 才建，届时追加 RefChecker
         allow_physical_delete=False,
         filter_columns=("workshop_id", "is_piecework"),
+    ),
+    # ---- 组 D（T-BASE-002）----
+    DictResource(
+        key="customers",
+        model=Customer,
+        doc_type="Customer",
+        path_column="code",
+        code_column="code",
+        name_column="name",
+        trgm_expression="(code || ' ' || name)",
+        sort_whitelist={"code": "code", "name": "name", "created_at": "created_at"},
+        # ⚠️ **纯软删**：客户被 styles / 销售 / 应收引用后不能真删（modules/01 §3.5
+        # 没有删除规则，R13「引用保护」是通则）。真删会让历史单据的
+        # ``customer_id`` 变悬空，而客户名在报表里是 join 出来的。
+        allow_physical_delete=False,
     ),
 )
 
