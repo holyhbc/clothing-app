@@ -14,8 +14,18 @@ from app.cli import restore_builtin, seed_baseline
 
 
 class _FakeResult:
-    def __init__(self, rowcount: int = 1) -> None:
+    def __init__(self, rowcount: int = 1, rows: tuple = ()) -> None:
         self.rowcount = rowcount
+        self._rows = rows
+
+    def scalars(self) -> "_FakeResult":
+        return self
+
+    def all(self) -> tuple:
+        return self._rows
+
+    def first(self) -> None:
+        return None
 
 
 class _FakeConn:

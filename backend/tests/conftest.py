@@ -265,15 +265,22 @@ async def auth_headers(db_session: AsyncSession) -> AsyncIterator[Any]:
             user = await service.get_active_user(user_id)
         else:
             if role != "custom":
-                seed = ROLE_BY_CODE[role]
+                # 未知角色名要立刻报错，而不是建出一个没权限的账号
+                if role not in ROLE_BY_CODE:
+                    raise AssertionError(f"未知的内置角色：{role}")
                 role_obj = await _ensure_builtin_role(db_session, role)
             else:
-                role_obj = await RoleFactory.create(
-                    db_session,
-                    code="custom",
-                    name="自定义角色",
-                    data_scope=data_scope or DataScope.SELF,
-                )
+                # 复用已存在的 custom 角色：一个用例里可能要建多个用户，
+                # 每次新建会撞 uq_roles_code
+                found = await db_session.execute(select(Role).where(Role.code == "custom"))
+                role_obj = found.scalar_one_or_none()
+                if role_obj is None:
+                    role_obj = await RoleFactory.create(
+                        db_session,
+                        code="custom",
+                        name="自定义角色",
+                        data_scope=data_scope or DataScope.SELF,
+                    )
             user = await UserFactory.create(
                 db_session,
                 employee_no=employee_no or f"T{uuid4().hex[:7].upper()}",
@@ -284,7 +291,6 @@ async def auth_headers(db_session: AsyncSession) -> AsyncIterator[Any]:
             await UserRoleFactory.create(db_session, user_id=user.id, role_id=role_obj.id)
             if permissions is not None:
                 await grant_permissions(db_session, role=role_obj, codes=permissions)
-            del seed
 
         role_ids = await service.get_role_ids(user.id)
         token, _expires_in = create_access_token(

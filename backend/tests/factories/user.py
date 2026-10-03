@@ -149,10 +149,16 @@ async def grant_permissions(session: AsyncSession, *, role: Role, codes: tuple[s
     if missing:
         raise AssertionError(f"权限点不存在：{sorted(missing)}")
     permissions = await session.execute(select(Permission).where(Permission.code.in_(codes)))
-    # 一次批量插入：super_admin 有 122 个权限点，逐条插入会让每个用例多 122 次往返
+    # 只补**尚未绑定**的：同一用例里常对同一个角色授权多次，
+    # 无脑全量插入会撞 role_permissions 主键
+    existing = await session.execute(
+        select(RolePermission.permission_id).where(RolePermission.role_id == role.id)
+    )
+    already = set(existing.scalars().all())
     session.add_all(
-        RolePermission(role_id=role.id, permission_id=permission.id)
-        for permission in permissions.scalars().all()
+        RolePermission(role_id=role.id, permission_id=item.id)
+        for item in permissions.scalars().all()
+        if item.id not in already
     )
     await session.flush()
 

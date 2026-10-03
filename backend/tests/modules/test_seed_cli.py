@@ -90,7 +90,17 @@ async def test_seed_does_not_overwrite_renamed_permission(ddl_session: AsyncSess
 
 
 async def test_check_passes_on_consistent_data(ddl_session: AsyncSession) -> None:
-    """--check 在数据一致时不报问题。"""
+    """--check 在数据一致时不报问题。
+
+    ⚠️ 必须先跑一遍 ``seed_dict_library``：权限点与角色由**迁移 0002** 自带，
+    而字典内置库（16 色 / 8 尺码 / 2 码表 / 6 分类）来自 **seed 命令**、不在迁移里。
+    部署顺序是「迁移 → seed」，CI 只跑迁移，所以字典数据得由用例自己准备 ——
+    这正是本用例要断言的对象。踩过：容器里跑 CI 报"内置 colors 数量 0 != 16"，
+    看起来像 seed 坏了，其实是数据压根没被 seed 过。
+    """
+    from app.cli.seed_dicts import seed_dict_library
+
+    await seed_dict_library(ddl_session)
     assert await seed_baseline.check_baseline(ddl_session) == []
 
 

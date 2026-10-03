@@ -32,6 +32,14 @@ import sys
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
+from app.cli.seed_dicts import (
+    BUILTIN_COLORS,
+    BUILTIN_PRODUCT_CATEGORIES,
+    BUILTIN_SIZE_GROUPS,
+    BUILTIN_SIZES,
+    check_dict_library,
+    seed_dict_library,
+)
 from app.common.permissions_registry import (
     PERMISSIONS,
     ROLES,
@@ -185,6 +193,7 @@ async def check_baseline(conn: AsyncConnection) -> list[str]:
     )
     if admin_perms != len(permission_codes()):
         problems.append(f"super_admin 权限数 {admin_perms} != 全部权限数 {len(permission_codes())}")
+    problems.extend(await check_dict_library(conn))
     return problems
 
 
@@ -206,18 +215,28 @@ async def run(check_only: bool = False) -> int:
                     for problem in problems:
                         print(f"FAIL: {problem}", file=sys.stderr)
                     return 1
-                print(f"OK: 基线数据一致（权限点 {len(PERMISSIONS)} 个 / 角色 {len(ROLES)} 个）")
+                print(
+                    f"OK: 基线数据一致（权限点 {len(PERMISSIONS)} 个 / 角色 {len(ROLES)} 个 / "
+                    f"内置色 {len(BUILTIN_COLORS)} / 内置尺码 {len(BUILTIN_SIZES)} / "
+                    f"内置码表 {len(BUILTIN_SIZE_GROUPS)} / 内置分类 {len(BUILTIN_PRODUCT_CATEGORIES)}）"
+                )
                 return 0
 
             perm_result = await seed_permissions(conn)
             role_result = await seed_roles(conn)
             binding_count = await seed_role_permissions(conn)
             admin_note = await ensure_initial_admin(conn)
+            # 字典内置库放在权限/角色之后：码表成员要引用 sizes.id
+            dict_result = await seed_dict_library(conn)
 
         print(
             f"权限点：尝试 {perm_result[0]} 新增 {perm_result[1]}；"
             f"角色：尝试 {role_result[0]} 新增 {role_result[1]}；"
             f"权限绑定新增 {binding_count}"
+        )
+        print(
+            "字典内置库新增："
+            + "；".join(f"{table} {count}" for table, count in dict_result.items())
         )
         print(admin_note)
         print("OK: 基线数据已同步（幂等，可重复执行）")

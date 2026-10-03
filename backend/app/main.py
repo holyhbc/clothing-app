@@ -63,8 +63,10 @@ def create_app() -> FastAPI:
 def _register_module_routers(app: FastAPI) -> None:
     """挂载业务模块路由。**只有这里**能把 router 挂到应用上。"""
     from app.modules.auth.router import router as auth_router
+    from app.modules.base.router import router as base_router
 
     app.include_router(auth_router, prefix=API_PREFIX)
+    app.include_router(base_router, prefix=API_PREFIX)
 
 
 def _register_health_endpoints(app: FastAPI) -> None:

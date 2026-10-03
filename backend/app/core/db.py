@@ -8,6 +8,7 @@
 """
 
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from sqlalchemy.ext.asyncio import (
@@ -75,6 +76,29 @@ async def get_db() -> AsyncIterator[AsyncSession]:
     factory = get_session_factory()
     async with factory() as session:
         yield session
+
+
+@asynccontextmanager
+async def unit_of_work(session: AsyncSession) -> AsyncIterator[None]:
+    """**service 层唯一的事务入口**（docs/03 §1.1 第 5 条）。
+
+    退出时**提交** —— 这是"事务边界只在 service"的落地方式：``get_db`` 只负责建连接
+    与关连接，全项目没有第二处 ``commit()``。
+
+    为什么用 ``begin_nested()``（savepoint）而不是 ``begin()``：
+        - 生产：请求期间前面的 SELECT 已触发 autobegin，此时 ``begin()`` 会抛
+          ``InvalidRequestError: A transaction is already begun``；
+          savepoint 可以在既有事务里安全开
+        - 测试：session 绑在外层事务上（``join_transaction_mode="create_savepoint"``），
+          提交 savepoint 只释放 savepoint，外层回滚照样把数据清干净，测试零污染
+
+    ⚠️ 任何 service 的写方法都必须用它，不要自己写 ``session.begin()`` ——
+    踩过的坑：base 模块一开始用 ``session.begin()``，13 个用例全部报
+    "A transaction is already begun"。
+    """
+    async with session.begin_nested():
+        yield
+    await session.commit()
 
 
 async def dispose_engine() -> None:

@@ -34,6 +34,13 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from app.cli.seed_baseline import seed_permissions, seed_role_permissions, seed_roles
+from app.cli.seed_dicts import (
+    BUILTIN_COLORS,
+    BUILTIN_SIZE_GROUPS,
+    BUILTIN_SIZES,
+    DICT_DOC_TYPES,
+    seed_dict_library,
+)
 from app.common.permissions_registry import PERMISSIONS, ROLES
 from app.core.config import get_settings
 
@@ -81,24 +88,61 @@ async def clear_tombstones(conn: AsyncConnection, codes: list[str], doc_type: st
     return len(codes)
 
 
+async def list_missing_dicts(conn: AsyncConnection) -> dict[str, list[str]]:
+    """列出被真删的内置字典项（TC-B21 的判定）。
+
+    只看 ``is_builtin = true`` 的行 —— 用户自建的项不在恢复范围内，
+    「恢复内置库」不该把用户自己加的东西也重建一遍。
+    """
+    missing: dict[str, list[str]] = {}
+    rows = (
+        (await conn.execute(sa.text("SELECT color_code FROM colors WHERE is_builtin ORDER BY 1")))
+        .scalars()
+        .all()
+    )
+    missing["colors"] = sorted({code for code, _name in BUILTIN_COLORS} - set(rows))
+
+    size_rows = (
+        await conn.execute(sa.text("SELECT size_code, size_class FROM sizes WHERE is_builtin"))
+    ).all()
+    have = {(row[0], row[1]) for row in size_rows}
+    missing["sizes"] = [
+        f"{code}/{size_class}"
+        for code, size_class, _name, _order in BUILTIN_SIZES
+        if (code, size_class) not in have
+    ]
+
+    group_rows = (
+        (await conn.execute(sa.text("SELECT name FROM size_groups WHERE is_builtin ORDER BY 1")))
+        .scalars()
+        .all()
+    )
+    missing["size_groups"] = sorted({item[0] for item in BUILTIN_SIZE_GROUPS} - set(group_rows))
+    return missing
+
+
 async def restore(
     conn: AsyncConnection,
     *,
     do_list: bool = False,
     do_permissions: bool = False,
     do_roles: bool = False,
+    do_dicts: bool = False,
 ) -> str:
     """恢复逻辑（接已有连接），返回给用户看的汇总文案。
 
     与 :func:`run` 分开是为了可测：测试用回滚型 session 直接调它，不必起引擎。
     """
     missing_permissions, missing_roles = await list_missing(conn)
+    missing_dicts = await list_missing_dicts(conn)
     lines: list[str] = []
 
-    if do_list or not (do_permissions or do_roles):
+    if do_list or not (do_permissions or do_roles or do_dicts):
         lines.append(f"缺失权限点 {len(missing_permissions)} 个：{missing_permissions or '无'}")
         lines.append(f"缺失内置角色 {len(missing_roles)} 个：{missing_roles or '无'}")
-        if not (do_permissions or do_roles):
+        for table, codes in missing_dicts.items():
+            lines.append(f"缺失内置 {table} {len(codes)} 个：{codes or '无'}")
+        if not (do_permissions or do_roles or do_dicts):
             return "\n".join(lines)
 
     if do_permissions and missing_permissions:
@@ -113,6 +157,28 @@ async def restore(
         f"已恢复：权限点新增 {perm_result[1]} 个，角色新增 {role_result[1]} 个，"
         f"权限绑定新增 {binding_count} 条（墓碑已解除）"
     )
+
+    if do_dicts:
+        # ⚠️ **顺序不能反**：必须先解除墓碑、再 seed。
+        #    seed 靠 document_logs 里的 DELETE/RESTORE 判定墓碑；先 seed 后清墓碑的话，
+        #    本次 seed 看到的还是墓碑 → 什么都没恢复，只留下一条 RESTORE 记录，
+        #    状态变成"记录说恢复了、数据其实没回来"，比不恢复更糟。
+        #
+        # 墓碑的 doc_type 必须与 service 写入时一致（Color/Size/SizeGroup），
+        # 用表名会导致"刚解除的墓碑，seed 下次又认不出来"
+        for table, codes in missing_dicts.items():
+            if codes:
+                await clear_tombstones(conn, codes, DICT_DOC_TYPES[table])
+        # 字典是**真删**（ADR-0025 白名单），没有墓碑行要清；恢复靠重新 seed。
+        # 但仍要写 RESTORE 日志 —— 否则事后审计看不出这批数据是"重新加回来的"
+        dict_result = await seed_dict_library(conn)
+        restored = sum(dict_result.values())
+        lines.append(
+            f"已恢复字典内置库 {restored} 条（"
+            + "；".join(f"{table} {count}" for table, count in dict_result.items())
+            + "）"
+        )
+
     lines.append("OK: 恢复完成")
     return "\n".join(lines)
 
@@ -122,6 +188,7 @@ async def run(
     do_list: bool = False,
     do_permissions: bool = False,
     do_roles: bool = False,
+    do_dicts: bool = False,
 ) -> int:
     """CLI 入口：建引擎 → 调 :func:`restore` → 打印。返回进程退出码。"""
     url = _migration_url()
@@ -133,7 +200,11 @@ async def run(
     try:
         async with engine.begin() as conn:
             output = await restore(
-                conn, do_list=do_list, do_permissions=do_permissions, do_roles=do_roles
+                conn,
+                do_list=do_list,
+                do_permissions=do_permissions,
+                do_roles=do_roles,
+                do_dicts=do_dicts,
             )
     finally:
         await engine.dispose()
@@ -148,9 +219,21 @@ def main() -> None:
     parser.add_argument("--list", action="store_true", help="只列出缺失项，不写入")
     parser.add_argument("--permissions", action="store_true", help="恢复权限点")
     parser.add_argument("--roles", action="store_true", help="恢复内置角色")
+    parser.add_argument(
+        "--dicts",
+        action="store_true",
+        help="恢复内置字典库（16 色 / 8 尺码 / 2 码表 / 8 明细 / 6 分类）",
+    )
     args = parser.parse_args()
     raise SystemExit(
-        asyncio.run(run(do_list=args.list, do_permissions=args.permissions, do_roles=args.roles))
+        asyncio.run(
+            run(
+                do_list=args.list,
+                do_permissions=args.permissions,
+                do_roles=args.roles,
+                do_dicts=args.dicts,
+            )
+        )
     )
 
 
