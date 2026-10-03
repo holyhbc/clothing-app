@@ -55,6 +55,23 @@ allowed-confusables = [
     "×", "→", "←", "≥", "≤", "≠", "±", "∈",
 ]
 
+# FastAPI 的依赖声明就是 `Depends()` 写在参数默认值里（docs/07 §3.1 的规范示例
+# 本身如此），B008 会把它误报成"可变默认值调用"。这里用 bugbear 的官方配置项
+# 声明这些调用是"不可变安全的"，而不是粗暴关掉 B008 —— 真正的可变默认值 bug
+# 仍然会被拦住。
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.Form",
+    "fastapi.File",
+    "fastapi.Security",
+]
+
 [tool.ruff.lint.per-file-ignores]
 # S101: 测试里允许 assert
 # ANN : 测试函数签名不必全标注

@@ -106,12 +106,19 @@ def _secret() -> str:
     return secret
 
 
+#: 载荷里允许出现的键。**白名单而非黑名单** —— 不设 ``extra_claims`` 参数，
+#: 因为那等于让调用方往令牌里塞任意声明，将来有人传 ``permissions=全部权限``
+#: 就把 docs/07 §1.1「权限查库」这条硬规则绕过去了，而它不会报错、只会静默越权。
+_ALLOWED_CLAIMS: Final[frozenset[str]] = frozenset(
+    {"sub", "role_ids", "data_scope", "type", "jti", "iat", "exp"}
+)
+
+
 def create_access_token(
     *,
     user_id: str,
     role_ids: list[str],
     data_scope: str,
-    extra_claims: dict[str, Any] | None = None,
 ) -> tuple[str, int]:
     """签发 access token。
 
@@ -132,10 +139,23 @@ def create_access_token(
         "iat": now,
         "exp": now + timedelta(seconds=expires_in),
     }
-    if extra_claims:
-        payload.update(extra_claims)
+    validate_claims(payload)
     token = jwt.encode(payload, _secret(), algorithm=settings.jwt_algorithm)
     return token, expires_in
+
+
+def validate_claims(payload: dict[str, Any]) -> None:
+    """校验载荷字段都在白名单内。多出来就**拒绝签发**。
+
+    为什么用 ``raise`` 而不是 ``assert``：``assert`` 在 ``python -O`` 下会被整条
+    优化掉，安全检查不能那样写。
+    """
+    unexpected = set(payload) - _ALLOWED_CLAIMS
+    if unexpected:
+        raise BusinessError(
+            ErrorCode.INTERNAL,
+            f"access token 出现未登记的声明字段：{sorted(unexpected)}",
+        )
 
 
 def decode_token(token: str, *, expected_type: str = TOKEN_TYPE_ACCESS) -> dict[str, Any]:
