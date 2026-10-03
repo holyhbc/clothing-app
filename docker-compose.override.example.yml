@@ -1,9 +1,21 @@
-# 本地端口映射覆盖（11 §3：override 不进 git）
-# 需要映射端口调试时启用：docker compose -f docker-compose.yml -f docker-compose.override.yml up
+# 本机端口映射覆盖（docs/11 §3：override 不进 git）
+#
+# 用法：cp docker-compose.override.example.yml docker-compose.override.yml
+#      docker compose -f docker-compose.yml -f docker-compose.override.yml up
+#
+# ⚠️ 本机不是空闲的 ERP 服务器：还跑着 16 个其他容器（frps / rustdesk /
+#    wordpress / syncthing / alist / maccms 等），且 23306、8080、8090-8091、
+#    5678、8384、5244、25500、21114-21119、22067/22070 已被占用
+#    （docs/12 §5 L-017）。因此**本机联调一律使用高端口**，把 80/443 让给现有业务：
+#      18080 → web(80)   18443 → TLS 终结（需要时）
+#      18000 → api(8000) 直连调试（/docs、/readyz）
+#    生产环境由宿主 nginx 或云层占用 80/443，本文件不用于生产。
+
 services:
   api:
     ports:
-      - "8000:8000"
+      - "18000:8000"
+
   web:
     ports:
-      - "8080:80"
+      - "18080:80"
