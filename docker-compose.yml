@@ -1,0 +1,123 @@
+# 生产编排（docs/11-部署运维与发布规范.md §3）
+#
+# 铁律（§3 禁令）：
+#   1. 本文件**不得出现 build:** —— 生产只拉镜像，构建在 CI（§4）
+#   2. 本文件与任何脚本**不得出现 down -v / volume rm / dropdb / TRUNCATE**（§10 红线 1）
+#   3. postgres 的 5432 **不得暴露到 0.0.0.0**
+#
+# 本机端口映射走 docker-compose.override.yml（不入库，模板见 .example.yml）。
+
+name: garment-erp
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER 未设置（.env）}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 未设置（.env）}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB 未设置（.env）}
+      # 迁移账号（erp_ddl）；应用账号 erp_app 的最小授权见 docs/04 §6.2.1，
+      # 由 T-INFRA-004 的初始化步骤创建，不在本文件里做（避免在编排里藏 DDL）
+      MIGRATION_USER: ${MIGRATION_USER:-erp_ddl}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command:
+      - postgres
+      - -c
+      - shared_buffers=1GB            # docs/04 §9 基线
+      - -c
+      - effective_cache_size=4GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - max_connections=60            # docs/01 §3 预算
+      - -c
+      - timezone=Asia/Shanghai         # 库里存 UTC，展示层转本地
+      - -c
+      - log_min_duration_statement=500 # 慢查询单独记（docs/11 §8.1）
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+    logging: *default-logging
+    # 注意：此处刻意不写 ports —— 5432 只在 compose 网络内可达
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+    logging: *default-logging
+
+  api:
+    image: ${REGISTRY:-registry.example.com}/garment-erp-api:${APP_VERSION:?APP_VERSION 未设置（发布时由 release.sh 注入，禁用 latest）}
+    restart: always
+    env_file: [.env]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL 未设置（.env）}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      APP_ENV: ${APP_ENV:-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/readyz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+    logging: *default-logging
+
+  web:
+    image: ${REGISTRY:-registry.example.com}/garment-erp-web:${APP_VERSION:?APP_VERSION 未设置}
+    restart: always
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      # 只对外暴露 80/443（docs/11 §9）；TLS 证书由宿主 nginx 或云层终结
+      - "80:80"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging: *default-logging
+
+volumes:
+  pgdata:
+  redisdata:

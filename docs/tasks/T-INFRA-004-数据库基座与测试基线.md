@@ -29,6 +29,7 @@
 - [ ] `tests/factories/__init__.py`：工厂基类约定（**禁止在测试里手写 uuid/时间**，10 §2.1）
 - [ ] `app/core/logging.py`：结构化 JSON 日志（11 §8.1：stdout、`extra={}`、禁打印密码/token）
 - [ ] `app/core/numbering.py`：单号生成器骨架（计数器表 + 唯一索引兜底，09 §2.1「禁止 `count(*)+1`」；本卡只放通用件，P1 单据前缀 T-BASE 阶段接）
+- [ ] **`docker/postgres/init/01-create-roles.sql`（L-019）**：创建迁移账号 `erp_ddl` 与运行账号 `erp_app`，按 [04 §6.2.1](../04-数据库规范.md) 只授 `SELECT/INSERT/UPDATE`，并 `REVOKE UPDATE, DELETE ON document_logs FROM erp_app`；`docker-compose.ci.yml` 挂载 `/docker-entrypoint-initdb.d`。**理由**：compose 里不藏 DDL，但账号必须在测试库首次启动时存在，否则 T-AUTH-001 起的集成测试连不上库
 
 **不做**：
 - 不建任何业务表（auth 归 T-AUTH-001，基础资料归 T-BASE-001/002）
@@ -48,6 +49,8 @@
 | `backend/app/core/logging.py` | 新增 | 结构化日志 |
 | `backend/app/core/numbering.py` | 新增 | 单号生成器骨架 |
 | `backend/app/core/db.py` | 修改 | 补 Redis/连接池细节 + 测试库连接串切换 |
+| `docker/postgres/init/01-create-roles.sql` | 新增 | `erp_ddl` / `erp_app` 角色与最小授权（L-019） |
+| `docker-compose.ci.yml` | 修改 | 挂载 init 脚本到 `/docker-entrypoint-initdb.d` |
 
 ## 实现要点（必读规范）
 
@@ -77,6 +80,7 @@
 | TC-I14 | 两个测试用例各自造数据，第二个用例查不到第一个的数据 | 事务回滚生效，用例零依赖 | |
 | TC-I15 | 随机顺序（`pytest -p no:randomly` 关闭后手动换序）跑 3 次 | 结果一致 | |
 | TC-I16 | `numbering.next_no(prefix, date)` 同前缀同日并发 20 次 | 20 个号互不重复（唯一索引兜底） | |
+| TC-I17 | `erp_app` 连接测试库 | 可连接；对非白名单表 `DELETE` 被拒；对 `document_logs` 的 `UPDATE`/`DELETE` 被拒（L-019 验收） | |
 
 ## 实际改动（完成后回填）
 

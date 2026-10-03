@@ -1,0 +1,108 @@
+# CI / 本地闸门编排（docs/02 §3 五道闸门的执行环境）
+#
+# 与生产编排的差别：**允许 build:**，且额外提供一次性任务容器（migrate-check / test）。
+# 生产绝不使用本文件（docs/11 §3 禁令 1）。
+
+name: garment-erp-ci
+
+x-ci-env: &ci-env
+  APP_ENV: test
+  POSTGRES_USER: erp_app
+  POSTGRES_PASSWORD: ci-only-not-a-secret
+  POSTGRES_DB: garment_erp_test
+  # 测试环境全量重建，不复用生产数据（docs/11 §1 铁律 1）
+  DATABASE_URL: postgresql+asyncpg://erp_app:ci-only-not-a-secret@postgres:5432/garment_erp_test
+  REDIS_URL: redis://redis:6379/0
+  JWT_SECRET: ci-only-not-a-secret-ci-only-not-a-secret
+  JWT_EXPIRE_MINUTES: "15"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: erp_app
+      POSTGRES_PASSWORD: ci-only-not-a-secret
+      POSTGRES_DB: garment_erp_test
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - max_connections=100
+      - -c
+      - timezone=Asia/Shanghai
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erp_app -d garment_erp_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    tmpfs:
+      - /var/lib/postgresql/data        # 测试库一次性，不落盘
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---- 闸门 1 / 2：lint + typecheck ----
+  lint:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      target: dev
+    environment: *ci-env
+    command: ["bash", "-lc", "ruff check . && ruff format --check . && mypy app"]
+    working_dir: /app
+
+  # ---- 闸门 3：单测 + 覆盖率（docs/10 §8 阈值 fail_under=80）----
+  test:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      target: dev
+    environment: *ci-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command:
+      - bash
+      - -lc
+      - "pytest -q --cov=app --cov-report=term-missing --cov-fail-under=80"
+    working_dir: /app
+
+  # ---- 闸门 4：迁移往返（up → down → 再 up，docs/04 §6.2）----
+  migrate-check:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      target: dev
+    environment: *ci-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - bash
+      - -lc
+      - "alembic upgrade head && alembic downgrade -1 && alembic upgrade head && alembic current"
+    working_dir: /app
+
+  # ---- 闸门 5：镜像构建（生产 compose 无 build，故在 CI 编排里验证）----
+  api-image:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      target: runtime
+    environment: *ci-env
+    command: ["python", "-c", "import app.main; print('api image import ok')"]
+
+  web-image:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    command: ["nginx", "-t"]

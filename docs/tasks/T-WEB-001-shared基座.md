@@ -27,6 +27,7 @@
 - [ ] `packages/shared/src/enums/permissions.ts`：权限点常量（**与后端 seed 集合一致**，由 T-AUTH-001 的 registry 生成或快照断言）
 - [ ] `packages/shared/src/utils/format.ts`：`formatMoney`（等宽 + 2/4 位小数）、`formatDateTime`（ISO8601 带时区 → `Asia/Shanghai`）、`formatQty`
 - [ ] 单测：`format.test.ts`（**必须含 `0.1 + 0.2` 场景**）、`client.test.ts`（401→refresh→重放；refresh 也 401 → 跳登录且**不重试死循环**）
+- [ ] **`packages/mobile` 占位包**（`package.json` + `vite.config.ts` + `index.html` + `tsconfig.json` + 空 `src/main.ts`，**不写页面**）：`docker/frontend/Dockerfile` 的 runtime 阶段会 `COPY --from=builder /build/packages/mobile/dist`，不建这个包则闸门 5 的 web 镜像**必然构建失败**（P0 已实测确认，见 T-INFRA-002 TC-011）
 
 **不做**：
 - 不写页面、不装 UI 库（T-WEB-002 起）
@@ -45,6 +46,7 @@
 | `frontend/packages/shared/src/enums/permissions.ts` | 新增 | 权限点常量 |
 | `frontend/packages/shared/src/utils/format.ts` | 新增 | 格式化 |
 | `frontend/packages/shared/src/**/*.test.ts` | 新增 | 单测 |
+| `frontend/packages/mobile/*` | 新增 | **占位包**（无页面），仅为让 web 镜像可构建；`/mobile` 路由 P2 才实现 |
 
 ## 实现要点（必读规范）
 
@@ -58,6 +60,7 @@
 - [ ] `formatMoney(0.1 + 0.2)` = `¥0.30`（不是 `¥0.30000000000000004`）
 - [ ] 401 → refresh 成功 → 原请求重放成功；refresh 也 401 → 清 token 跳登录，**只重试一次**
 - [ ] `permissions.ts` 与后端 `permissions` 表 code 集合一致（断言）
+- [ ] `docker build -f docker/frontend/Dockerfile .` 能构建出 runtime 镜像（`packages/admin` 由 T-WEB-002 提供，本卡只需保证 `mobile` 占位包不阻塞）
 - [ ] `pnpm lint` / `pnpm typecheck` / `pnpm test:unit` 全绿；`shared` 覆盖 ≥ 90%
 - [ ] 全仓无 `any`（lint 规则拦截）
 

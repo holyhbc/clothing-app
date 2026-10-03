@@ -1,0 +1,176 @@
+name: CI
+
+# 闸门 1-4 在 PR / push 触发；闸门 5（镜像构建）只在打 tag 时构建并推送（docs/02 §3、docs/11 §4）
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  backend:
+    name: 后端闸门 1-4
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.8.4"
+          enable-cache: true
+
+      - name: 闸门 1 lint
+        run: |
+          uv run --frozen ruff check .
+          uv run --frozen ruff format --check .
+
+      - name: 闸门 2 typecheck
+        run: uv run --frozen mypy app
+
+      - name: 闸门 3 单测（覆盖率 ≥ 80%）
+        run: uv run --frozen pytest -q --cov=app --cov-report=term-missing --cov-fail-under=80
+
+      - name: 闸门 4 迁移往返
+        run: docker compose -f ../docker-compose.ci.yml run --rm migrate-check
+
+  frontend:
+    name: 前端闸门 1-3
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 闸门 1 lint
+        run: |
+          pnpm lint
+          pnpm format:check
+
+      - name: 闸门 2 typecheck
+        run: pnpm typecheck
+
+      - name: 闸门 3 单测
+        run: pnpm test:unit
+
+  consistency:
+    name: 规范一致性检查（docs/12 §9）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 规范一致性检查（docs/12 §9）
+        run: |
+          set -euo pipefail
+
+          echo "== 1. 每个 ADR 文件都必须在 docs/01 §6 索引里登记 =="
+          missing=0
+          for f in docs/adr/[0-9][0-9][0-9][0-9]-*.md; do
+            n="$(basename "$f" | cut -c1-4)"
+            if ! grep -q "\[$n\]" docs/01-技术选型与架构.md; then
+              echo "  MISSING: $n ($f)"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "FAIL: docs/01 §6 ADR 索引与 docs/adr/ 不一致"
+            exit 1
+          fi
+          echo "  OK"
+
+          echo "== 2. 变更记录必须留痕（docs/12 §2）=="
+          grep -q '^| 00' docs/12-文档与变更归档规范.md
+          echo "  OK"
+
+          echo "== 3. .env 不得入库（docs/11 §2）=="
+          if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+            echo "FAIL: .env 被跟踪"
+            exit 1
+          fi
+          echo "  OK"
+
+          echo "== 4. 生产 compose 不得含 build:（docs/11 §3）=="
+          if grep -vE '^\s*#' docker-compose.yml | sed 's/#.*//' | grep -q 'build:'; then
+            echo "FAIL: 生产 compose 含 build:"
+            exit 1
+          fi
+          echo "  OK"
+
+          echo "consistency ok"
+
+  release:
+    name: 构建镜像（仅 tag）
+    needs: [backend, frontend]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+        - uses: actions/checkout@v4
+
+        - uses: docker/setup-buildx-action@v3
+          with:
+            # 生产 VPS 为 x86，镜像必须 amd64（docs/11 §4）
+            platforms: linux/amd64
+
+        - name: 登录镜像仓库
+          uses: docker/login-action@v3
+          with:
+            registry: ghcr.io
+            username: ${{ github.actor }}
+            password: ${{ secrets.GITHUB_TOKEN }}
+
+        - name: 构建并推送 api 镜像
+          uses: docker/build-push-action@v6
+          with:
+            context: .
+            file: docker/backend/Dockerfile
+            target: runtime
+            platforms: linux/amd64
+            push: true
+            tags: |
+              ${{ env.REGISTRY }}/garment-erp-api:${{ github.ref_name }}
+              ${{ env.REGISTRY }}/garment-erp-api:latest
+            cache-from: type=gha
+            cache-to: type=gha,mode=max
+
+        - name: 构建并推送 web 镜像
+          uses: docker/build-push-action@v6
+          with:
+            context: .
+            file: docker/frontend/Dockerfile
+            platforms: linux/amd64
+            push: true
+            tags: |
+              ${{ env.REGISTRY }}/garment-erp-web:${{ github.ref_name }}
+              ${{ env.REGISTRY }}/garment-erp-web:latest
+            cache-from: type=gha
+            cache-to: type=gha,mode=max
