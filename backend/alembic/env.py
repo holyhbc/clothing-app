@@ -75,6 +75,7 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
         compare_server_default=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -87,9 +88,30 @@ def do_run_migrations(connection: Connection) -> None:
         target_metadata=target_metadata,
         compare_type=True,
         compare_server_default=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
+
+
+def include_object(object_, name, type_, reflected, compare_to) -> bool:
+    """告诉 autogenerate 哪些对象不参与比对。
+
+    目前只跳过一类：**表达式 GIN 索引**（``*_trgm``）。
+
+    原因是它们无法被可靠复现：PostgreSQL 会把表达式规范化（补 ``::text``
+    转换、调整括号），autogenerate 拿模型里的 ``sa.text("(a || ' ' || b)")`` 与
+    数据库里读回来的规范化文本逐字比，必然判成"删掉再建一个"，于是 ``alembic
+    check`` 永远不为空、每次 autogenerate 都产出一堆无意义的 drop/create。
+
+    这些索引的正确性由**另一条守卫**保证：``tests/modules/test_base_dict_service.py``
+    断言 ``idx_*_trgm`` 存在，且在 ``SET enable_seqscan = off`` 下
+    ``EXPLAIN`` 能命中 ``Bitmap Index Scan``（docs/04 §5.1）—— 那条才是
+    "索引表达式与查询谓词一致"的真正判据。
+
+    ⚠️ 如果新增别的表达式索引，也要在这里加一条，并配套写 EXPLAIN 断言。
+    """
+    return not (type_ == "index" and name is not None and name.endswith("_trgm"))
 
 
 async def run_async_migrations() -> None:

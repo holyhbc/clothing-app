@@ -115,9 +115,11 @@ async def test_allowed_workshops_come_from_role_grants(db_session):
     user = await UserFactory.create(db_session, employee_no="W001")
     role = await RoleFactory.create(db_session, code="r2", name="R2")
     await UserRoleFactory.create(db_session, user_id=user.id, role_id=role.id)
-    w1, w2 = uuid4(), uuid4()
-    from tests.factories.user import RoleWorkshopFactory
+    # ⚠️ 必须建真实车间：T-BASE-001 起 role_workshops.workshop_id 上有真实外键
+    from tests.factories.user import RoleWorkshopFactory, WorkshopFactory
 
+    w1 = (await WorkshopFactory.create(db_session)).id
+    w2 = (await WorkshopFactory.create(db_session)).id
     await RoleWorkshopFactory.create(db_session, role_id=role.id, workshop_id=w1)
     await RoleWorkshopFactory.create(db_session, role_id=role.id, workshop_id=w2)
     await db_session.flush()

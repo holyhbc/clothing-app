@@ -9,6 +9,7 @@
 注释掉也能通过，而那正是它要防的漏洞。
 """
 
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -27,7 +28,7 @@ from app.core.scope import (
     in_scope,
 )
 from app.modules.auth.models import User
-from tests.factories.user import UserFactory
+from tests.factories.user import OPERATOR_ID, UserFactory, WorkshopFactory
 
 #: 用于构造"未登记资源"用例的固定 owner
 _OWNER = uuid4()
@@ -106,10 +107,11 @@ async def test_self_scope_with_unsupported_column_returns_nothing(db_session):
 
 
 async def test_workshop_scope_filters_by_allowed_workshops(db_session):
-    w1, w2 = uuid4(), uuid4()
-    user_a = await UserFactory.create(db_session, employee_no="W001", workshop_id=w1)
-    user_b = await UserFactory.create(db_session, employee_no="W002", workshop_id=w2)
-    del user_a, user_b
+    # ⚠️ 必须建真实车间：T-BASE-001 起 users.workshop_id 上有真实外键
+    w1 = (await WorkshopFactory.create(db_session)).id
+    w2 = (await WorkshopFactory.create(db_session)).id
+    await UserFactory.create(db_session, employee_no="W001", workshop_id=w1)
+    await UserFactory.create(db_session, employee_no="W002", workshop_id=w2)
     await db_session.flush()
 
     ctx = _ctx(data_scope=DataScope.WORKSHOP, allowed=frozenset({w1}))
@@ -129,7 +131,7 @@ async def test_workshop_scope_with_empty_allowlist_returns_nothing(db_session):
 
 async def test_workshop_scope_also_includes_own_workshop(db_session):
     """角色没授权任何车间，但用户自己属于某车间 → 至少能看到自己。"""
-    w1 = uuid4()
+    w1 = (await WorkshopFactory.create(db_session)).id
     await _all_users(db_session)
     ctx = _ctx(data_scope=DataScope.WORKSHOP, workshop_id=w1, allowed=frozenset())
     stmt = apply_data_scope(select(User), User, ctx)
@@ -148,7 +150,7 @@ async def test_workshop_scope_with_missing_column_returns_nothing(db_session):
 
 
 async def test_group_scope_requires_both_workshop_and_group(db_session):
-    w1 = uuid4()
+    w1 = (await WorkshopFactory.create(db_session)).id
     await _all_users(db_session)
     ctx = _ctx(data_scope=DataScope.GROUP, workshop_id=w1, group_no="A")
     stmt = apply_data_scope(select(User), User, ctx)
@@ -184,15 +186,19 @@ async def test_soft_delete_filter_is_appended_automatically(db_session):
 
 
 async def test_in_scope_rejects_row_outside_workshop(db_session):
-    w1 = uuid4()
+    w1 = (await WorkshopFactory.create(db_session)).id
     owner = await UserFactory.create(db_session, employee_no="O001", workshop_id=w1)
-    await UserFactory.create(db_session, employee_no="O002", workshop_id=uuid4())
+    await UserFactory.create(
+        db_session, employee_no="O002", workshop_id=(await WorkshopFactory.create(db_session)).id
+    )
     await db_session.flush()
 
     ctx = _ctx(data_scope=DataScope.WORKSHOP, allowed=frozenset({w1}))
     assert in_scope(owner, ctx) is True
 
-    other = await UserFactory.create(db_session, employee_no="O003", workshop_id=uuid4())
+    other = await UserFactory.create(
+        db_session, employee_no="O003", workshop_id=(await WorkshopFactory.create(db_session)).id
+    )
     await db_session.flush()
     assert in_scope(other, ctx) is False
 
@@ -204,7 +210,9 @@ async def test_in_scope_factory_scope_always_true(db_session):
 
 
 async def test_assert_in_scope_raises_12002(db_session):
-    user = await UserFactory.create(db_session, employee_no="X001", workshop_id=uuid4())
+    user = await UserFactory.create(
+        db_session, employee_no="X001", workshop_id=(await WorkshopFactory.create(db_session)).id
+    )
     await db_session.flush()
     ctx = _ctx(data_scope=DataScope.WORKSHOP, allowed=frozenset())
     with pytest.raises(BusinessError) as excinfo:
@@ -301,3 +309,62 @@ def test_scope_specs_declares_workshop_resources():
         and name not in SCOPE_EXEMPT_TABLES
     ]
     assert missing == [], f"这些表有车间列但既未登记数据范围也没写进 SCOPE_EXEMPT_TABLES：{missing}"
+
+
+# ------------------------------------------------ 通用行（车间为空）的可见性
+
+
+async def test_general_operation_is_visible_to_every_workshop(db_session):
+    """通用工序（``workshop_id`` 为空）对每个车间都可见。
+
+    §7.8.1 定义「车间可空 = 通用工序」，而"通用"如果对车间范围的用户不可见，
+    这个语义就等于不存在。
+    """
+    from app.modules.base.models import Operation
+    from tests.factories.user import WorkshopFactory
+
+    w1 = (await WorkshopFactory.create(db_session)).id
+    w2 = (await WorkshopFactory.create(db_session)).id
+    mine = await WorkshopFactory.create(db_session)
+    general = Operation(
+        operation_no="99",
+        name="查勘",
+        workshop_id=None,
+        default_bundle_qty=Decimal("1"),
+        created_by=OPERATOR_ID,
+        updated_by=OPERATOR_ID,
+    )
+    other = Operation(
+        operation_no="98",
+        name="别的车间工序",
+        workshop_id=w2,
+        default_bundle_qty=Decimal("1"),
+        created_by=OPERATOR_ID,
+        updated_by=OPERATOR_ID,
+    )
+    del w1
+    db_session.add_all([general, other, mine])
+    await db_session.flush()
+
+    ctx = _ctx(data_scope=DataScope.WORKSHOP, workshop_id=mine.id, allowed=frozenset({mine.id}))
+    stmt = apply_data_scope(select(Operation), Operation, ctx)
+    rows = (await db_session.execute(stmt)).scalars().all()
+    assert [row.operation_no for row in rows] == ["99"], "通用工序应可见、别的车间的不可见"
+    assert in_scope(general, ctx) is True
+    assert in_scope(other, ctx) is False
+
+
+async def test_non_workshop_staff_is_not_visible_to_workshop_scope(db_session):
+    """车间为空对 ``users`` 表示「非车间人员」，**不能**当成通用行放行。
+
+    这是 ``include_null_workshop`` 必须逐资源声明的原因：若一刀切，
+    车间主管就能看到全厂财务与仓管人员。
+    """
+    finance = await UserFactory.create(db_session, employee_no="FIN01", workshop_id=None)
+    await db_session.flush()
+    mine = await WorkshopFactory.create(db_session)
+    ctx = _ctx(data_scope=DataScope.WORKSHOP, workshop_id=mine.id, allowed=frozenset({mine.id}))
+    stmt = apply_data_scope(select(User), User, ctx)
+    rows = (await db_session.execute(stmt)).scalars().all()
+    assert all(row.employee_no != "FIN01" for row in rows)
+    assert in_scope(finance, ctx) is False

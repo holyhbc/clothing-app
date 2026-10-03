@@ -14,8 +14,9 @@ from dataclasses import dataclass
 from typing import Any, Final
 from uuid import UUID
 
-from sqlalchemy import Select, false
+from sqlalchemy import Select, false, or_
 from sqlalchemy.orm import InstrumentedAttribute
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.common.enums import DataScope
 from app.core.permissions import AuthContext
@@ -34,12 +35,23 @@ class ScopeSpec:
     :param workshop_column: ``WORKSHOP`` / ``GROUP`` 用哪一列
     :param group_column: ``GROUP`` 用的组别列
     :param soft_delete: 是否附加 ``deleted_at IS NULL``（INV-7）
+    :param include_null_workshop: ``WORKSHOP`` 范围下，是否把「车间为空」的行也算可见。
+
+        ⚠️ **必须按资源显式声明，不能一刀切**。车间为空在不同表里含义完全不同：
+
+        - ``operations``：§7.8.1 定义「可空 = **通用**工序」，通用就该全厂可见
+        - ``users``：车间为空表示「**非车间人员**」（财务、仓管），
+          让车间主管看到全厂财务人员显然不对
+
+        所以这是一个 opt-in 标志。默认 ``False``（车间为空即不可见），
+        只有语义上确实是"通用"的资源才打开。
     """
 
     user_column: str | None = None
     workshop_column: str | None = None
     group_column: str | None = None
     soft_delete: bool = True
+    include_null_workshop: bool = False
 
 
 def visible_workshops(ctx: AuthContext) -> frozenset[UUID]:
@@ -102,10 +114,15 @@ SCOPE_SPECS: dict[str, ScopeSpec] = {
     "stock_ledgers": ScopeSpec(workshop_column=None, group_column=None, user_column="created_by"),
     # 组织类：按车间
     "users": ScopeSpec(workshop_column="workshop_id", group_column="group_no", user_column="id"),
+    # 组别天然属于某个车间，车间范围必须过滤。
+    # include_null_workshop 保持 False：workshop_groups.workshop_id 是 NOT NULL，
+    # 根本不存在"空车间"的情况，写明这一点是为了让后来者知道这是有意的
+    "workshop_groups": ScopeSpec(workshop_column="workshop_id"),
     # 主数据类：全厂共享，无车间概念；SELF 落到归属人
     "styles": ScopeSpec(user_column="merchandiser_id"),
     "customers": ScopeSpec(user_column="created_by"),
-    "operations": ScopeSpec(),
+    # 工序的 workshop_id 可空 = 通用（§7.8.1），所以车间范围下通用工序人人可见
+    "operations": ScopeSpec(workshop_column="workshop_id", include_null_workshop=True),
     "colors": ScopeSpec(),
     "sizes": ScopeSpec(),
 }
@@ -131,6 +148,23 @@ def _restrict(
     if column is None or not values:
         return stmt.where(false())
     return stmt.where(column.in_(values))
+
+
+def _workshop_filter(
+    stmt: Select[Any], model: type[Any], spec: ScopeSpec, ctx: AuthContext
+) -> Select[Any]:
+    """``WORKSHOP`` 范围的过滤，额外处理「车间为空 = 通用」的行。"""
+    column = _column(model, spec.workshop_column)
+    if column is None:
+        return stmt.where(false())
+    allowed = visible_workshops(ctx)
+    if not allowed:
+        return stmt.where(false())
+    condition: ColumnElement[bool] = column.in_(allowed)
+    if spec.include_null_workshop:
+        # 通用行对所有人可见：车间范围的过滤不能把"全厂通用"的东西藏起来
+        condition = or_(condition, column.is_(None))
+    return stmt.where(condition)
 
 
 def _one(value: object | None) -> tuple[object, ...]:
@@ -176,9 +210,7 @@ def apply_data_scope(
             stmt = _restrict(stmt, _column(model, resolved.workshop_column), *_one(ctx.workshop_id))
             stmt = _restrict(stmt, _column(model, resolved.group_column), *_one(ctx.group_no))
         elif scope == DataScope.WORKSHOP:
-            stmt = _restrict(
-                stmt, _column(model, resolved.workshop_column), *visible_workshops(ctx)
-            )
+            stmt = _workshop_filter(stmt, model, resolved, ctx)
 
     # 软删过滤在此统一附加（INV-7），业务代码不必重复写
     if resolved is None or resolved.soft_delete:
@@ -215,9 +247,14 @@ def in_scope(obj: object, ctx: AuthContext, *, spec: ScopeSpec | None = None) ->
         )
 
     # WORKSHOP
+    column_value = (
+        getattr(obj, resolved.workshop_column, None) if resolved.workshop_column else None
+    )
+    if resolved.include_null_workshop and column_value is None:
+        return True  # 通用行（车间为空）人人可见
     if resolved.workshop_column is None:
         return False
-    return getattr(obj, resolved.workshop_column, None) in visible_workshops(ctx)
+    return column_value in visible_workshops(ctx)
 
 
 def assert_in_scope(obj: object, ctx: AuthContext, *, spec: ScopeSpec | None = None) -> None:

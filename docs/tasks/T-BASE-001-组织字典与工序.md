@@ -37,7 +37,7 @@
   - `size_groups` 真删时**级联删 `size_group_items`** 并回传条数
   - `operations.operation_no` **不可改**；被 `style_operations`/`operation_rates`/`piecework_logs` 引用 → `20003`
   - 所有变更写 `document_logs`（`doc_type` 用 `Color`/`Size`/`SizeGroup`/`Operation`/`Workshop`/`ProductCategory`…）
-- [ ] `app/cli/seed_baseline.py`（改）：字典 seed —— **16 色基础色卡 + 2 个码表 + 6 个尺码 + 8 条码表明细 + 6 个商品分类**（modules/01 §3.6.4 定稿清单）；**墓碑跳过**（ADR-0025 §决策 3）
+- [ ] `app/cli/seed_baseline.py`（改）：字典 seed —— **16 色基础色卡 + 2 个码表 + 8 个尺码 + 8 条码表明细 + 6 个商品分类**（尺码 8 行而非 6 行，见 **ADR-0027**）（modules/01 §3.6.4 定稿清单）；**墓碑跳过**（ADR-0025 §决策 3）
 - [ ] `app/cli/restore_builtin.py`（改）：显式恢复内置库并写 `action='RESTORE'` 解除墓碑
 - [ ] `/api/v1/{resource}/exports`：9 个资源的 `.xlsx` 导出（`openpyxl` 流式 + 表头冻结 + 自动筛选），**与列表共用同一 service 方法**（07 §3.2 铁律 3）；权限 `base:export` **且** `system:export:manage`
 - [ ] 测试：`test_base_dict_service.py`、`test_base_dict_router.py`
@@ -81,7 +81,7 @@
 - [ ] `tests/integration/test_no_dangling_refs.py` 全库巡检 **0 行**
 - [ ] CC-2（20 并发建同色码 → 恰好 1 行）、CC-3（删 vs 引用真并发 → 无悬空引用）通过
 - [ ] 候选搜索 `EXPLAIN` 命中 `idx_colors_trgm` / `idx_sizes_trgm`（写测试断言 SQL 形态）
-- [ ] seed 连跑 3 次行数一致；内置清单与 modules/01 §3.6.4 逐条一致（**16 色 / 2 码表 / 6 尺码 / 8 明细 / 6 分类**）
+- [ ] seed 连跑 3 次行数一致；内置清单与 modules/01 §3.6.4 逐条一致（**16 色 / 2 码表 / 8 尺码 / 8 明细 / 6 分类**）
 - [ ] `app/modules/base/service.py` 覆盖 ≥ 90%；新增行 100%
 - [ ] 闸门 1/2/3/5 全绿
 

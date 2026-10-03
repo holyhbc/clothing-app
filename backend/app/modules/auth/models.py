@@ -60,14 +60,13 @@ class User(BaseModel):
     password_hash: Mapped[str | None] = mapped_column(
         Text(), nullable=True, comment="argon2id 哈希；员工端短信登录可空"
     )
-    # ⚠️ 这里**故意不声明** ForeignKey("workshops.id")，与迁移 0002 保持一致
-    #    （workshops 表在 T-BASE-001 才建，本迁移无法加 FK）。
-    #    声明了反而会坏：SQLAlchemy 解析任意涉及 users 的查询都要先解析这张
-    #    目标表，表不存在直接抛 NoReferencedTableError —— 登录功能会被打死。
-    #    且模型有 FK 而迁移没有，autogenerate 会反复产生同一份 diff。
-    #    T-BASE-001 必须补：ALTER TABLE users ADD CONSTRAINT fk_users_workshops
+    # T-BASE-001 起**恢复**声明 ForeignKey：workshops 表已由迁移 0004 建出，
+    # 迁移 0004 也已用 ALTER TABLE 补上 fk_users_workshops，两边一致。
+    # （T-AUTH-002 曾刻意去掉它 —— 那时 workshops 还不存在，声明会让任何涉及
+    #   users 的 ORM 查询抛 NoReferencedTableError，登录功能直接不可用。）
     workshop_id: Mapped[UUID | None] = mapped_column(
         PgUUID(as_uuid=True),
+        ForeignKey("workshops.id", name="fk_users_workshops"),
         nullable=True,
         comment="所属车间；非车间人员为空",
     )
@@ -237,9 +236,13 @@ class RoleWorkshop(IdMixin, Base):
         ForeignKey("roles.id", name="fk_role_workshops_roles"),
         nullable=False,
     )
-    # ⚠️ 同 users.workshop_id：不声明 FK（workshops 表 T-BASE-001 才建），
-    #    原因与 T-BASE-001 待补项见该处注释
-    workshop_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
+    # ⚠️ 这条 FK 是数据范围过滤的输入：没有它就可能存进不存在的车间，
+    #    WORKSHOP 范围过滤会静默查不到任何数据。
+    workshop_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("workshops.id", name="fk_role_workshops_workshops"),
+        nullable=False,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), nullable=False
     )

@@ -6,7 +6,7 @@
 """
 
 from typing import Any, ClassVar
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +30,7 @@ __all__ = [
     "RoleWorkshopFactory",
     "UserFactory",
     "UserRoleFactory",
+    "WorkshopFactory",
     "grant_permissions",
     "grant_role",
     "make_login_payload",
@@ -166,3 +167,33 @@ def make_login_payload(
         "channel": AuthChannel.PC.value,
     }
     return {**payload, **extra}
+
+
+class WorkshopFactory:
+    """``workshops`` 工厂。
+
+    T-BASE-001 起 ``users.workshop_id`` 与 ``role_workshops.workshop_id`` 上有**真实
+    外键**，所以测试里不能随手 ``uuid4()`` 造车间 ID —— 那样插入会直接被
+    ``fk_users_workshops`` 拒绝。必须先建车间再用它的 id。
+    """
+
+    defaults: ClassVar[dict[str, Any]] = {
+        "code": "CUT",
+        "name": "裁剪车间",
+        "is_active": True,
+        "created_by": OPERATOR_ID,
+        "updated_by": OPERATOR_ID,
+    }
+
+    @classmethod
+    async def create(cls, session: AsyncSession, **overrides: Any) -> Any:
+        from app.modules.base.models import Workshop
+
+        payload: dict[str, Any] = {**cls.defaults, **overrides}
+        if "code" not in overrides:
+            # 一个用例里常要建多个车间，默认 code 必须唯一，否则撞 uq_workshops_code
+            payload["code"] = f"W{uuid4().hex[:6].upper()}"
+        workshop = Workshop(**payload)
+        session.add(workshop)
+        await session.flush()
+        return workshop
