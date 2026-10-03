@@ -95,7 +95,7 @@
 | `docs/01` / `docs/06` / `AGENTS.md` / `docs/adr/0028` | +160 | Ant Design Vue 版本修订 |
 
 **提交记录**：
-- 见 `git log --grep T-WEB-002`
+- `0b301a5` feat(web): admin 骨架（路由/守卫/store/v-can），并让闸门 5 真的验证前端镜像
 
 ## 顺带修掉的 5 个真缺陷（都不在本卡原定范围内，但它们让闸门形同虚设）
 
