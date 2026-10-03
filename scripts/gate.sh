@@ -81,6 +81,13 @@ if [[ "$MODE" == "--host" ]]; then
   # 漂移守卫：模型与数据库不一致时，--autogenerate 会生成危险操作
   # （历史上真的生成过 drop_table('document_logs')），必须为 No new operations
   uv run alembic check
+  # ⚠️ 闸门 4 的 downgrade → upgrade 会把 0004 的表**重建**，字典内置库随之消失
+  #    —— 字典数据来自 seed 命令而不在迁移里（部署顺序是「迁移 → seed」）。
+  #    不重跑 seed 的话，本地库就停在"有表没数据"的状态，后续手工验证会误判成
+  #    "seed 坏了"。实测踩过：闸门跑完后 colors 表 0 行。
+  echo "=== 重建内置库（闸门 4 清掉了表数据）==="
+  uv run python -m app.cli.seed_baseline
+  uv run python -m app.cli.seed_baseline --check
 
   echo "=== 宿主机 4 道闸门通过（闸门 5 只在容器内验证）==="
   exit 0

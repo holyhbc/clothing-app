@@ -230,6 +230,26 @@ class DictService:
                 },
             )
 
+        try:
+            return await self._delete_physical(obj, code)
+        except IntegrityError as exc:
+            # ⚠️ 真实外键（``ON DELETE RESTRICT``）在这里兜底。
+            #    走到这个分支说明：条件 DELETE 的 NOT EXISTS 没看到某条引用 ——
+            #    典型情形是引用方在我们查之后、删之前**提交**了（CC-3 真并发）。
+            #
+            #    ⚠️ 捕获必须包住**整个事务**而不是只包 execute：并发下 FK 违规是在
+            #    引用方提交、锁释放的那一刻才抛给我们的，落在 savepoint 释放 /
+            #    commit 上。开始时只 try 了 ``session.execute``，结果异常直接穿透
+            #    到用户面前变成 500。
+            logger.info("删除被外键拦截，翻译为 20003", extra={"resource": self.resource.key})
+            raise BusinessError(
+                ErrorCode.BASE_DATA_REFERENCED,
+                f"{self.resource.doc_type} {code} 刚被引用，不能删除；请改为停用",
+                details={"code": code},
+            ) from exc
+
+    async def _delete_physical(self, obj: Row, code: str) -> int:
+        """物理删除的真正实现（**必须在事务内**，异常由 :meth:`delete` 翻译）。"""
         async with unit_of_work(self.session):
             cascaded = await self._delete_cascade_members(obj)
             condition = ref_count_expression(self.resource)
@@ -239,7 +259,18 @@ class DictService:
                 stmt = stmt.where(~condition)
             result = await self.session.execute(stmt.execution_options(synchronize_session=False))
             if cast("CursorResult[Any]", result).rowcount == 0:
-                # 走到这里说明"查引用"与"删"之间有人插入了引用（CC-3 的并发场景）
+                # rowcount=0 有**两种**原因，必须区分清楚，否则文案会误导人：
+                #   a) 查引用之后、删除之前有人插入了引用 → 20003「被引用」
+                #   b) 另一个请求已经把行删了 → 20001「不存在」
+                # 早先不区分，CC-3 的并发双删用例里第二个请求收到
+                # "刚被引用，请改为停用"，而它要去的行已经不存在了 ——
+                # 用户会去停用一个查不到的记录。
+                if await self.repo.find_by_code(code) is None:
+                    raise BusinessError(
+                        ErrorCode.BASE_DATA_NOT_FOUND,
+                        f"{self.resource.doc_type} {code} 已被他人删除，请刷新列表",
+                        details={"code": code},
+                    )
                 references = await self.repo.references_of(obj)
                 raise BusinessError(
                     ErrorCode.BASE_DATA_REFERENCED,

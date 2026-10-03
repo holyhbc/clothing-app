@@ -14,7 +14,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import ColumnElement, literal, or_, select
 
 from app.common.enums import DataScope
 from app.modules.base.models import (
@@ -249,8 +249,13 @@ def ref_count_expression(resource: DictResource) -> ColumnElement[bool] | None:
     """
     if not resource.ref_checkers:
         return None
+    # ⚠️ 用 ``select(literal(1))`` 而不是 ``select(func.one())`` ——
+    #    PG 没有 ``one()`` 这个函数，SQLAlchemy 也不会把它翻译成别的，
+    #    结果是执行时才报 "function one() does not exist"。
+    #    这个分支之前一直没被执行到（colors 无引用检查器、sizes 在检查阶段就抛错），
+    #    是 CC-3 的"先删后引用"用例第一次真正跑到它。
     conditions = [
-        select(func.one())
+        select(literal(1))
         .select_from(checker.model)
         .where(getattr(checker.model, checker.column) == resource.model.id)
         .correlate(resource.model)

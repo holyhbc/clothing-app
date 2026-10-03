@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | base |
 | 负责人 | AI |
-| 状态 | `todo` |
+| 状态 | **`done`**（2026-10-03；5 道闸门宿主机与容器内全绿，369 测试 / 覆盖率 92.2%，`alembic check` 无漂移） |
 | 优先级 | P0 |
 | 依赖 | T-INFRA-004, T-AUTH-002 |
 | 被依赖 | T-BASE-002, T-WEB-005 |
@@ -107,20 +107,77 @@
 
 ## 实际改动（完成后回填）
 
-| 文件 | 行数 | 说明 |
-| --- | --- | --- |
-| | +0 / -0 | |
+| 文件 | 说明 |
+| --- | --- |
+| `alembic/versions/0004_base_org_dict.py` | 10 表 + `CREATE TYPE size_class` + trgm GIN + 8 个软删索引 + **补 T-AUTH 遗留的两条 FK** + ADR-0025 的 4 表 `GRANT DELETE` 白名单 |
+| `app/modules/base/models.py` | 10 个模型，与迁移逐字对齐（含 9 处表注释） |
+| `app/modules/base/resources.py` | **声明式资源注册表**：九个资源的差异集中声明一次 |
+| `app/modules/base/schemas.py` | 写入侧逐资源 `Create`/`Patch`（`extra="forbid"`）+ 通用 `DictOut` |
+| `app/modules/base/repository.py` | 只读查询（docs/03 §1.3 不判断业务）；候选谓词与 trgm 索引表达式**逐字相同** |
+| `app/modules/base/service.py` | CRUD + 真删两分支 + 停用必填 reason + 审计日志 |
+| `app/modules/base/router.py` | 按注册表生成 **45 条具体路径**（9 资源 × 5） |
+| `app/core/excel.py` | openpyxl `write_only` 流式导出（表头冻结 + 自动筛选） |
+| `app/core/db.py` | 新增 `unit_of_work`（全项目唯一事务入口） |
+| `app/cli/seed_dicts.py` | 字典内置库（16 色 / 8 尺码 / 2 码表 / 8 明细 / 6 分类）+ **墓碑判定** |
+| `tests/integration/test_no_dangling_refs.py` | CC-2 / CC-3 / CC-6 真并发 + 悬空引用巡检 |
+| `scripts/reset-test-db.sh`、`scripts/gate.sh` | 重置测试库；闸门脚本消除静默失败并共用镜像 |
 
-**提交记录**：
-- `<hash>` feat(base): 组织、字典与工序主数据（含真删与内置库 seed） …
+## 关键设计决策
+
+| # | 决策 | 理由 |
+| --- | --- | --- |
+| 1 | **新增 ADR-0027**：`uq_sizes_code` → `UNIQUE(size_code, size_class)` | 内置两个码表共用 `L`/`XL`，单列唯一存不下。业务方选定，内置尺码 6 → 8 行。04 是 DDL 权威，改它必须留痕 |
+| 2 | 基础资料**数据范围固定 FACTORY**（§4.4） | 颜色/尺码/车间是全厂共享主数据。若跟着用户 `data_scope` 走，SELF 范围的用户打开颜色下拉会是**空的** |
+| 3 | 45 条**具体路径**而非 `/{resource_key}` 通配 | 通配会遮蔽后续所有顶层资源（`/styles` 会被抢走，FastAPI 靠注册顺序决定谁生效），且 OpenAPI 里前端发现不了 `/api/v1/colors` |
+| 4 | 删除判定写成**一条 SQL 的条件 DELETE** | 消除"先查后删"的竞态（CC-3）。实测真正兜底的是外键，但条件 DELETE 提供可读的 20003 |
+| 5 | 字典 seed 按 `document_logs` 的 DELETE/RESTORE 判**墓碑** | `ON CONFLICT DO NOTHING` 只在唯一键冲突时跳过；行被**物理删除**后没有冲突，不判墓碑就会复活（违反 ADR-0025） |
+| 6 | `unit_of_work` 放 `core/db.py` 而非模块内 | base 模块写 `session.begin()` 时 13 个用例全报 "transaction already begun"——与 T-AUTH-002 同一个坑，说明它必须单点收口 |
+| 7 | 事务助手用 savepoint + `commit()` 而非 `begin()` | autobegin 之后 `begin()` 会抛；savepoint 在既有事务里安全，测试侧只释放 savepoint |
+| 8 | `size_class` 用真 PG enum 而非 `String(16)` | 与迁移里的 enum 类型对不上会导致 `alembic check` 长期报漂移，且枚举值失去数据库层约束 |
+
+## 实测抓到的 9 个真缺陷
+
+| # | 缺陷 | 现象 | 修法 |
+| --- | --- | --- | --- |
+| 1 | **`document_logs` 没有 ORM 模型** | `alembic check` 报 `remove_table` —— 任何人执行 `--autogenerate` 都会拿到 `drop_table('document_logs')`，一次误操作抹掉全厂审计日志 | 补模型 |
+| 2 | **`BaseModel.remark` 类型漂移** | 无显式类型被推断成 VARCHAR，与 04 §2「remark text」冲突 | 显式 `Text()` |
+| 3 | **模型有 FK、迁移没有** | `users.workshop_id` 声明 FK 而 `workshops` 不存在 → **任何**涉及 users 的 ORM 查询抛 `NoReferencedTableError`，登录功能打死 | 先去掉，本卡补迁移 + 模型 |
+| 4 | **`data_scope` 是 String 列** | 重新查出来是 `str`，`.value` 抛 AttributeError | 统一 `DataScope(...)` 包一层 |
+| 5 | **路由注册顺序** | `/exports`、`/options` 排在 `/{code}` 之后 → 被当成"编码叫 exports 的那一行" → 404 | 两者前移 |
+| 6 | **写后重读拿到旧值** | `expire_on_commit=False` + identity map 使 UPDATE 后 `get_one` 返回旧实体。接口 200 但界面没变 | 每次写后 `refresh` |
+| 7 | **字典真删后 seed 复活** | `ON CONFLICT DO NOTHING` 只在唯一键冲突时跳过 | 按 `document_logs` 判墓碑 |
+| 8 | **restore 顺序反了** | 先 seed 后清墓碑 → 本次 seed 看到的还是墓碑 → 什么都没恢复却留下一条 RESTORE，"记录说恢复了、数据没回来" | 先清墓碑再 seed |
+| 9 | **`ref_count_expression` 用了 PG 没有的 `one()`** | 一直没被执行到（colors 无引用检查器、sizes 在检查阶段就抛错），CC-3 的"先删后引用"用例第一次真正跑到它 | `select(literal(1))` |
+
+另修两个**并发下的错误码错误**：
+- 并发双删时第二个请求返回 `20003`「刚被引用」，实际是「行已被别人删掉」→ 改为先判存在性，给 `20001`
+- FK `ON DELETE RESTRICT` 在并发下于 savepoint 释放时抛 `IntegrityError`，最初只 try 了 `execute`，异常穿透成 **500** → 捕获范围改为整个事务
+
+## 测试有效性（反证）
+
+本卡做了两轮**反向验证**，把"测试通过"和"测试真的在守"分开：
+
+| 验证 | 做法 | 结果 |
+| --- | --- | --- |
+| `data_scope` 守卫 | 把 `DataScope(x).value` 回退成 `x.value` | 16 个用例转红 ✅ |
+| **CC-3 条件 DELETE** | 去掉 `NOT EXISTS` 条件 | **仍然通过** ❌ → 说明竞态没被制造出来 |
+| **FK 异常翻译** | 把 `except IntegrityError` 改成别的 | 用例转红 ✅ |
+| 外键删除规则 | 声明式断言 `confdeltype` | `sizes→RESTRICT`、`size_groups→CASCADE` ✅ |
+
+**CC-3 那次反证推翻了原设计**：真正保证"无悬空引用"的是**真实外键**，条件 DELETE 只是提前给出可读报错。已把结论写成声明式测试（断言外键的删除规则），而不是去执行一次注定失败的 DELETE（FK 违例会让事务 aborted，ORM 后续查询变成 `MissingGreenlet`，又脆又难读）。
+
+CC-3 也重写成**三段**：引用先落地→删除被拒 20003；删除先落地→后续引用被 FK 拒；真并发（引用方先握住 `FOR KEY SHARE` 行锁，删除方确实被挡住，断言两者不可能都成功）。
 
 ## 遗留问题
 
 | # | 问题 | 登记到 |
 | --- | --- | --- |
-| W5 | ADR-0025 落地需回写 04 §6.1/§6.2.1/§7.4 | 归档阶段 |
+| — | `colors` 的引用检查器仍为空，引用方（`styles` / `style_colors` / `materials`）T-BASE-002 才建。届时必须**同时**补 `RefChecker` **和外键**，否则是裸奔 | T-BASE-002 强制验收项 |
+| — | `operations` 的 `RefChecker`（`style_operations` / `operation_rates` / `piecework_logs`）同理 | P1 各模块 |
+| — | `DictOut` 用一个大模型承载九个资源，读侧字段是"全 nullable"。写入侧仍逐资源精确 | 已知取舍，P2 视前端需要再拆 |
+| L-028 | docs/04 §5.1 的 EXPLAIN 验收口径照字面无法满足，已按实测改写 | **已闭环** |
+| W5 | ADR-0025 / ADR-0027 落地需回写 04 §6.1/§6.2.1/§7.4 | 归档阶段 |
 | W3 | 基础资料主数据 DDL 需回写 04 §7 | 归档阶段 |
+| — | `product_categories` 列名是 `sort`（照 04 §7.11 字面），与其他表 `sort_order` 不一致 | docs/12 待修文档 |
 
-## 自检清单
-
-对照 `AGENTS.md` §9 逐条勾选后才可置 `done`。
+**提交记录**：见 `git log`（分 3 次提交）
