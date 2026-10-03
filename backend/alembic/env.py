@@ -1,0 +1,122 @@
+"""Alembic 迁移环境（异步，docs/04-数据库规范.md §6.2）。
+
+三条硬规则：
+    1. 连接串**只从环境变量取**（优先 ``DATABASE_URL_MIGRATION`` 迁移账号），
+       绝不写进 alembic.ini 或代码（docs/11 §2）
+    2. ``target_metadata`` 必须能反映模型 —— 靠 import ``app.common.models``
+       触发所有模型注册，否则 autogenerate 会漏表
+    3. 迁移文件里**不写业务逻辑**，只写 DDL
+
+⚠️ 已合并到 main 的迁移文件禁止修改，修正只能写新迁移（docs/04 §6.2）。
+"""
+
+import asyncio
+from logging.config import fileConfig
+
+from sqlalchemy import Connection, pool
+from sqlalchemy.ext.asyncio import async_engine_from_config
+
+from alembic import context
+from app.common.models import Base
+
+config = context.config
+
+
+def _register_models() -> None:
+    """导入全部业务模块的 models，让 autogenerate 能看到所有表。
+
+    用 pkgutil 自动遍历而不是手写 import 列表：新增模块时无需改这里，
+    也不会因为漏写 import 而让 autogenerate 悄悄漏表（docs/04 §6.2）。
+    """
+    import importlib
+    import pkgutil
+
+    import app.modules
+
+    for module_info in pkgutil.iter_modules(app.modules.__path__):
+        try:
+            importlib.import_module(f"app.modules.{module_info.name}.models")
+        except ModuleNotFoundError:
+            # 该模块还没建 models（P0 阶段逐个模块落地），跳过即可
+            continue
+
+
+_register_models()
+
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+target_metadata = Base.metadata
+
+
+def _get_url() -> str:
+    """取迁移连接串：优先迁移账号，其次应用账号，最后报错。"""
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    url = (
+        settings.database_url_migration.get_secret_value()
+        or settings.database_url.get_secret_value()
+    )
+    if not url:
+        raise RuntimeError(
+            "迁移需要 DATABASE_URL_MIGRATION（迁移账号 erp_ddl）"
+            "或至少 DATABASE_URL；请检查 .env（docs/04 §6.2.1）"
+        )
+    return url
+
+
+def run_migrations_offline() -> None:
+    """离线模式：只输出 SQL，不连库（用于生成评审脚本）。"""
+    context.configure(
+        url=_get_url(),
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+        compare_type=True,
+        compare_server_default=True,
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def do_run_migrations(connection: Connection) -> None:
+    """同步上下文里执行迁移。"""
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        compare_server_default=True,
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_async_migrations() -> None:
+    """用 asyncpg 异步连接跑迁移。
+
+    用 async_engine_from_config 而非 create_db_engine()：迁移连接池参数与
+    应用不同（迁移是短连接、串行，不需要常驻池）。
+    """
+    configuration = config.get_section(config.config_ini_section) or {}
+    configuration["sqlalchemy.url"] = _get_url()
+
+    connectable = async_engine_from_config(
+        configuration,
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+    await connectable.dispose()
+
+
+def run_migrations_online() -> None:
+    """在线模式入口。"""
+    asyncio.run(run_async_migrations())
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()

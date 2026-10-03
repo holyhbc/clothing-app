@@ -7,11 +7,9 @@ name: garment-erp-ci
 
 x-ci-env: &ci-env
   APP_ENV: test
-  POSTGRES_USER: erp_app
-  POSTGRES_PASSWORD: ci-only-not-a-secret
-  POSTGRES_DB: garment_erp_test
   # 测试环境全量重建，不复用生产数据（docs/11 §1 铁律 1）
   DATABASE_URL: postgresql+asyncpg://erp_app:ci-only-not-a-secret@postgres:5432/garment_erp_test
+  DATABASE_URL_MIGRATION: postgresql+asyncpg://erp_ddl:ci-only-not-a-secret@postgres:5432/garment_erp_test
   REDIS_URL: redis://redis:6379/0
   JWT_SECRET: ci-only-not-a-secret-ci-only-not-a-secret
   JWT_EXPIRE_MINUTES: "15"
@@ -20,9 +18,23 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: erp_app
+      # 引导超管刻意用 postgres，**不用 erp_app**：否则 erp_app 会是超级用户，
+      # "应用账号无 DELETE 权限"在测试环境失效，权限测试全部失真（docs/04 §6.2.1）
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ci-only-not-a-secret
       POSTGRES_DB: garment_erp_test
+      # 角色初始化脚本读取这三个变量（首次启动时执行一次）
+      ERP_DDL_USER: erp_ddl
+      ERP_DDL_PASSWORD: ci-only-not-a-secret
+      ERP_APP_USER: erp_app
+      ERP_APP_PASSWORD: ci-only-not-a-secret
+      ERP_DB: garment_erp_test
+    volumes:
+      # 角色初始化（docs/04 §6.2.1）。只读挂载，容器内不改脚本
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      # 仅绑定回环，供宿主机直接跑 pytest（开发循环用）；CI 走 compose 网络内的 test 服务
+      - "127.0.0.1:15432:5432"
     command:
       - postgres
       - -c
@@ -32,7 +44,7 @@ services:
       - -c
       - timezone=Asia/Shanghai
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U erp_app -d garment_erp_test"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d garment_erp_test"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -42,6 +54,8 @@ services:
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:16379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -55,7 +69,7 @@ services:
       dockerfile: docker/backend/Dockerfile
       target: dev
     environment: *ci-env
-    command: ["bash", "-lc", "ruff check . && ruff format --check . && mypy app"]
+    command: ["bash", "-c", "ruff check . && ruff format --check . && mypy app"]
     working_dir: /app
 
   # ---- 闸门 3：单测 + 覆盖率（docs/10 §8 阈值 fail_under=80）----
@@ -72,7 +86,7 @@ services:
         condition: service_healthy
     command:
       - bash
-      - -lc
+      - -c
       - "pytest -q --cov=app --cov-report=term-missing --cov-fail-under=80"
     working_dir: /app
 
@@ -88,7 +102,7 @@ services:
         condition: service_healthy
     command:
       - bash
-      - -lc
+      - -c
       - "alembic upgrade head && alembic downgrade -1 && alembic upgrade head && alembic current"
     working_dir: /app
 

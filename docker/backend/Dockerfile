@@ -24,6 +24,11 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONPATH=/app
 RUN uv sync --frozen
 COPY backend/ /app/
+# 测试里有"规范一致性守卫"，会解析 docs/ 下的规范原文（如 docs/05 §4 错误码表、
+# docs/04 §2 公共字段）。把它们放到 /docs，使测试无论在宿主机还是在容器里都能
+# 找到规范（宿主机上路径解析为仓库根/docs，容器里为 /docs）。
+# 只在 dev 阶段复制：生产镜像不携带规范文档。
+COPY docs/ /docs/
 CMD ["bash"]
 
 # ============ runtime：生产最终镜像（docs/11 §4）============

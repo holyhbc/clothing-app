@@ -1,0 +1,34 @@
+# 构建上下文裁剪。没有这个文件，docker 会把整个仓库（含 node_modules 235M、
+# .git、.venv）传给构建守护进程，每次 build 都在传几百 MB 无用数据。
+# 依据 docs/11-部署运维与发布规范.md §4「层缓存：依赖层先于源码层」。
+
+.git
+.gitignore
+.github
+
+# 依赖与构建产物
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/coverage.xml
+**/htmlcov
+**/.vite
+
+# 前端原型（不属于后端镜像构建上下文，但会被一并 COPY 过去）
+prototype
+
+# 本地编排与密钥
+docker-compose.override.yml
+**/.env
+**/.env.*
+!**/.env.example
+
+# 备份与运行时
+backups
+**/*.dump
+**/*.pid
