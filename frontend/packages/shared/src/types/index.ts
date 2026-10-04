@@ -144,6 +144,83 @@ export type DisableOut = ApiModel<'DisableOut'>
 /** 删除结果（字典表真删时 `cascaded` = 级联删掉的码表成员数）。 */
 export type DeleteOut = ApiModel<'DeleteOut'>
 
+/** 建议款号（Q-P0-04：只作参考，用户输入一律优先）。调它会**消耗一个序号**。 */
+export type SuggestedStyleNoOut = ApiModel<'SuggestedStyleNoOut'>
+
+/** 一条审计日志（详情页「变更历史」抽屉的每一行）。⚠️ 不含 `operator_id`。 */
+export type DocumentLogOut = ApiModel<'DocumentLogOut'>
+
+// ---- 款号族（T-WEB-006）----
+// ⚠️ 这一族**不走**注册表（`packages/admin/src/api/base.ts`）：六个端点语义各不相同
+//    （追加 / 全量替换 / 幂等复制 / 取价预演），压进一个形状只会得到一堆 `if`。
+//    类型仍全部来自生成物（docs/06 §7）。
+
+/** 款号建档结果。含 `suggested_style_no`（仅当请求 `suggest_style_no=true`）。 */
+export type StyleOut = ApiModel<'StyleOut'>
+
+/** 新建款号。⚠️ `style_no` **必填且由用户自定义**（Q-P0-04）；`category_id` 必填（B-CAT-02）。 */
+export type StyleCreate = ApiModel<'StyleCreate'>
+
+/** 局部更新款号。⚠️ `style_no` **不可改**（历史单据按字符串引用它）；`version` 必传。 */
+export type StylePatch = ApiModel<'StylePatch'>
+
+/** 新增款号色组。色码重复 → `10001`。 */
+export type StyleColorCreate = ApiModel<'StyleColorCreate'>
+
+export type StyleColorOut = ApiModel<'StyleColorOut'>
+
+/**
+ * 新增款号尺码：**单码或整套带出**（modules/01 §5.3）。
+ *
+ * ⚠️ `size_group_name` 与 `size_code` **互斥** —— 都传或都不传都是请求写错了，
+ *    后端在 Schema 层就拒（`10001`）。
+ */
+export type StyleSizeCreate = ApiModel<'StyleSizeCreate'>
+
+export type StyleSizeOut = ApiModel<'StyleSizeOut'>
+
+/** 款号工序行。`sequence >= 1`、`bundle_qty > 0`。 */
+export type StyleOperationItemIn = ApiModel<'StyleOperationItemIn'>
+
+/** 款号工序**全量替换**体（≤500 行）。⚠️ 不在 `items` 里的旧行会被删掉。 */
+export type StyleOperationsReplaceIn = ApiModel<'StyleOperationsReplaceIn'>
+
+export type StyleOperationsListOut = ApiModel<'StyleOperationsListOut'>
+
+/** 尺码比例行。`ratio` 是**手数**（可小数，如 1.5 手），响应一律字符串。 */
+export type RatioItemIn = ApiModel<'RatioItemIn'>
+
+/**
+ * 按 (款号, 颜色) **全量替换**比例（≤100 行）。
+ *
+ * ⚠️ `version` 取的是**款号聚合行**的版本，不是比例行的 —— 全量替换会把旧行删光，
+ *    子表自己的 version 每次从 1 重来（后端 `RatioReplaceIn` 的注释）。
+ */
+export type RatioReplaceIn = ApiModel<'RatioReplaceIn'>
+
+/**
+ * 模板复制体。⚠️ `copy_mode` 与 `conflict_policy` **都必填、不设系统默认** ——
+ * 默默覆盖别人配好的工价比报错危险得多（ADR-0026 风险 ③ 同类问题）。
+ */
+export type TemplateCopyIn = ApiModel<'TemplateCopyIn'>
+
+export type TemplateCopyOut = ApiModel<'TemplateCopyOut'>
+
+/** 复制成功的**逐项新价**（ADR-0029：复制错误率必须为 0，要逐项核对）。 */
+export type CopiedPriceOut = ApiModel<'CopiedPriceOut'>
+
+/**
+ * 设价 / 调价体。
+ *
+ * ⚠️ `style_no` 与 `product_category_id` **不能同时给**：一个价要么限款号、要么限分类
+ *    （ADR-0026 三档）。都给 → `10001`。
+ * ⚠️ **调价必须填 `reason`**（R20 → `10006`）；首次设价可空。
+ */
+export type OperationRateCreate = ApiModel<'OperationRateCreate'>
+
+/** 设价结果：新档 + 被关闭的旧档（只追加，不改历史价，R11）。 */
+export type OperationRateSetOut = ApiModel<'OperationRateSetOut'>
+
 /** 缺失（被真删且未恢复）的内置项清单 —— 「恢复内置库」按钮的前置提示。 */
 export type BuiltinMissingOut = ApiModel<'BuiltinMissingOut'>
 
