@@ -47,6 +47,19 @@ export const MENU_GROUPS: readonly MenuGroup[] = [
         title: '款号',
         permission: PERM.BASE_READ,
       },
+      // ⚠️ 九项**手写**而不是由注册表生成 —— 与路由表刻意不共用数据（见文件头）。
+      //   这里共用会让「注册表加一个资源」同时多出一个可达页面：菜单多一项只是多一
+      //   个入口（点不进去是 404，用户知道是自己没权限之外的原因），路由多一项就是
+      //   多一个真的能打开的页面。菜单用 `base:read` 即可 —— 写操作按按钮逐个 `v-can`。
+      { key: 'base-workshops', title: '车间', permission: PERM.BASE_READ },
+      { key: 'base-workshop-groups', title: '组别', permission: PERM.BASE_READ },
+      { key: 'base-warehouses', title: '仓库', permission: PERM.BASE_READ },
+      { key: 'base-uom-units', title: '计量单位', permission: PERM.BASE_READ },
+      { key: 'base-product-categories', title: '商品分类', permission: PERM.BASE_READ },
+      { key: 'base-colors', title: '颜色', permission: PERM.BASE_READ },
+      { key: 'base-sizes', title: '尺码', permission: PERM.BASE_READ },
+      { key: 'base-size-groups', title: '尺码模板', permission: PERM.BASE_READ },
+      { key: 'base-operations', title: '工序', permission: PERM.BASE_READ },
     ],
   },
   // T-WEB-004 曾把这一组删掉过（后端没有端点，菜单里点进去是 404）；

@@ -16,7 +16,7 @@
  *    document 上，不 revoke 的话每次导出泄一份 xlsx，导十几次就是几十 MB 挂在
  *    页面上，标签页怎么关都回收不了。
  */
-import { ref } from 'vue'
+import { reactive, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import { formatCompactStamp } from '@garment/shared'
 import type { DownloadResult } from '@garment/shared'
@@ -103,5 +103,10 @@ export function useExport(options: UseExportOptions) {
     }
   }
 
-  return { exporting, run }
+  /**
+   * ⚠️ 用 `reactive` 包一层，模板里才能写 `state.exporting` 而不是
+   *    `state.exporting.value` —— 后者在模板表达式里虽然能读，但可读性差且容易
+   *    在别处顺手写成赋值（解包后拿到的是 boolean，只读）。
+   */
+  return reactive({ exporting, run })
 }

@@ -8,6 +8,9 @@
  *    **不手写 DTO**（docs/06 §7）。
  */
 import type {
+  BuiltinMissingOut,
+  BuiltinRestoreOut,
+  BuiltinRestoreRequest,
   DisableUserRequest,
   EnableUserRequest,
   PasswordResetRequest,
@@ -129,4 +132,27 @@ export function searchRoleOptions(keyword: string): Promise<RoleOptionOut[]> {
  */
 export function listPermissionGroups(): Promise<PermissionGroupOut[]> {
   return http.get<PermissionGroupOut[]>('/system/permissions')
+}
+
+// ------------------------------------------------------------------ 内置库
+
+/**
+ * 缺失的内置项清单（「恢复内置库」按钮的**前置提示**）。
+ *
+ * ⚠️ 按钮的文案必须写「恢复**内置**库」而不是「找回删除的数据」：
+ * 这个接口**只**恢复 seed 清单里的编码，用户自建的字典项删掉就是删掉了
+ * （墓碑机制，ADR-0025 §决策 3）。
+ */
+export function listMissingBuiltin(): Promise<BuiltinMissingOut> {
+  return http.get<BuiltinMissingOut>('/system/dicts/builtin-missing')
+}
+
+/**
+ * 恢复内置库。
+ *
+ * ⚠️ `dicts` 默认开（这是界面上那个按钮的语义）；三类都不勾后端返回 `10002`，
+ *    而不是静默"恢复 0 条"。
+ */
+export function restoreBuiltin(payload: BuiltinRestoreRequest): Promise<BuiltinRestoreOut> {
+  return http.post<BuiltinRestoreOut>('/system/dicts/builtin-restores', payload)
 }

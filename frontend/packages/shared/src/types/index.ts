@@ -144,6 +144,15 @@ export type DisableOut = ApiModel<'DisableOut'>
 /** 删除结果（字典表真删时 `cascaded` = 级联删掉的码表成员数）。 */
 export type DeleteOut = ApiModel<'DeleteOut'>
 
+/** 缺失（被真删且未恢复）的内置项清单 —— 「恢复内置库」按钮的前置提示。 */
+export type BuiltinMissingOut = ApiModel<'BuiltinMissingOut'>
+
+/** 恢复内置库的结果。`restored_*` 是**本次新增**的行数，不是"库里现在有多少"。 */
+export type BuiltinRestoreOut = ApiModel<'BuiltinRestoreOut'>
+
+/** 恢复内置库的请求体：三类都不勾 → 后端 `10002`（明确报错，不静默"恢复 0 条"）。 */
+export type BuiltinRestoreRequest = ApiModel<'BuiltinRestoreRequest'>
+
 /** 新建角色。 */
 export type RoleCreate = ApiModel<'RoleCreate'>
 

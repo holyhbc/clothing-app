@@ -88,7 +88,7 @@ describe('useExport', () => {
     const rows = await run()
     expect(rows).toBe(16)
     expect(exportSpy).toHaveBeenCalledTimes(1)
-    expect(exporting.value).toBe(false)
+    expect(exporting).toBe(false)
     expect(messages).toEqual([])
   })
 

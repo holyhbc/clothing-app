@@ -14,8 +14,9 @@
  */
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
-import { PERM } from '@garment/shared'
+import { BASE_DICT_CONTRACT, PERM } from '@garment/shared'
 import AdminLayout from '@/layouts/AdminLayout.vue'
+import { REGISTRY_KEYS, resourceDecl } from '@/api/base'
 import { useAuthStore } from '@/stores/auth'
 
 declare module 'vue-router' {
@@ -61,13 +62,13 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '工作台', permission: PERM.BASE_READ },
       },
       {
-        // 占位：T-WEB-005 落地基础资料页后替换。留在这里是为了让「无权限跳 403」
-        // 与「有权限进入」两条路径现在就能真跑起来，而不是只在测试里成立。
+        // 占位：T-WEB-006 做款号页时替换。
         path: 'base/styles',
         name: 'base-styles',
         component: () => import('@/views/PlaceholderView.vue'),
         meta: { title: '款号', permission: PERM.BASE_UPDATE },
       },
+      ...baseDictRoutes(),
       {
         path: 'system/users',
         name: 'system-users',
@@ -124,6 +125,89 @@ const routes: RouteRecordRaw[] = [
     meta: { public: true, title: '页面不存在' },
   },
 ]
+
+/**
+ * 基础资料的 27 条路由（9 个资源 × 列表 / 新建 / 编辑），**由注册表生成**。
+ *
+ * ## 为什么生成而不是手写 27 条
+ *
+ * 手写的后果不是"多几行"，而是**注册表加了资源、路由没加** —— 那个资源有 API、
+ * 有注册表声明，就是没有页面，而**没有任何东西会报错**（菜单是另一份数据，见
+ * `layouts/menu.ts` 的注释）。菜单刻意手写（多一项只是多一个入口），路由生成
+ * （少一条就是少一个可达页面，这种漏必须结构上不可能）。
+ *
+ * ## 顺序：每组三条里 `new` 必须排在 `:code` 前面
+ *
+ * 反了的话 `/base/colors/new` 会被 `:code` 吃掉，`code` 变成字符串 `"new"`，
+ * 页面去查一个叫 new 的颜色并显示"加载失败" —— 看着像 bug，而不是路由写错。
+ * （系统管理那两页踩过同一个坑，`views/system/users/Form.vue` 有注释。）
+ *
+ * ## 权限点逐条不同
+ *
+ * 列表一律 `base:read`；新建 / 编辑用**该资源自己的写权限**（分类是
+ * `base:category:manage`、工序是 `base:operation:manage`）。统一写成 `base:update`
+ * 会让有分类权限的人点进编辑页直接 403。
+ *
+ * ## ⚠️ 为什么用 `import.meta.glob` 而不是 `import(\`../views/base/${key}/List.vue\`)`
+ *
+ * 带变量的 `import()` **Vite 静态分析不了**，会原样留在产物里变成运行期请求
+ * `../views/base/colors/List.vue` —— 构建**不报错、不警告**，首页也能正常 200
+ * （闸门 5 的 web 镜像只探测首页），一进列表页就白屏。`import.meta.glob` 是
+ * Vite 的一等公民，它在构建期把 glob 展开成真实的动态 import 映射。
+ *
+ * 顺带得到一条免费守卫：`router/index.test.ts` 断言这个映射的键与注册表一致，
+ * 于是「加了资源忘了建页面」在闸门 3 就红，而不是等用户点菜单发现白屏。
+ */
+const DICT_LIST_PAGES = import.meta.glob('../views/base/*/List.vue')
+const DICT_FORM_PAGES = import.meta.glob('../views/base/*/Form.vue')
+
+/** 从 glob 映射里取列表页组件加载器。缺页时**当场抛**，不返回 undefined 组件。 */
+function listPageLoader(dir: string): () => Promise<unknown> {
+  return () => {
+    const found = DICT_LIST_PAGES[`../views/base/${dir}/List.vue`]
+    if (found === undefined) {
+      throw new Error(`基础资料页面缺失：views/base/${dir}/List.vue`)
+    }
+    return found()
+  }
+}
+
+function formPageLoader(dir: string): () => Promise<unknown> {
+  return () => {
+    const found = DICT_FORM_PAGES[`../views/base/${dir}/Form.vue`]
+    if (found === undefined) {
+      throw new Error(`基础资料页面缺失：views/base/${dir}/Form.vue`)
+    }
+    return found()
+  }
+}
+
+function baseDictRoutes(): RouteRecordRaw[] {
+  return REGISTRY_KEYS.flatMap((key) => {
+    const decl = resourceDecl(key)
+    const contract = BASE_DICT_CONTRACT[key]
+    return [
+      {
+        path: `base/${key}`,
+        name: `base-${key}`,
+        component: listPageLoader(key),
+        meta: { title: decl.title, permission: PERM.BASE_READ },
+      },
+      {
+        path: `base/${key}/new`,
+        name: `base-${key}-new`,
+        component: formPageLoader(key),
+        meta: { title: `新建${decl.itemLabel}`, permission: contract.permissions.create },
+      },
+      {
+        path: `base/${key}/:code`,
+        name: `base-${key}-edit`,
+        component: formPageLoader(key),
+        meta: { title: `编辑${decl.itemLabel}`, permission: contract.permissions.update },
+      },
+    ] satisfies RouteRecordRaw[]
+  })
+}
 
 export function createAppRouter() {
   const router = createRouter({

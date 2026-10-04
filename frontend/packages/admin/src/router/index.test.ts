@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { PERM } from '@garment/shared'
+import { BASE_DICT_CONTRACT, PERM } from '@garment/shared'
 import * as authApi from '@/api/auth'
 import { http, resetHandlers } from '@/api/http'
+import { REGISTRY_KEYS } from '@/api/base'
 import { useAuthStore } from '@/stores/auth'
-import { createAppRouter } from '@/router'
+import { createAppRouter, routes } from '@/router'
 
 /**
  * 路由守卫（TC-W08~TC-W10）。
@@ -183,5 +184,81 @@ describe('路由守卫', () => {
 
     expect(authApi.fetchMe).not.toHaveBeenCalled()
     expect(auth.isLoggedIn).toBe(false)
+  })
+})
+
+/**
+ * 基础资料的 27 条路由（T-WEB-005 落地后新增）。
+ *
+ * ⚠️ 这组用例守的是「注册表加了资源、路由没加」这种漏：路由由 `baseDictRoutes()`
+ *    从注册表生成，生成对了不代表**页面存在** —— `import.meta.glob` 的键对不上时
+ *    `pageLoader` 要到点击那一刻才抛，而那时用户已经白屏了。
+ */
+describe('基础资料路由', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    resetHandlers()
+    vi.restoreAllMocks()
+    http.clearAccessToken()
+    sessionStorage.clear()
+  })
+
+  function flatRoutes() {
+    return routes.flatMap((route) => route.children ?? [route])
+  }
+
+  it('每个注册表资源都有 列表 / 新建 / 编辑 三条路由', () => {
+    const names = flatRoutes().map((route) => route.name)
+    for (const key of REGISTRY_KEYS) {
+      expect(names, `${key} 缺列表路由`).toContain(`base-${key}`)
+      expect(names, `${key} 缺新建路由`).toContain(`base-${key}-new`)
+      expect(names, `${key} 缺编辑路由`).toContain(`base-${key}-edit`)
+    }
+  })
+
+  it('⚠️ 每条路由的组件都能真的加载出来（glob 键对不上时是点击才白屏）', async () => {
+    for (const route of flatRoutes()) {
+      if (typeof route.component !== 'function') continue
+      // ⚠️ 必须断言成 `() => Promise<unknown>`：vue-router 的 `RouteComponent` 联合里
+      //    还有函数式组件，直接 `route.component()` 时 TS 认为它不是加载器（TS2349）
+      const loader = route.component as unknown as () => Promise<unknown>
+      const component = await loader()
+      expect(component, `${String(route.name)} 的组件加载失败`).toBeTruthy()
+    }
+  })
+
+  it('`new` 排在 `:code` 前面（反了的话 /base/colors/new 会被当成编码 "new"）', () => {
+    const list = flatRoutes().filter((route) => String(route.path).startsWith('base/colors'))
+    const paths = list.map((route) => route.path)
+    expect(paths.indexOf('base/colors/new')).toBeLessThan(paths.indexOf('base/colors/:code'))
+  })
+
+  it('新建 / 编辑路由用的是**该资源自己的**写权限点', () => {
+    const list = flatRoutes()
+    for (const key of REGISTRY_KEYS) {
+      const contract = BASE_DICT_CONTRACT[key]
+      const createRoute = list.find((route) => route.name === `base-${key}-new`)
+      const editRoute = list.find((route) => route.name === `base-${key}-edit`)
+      expect(createRoute?.meta?.permission, `${key} 新建路由权限点不对`).toBe(
+        contract.permissions.create,
+      )
+      expect(editRoute?.meta?.permission, `${key} 编辑路由权限点不对`).toBe(
+        contract.permissions.update,
+      )
+      // 分类 / 工序的写权限不是 base:*，写错会让有权限的人点进去直接 403
+      if (contract.permissions.create !== 'base:create') {
+        expect(createRoute?.meta?.permission).not.toBe('base:create')
+      }
+    }
+  })
+
+  it('菜单里的九个入口都有对应路由（点菜单不 404）', async () => {
+    const { MENU_GROUPS } = await import('@/layouts/menu')
+    const names = new Set(flatRoutes().map((route) => route.name))
+    for (const group of MENU_GROUPS) {
+      for (const item of group.children) {
+        expect(names, `菜单项 ${item.key} 没有对应路由`).toContain(item.key)
+      }
+    }
   })
 })
