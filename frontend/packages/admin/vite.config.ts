@@ -30,7 +30,10 @@ export default defineConfig({
       // 会被 fetch 的默认 `credentials: 'same-origin'` 带上 —— 不需要
       // `credentials: 'include'`，也就不需要动 shared 的请求层。
       '/api': {
-        target: 'http://localhost:8000',
+        // ⚠️ 允许用 `VITE_API_PROXY_TARGET` 覆盖：E2E 里后端跑在独立端口，
+        //    而写死 8000 的话 E2E 会**静默连到开发机上那个还开着的后端** ——
+        //    测试对着错误的库跑，全部通过却什么也没验到
+        target: process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8000',
         changeOrigin: true,
       },
     },

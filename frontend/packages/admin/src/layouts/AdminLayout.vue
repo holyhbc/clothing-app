@@ -24,7 +24,7 @@
  * 常年固定一个分辨率，自动覆盖用户的选择只会让人重新点一次。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import { Avatar, Breadcrumb, Dropdown, Layout, Menu, Tooltip } from 'ant-design-vue'
 import type { MenuProps } from 'ant-design-vue'
 import { useAuthStore } from '@/stores/auth'
@@ -181,7 +181,18 @@ async function onUserMenuClick(info: { key: string | number }): Promise<void> {
 
       <Layout.Content class="layout-content">
         <div class="admin-content-inner">
-          <slot />
+          <!--
+            ⚠️ 必须是 `<RouterView />`，**不能是 `<slot />`**。
+            vue-router 4 里父路由组件负责渲染 `children`：App.vue 的
+            `<RouterView />` 只渲染第一层（`AdminLayout` 自己），
+            第二层要靠本组件内部的 `<RouterView />` 才会被渲染。
+
+            写成 `<slot />` 的话，侧栏、面包屑、顶栏全都正常，**只有内容区永远空白** ——
+            而且组件测试完全测不出来（那些测试直接 mount 页面组件，不经过 layout），
+            直到 E2E 真的用浏览器打开一个 URL 才暴露。这是「单测全绿而产品打不开」的
+            典型样本。
+          -->
+          <RouterView />
         </div>
       </Layout.Content>
     </Layout>

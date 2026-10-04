@@ -85,6 +85,10 @@ extend-immutable-calls = [
 #       业务代码里的 print 才必须换成结构化 logger（docs/03 §1.1 第 10 条）。
 #       豁免范围仅限 app/cli/**，应用代码仍禁用 print。
 "app/cli/**" = ["T201"]
+# T201: E2E 种子是 **CLI 入口**（`python -m tests.e2e_seed`），人机界面就是 stdout ——
+#       跑它的人要看到"款号就绪了没有 / 哪条业务规则被拒了"。与 app/cli/** 同一条理由，
+#       所以豁免；pytest 用例仍然受 S101/ANN 约束。
+"tests/e2e_seed.py" = ["T201"]
 
 # ---- mypy（docs/03 §1.6：strict = true）----
 [tool.mypy]
