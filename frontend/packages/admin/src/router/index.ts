@@ -15,6 +15,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import { PERM } from '@garment/shared'
+import AdminLayout from '@/layouts/AdminLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 
 declare module 'vue-router' {
@@ -34,39 +35,45 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/login',
     name: 'login',
-    component: () => import('@/views/LoginView.vue'),
+    component: () => import('@/views/Login.vue'),
     meta: { public: true, title: '登录' },
   },
   {
     path: '/403',
     name: 'forbidden',
-    component: () => import('@/views/ForbiddenView.vue'),
+    component: () => import('@/views/Error403.vue'),
     meta: { public: true, title: '无权限' },
   },
   {
     path: '/profile/password',
     name: 'change-password',
-    component: () => import('@/views/ChangePasswordView.vue'),
+    component: () => import('@/views/Password.vue'),
     meta: { public: true, title: '修改密码', forcePassword: true },
   },
   {
     path: '/',
-    name: 'home',
-    component: () => import('@/views/HomeView.vue'),
-    meta: { title: '工作台', permission: PERM.BASE_READ },
-  },
-  {
-    // 占位：T-WEB-005 落地基础资料页后替换。留在这里是为了让「无权限跳 403」
-    // 与「有权限进入」两条路径现在就能真跑起来，而不是只在测试里成立。
-    path: '/base/styles',
-    name: 'base-styles',
-    component: () => import('@/views/PlaceholderView.vue'),
-    meta: { title: '款号', permission: PERM.BASE_UPDATE },
+    component: AdminLayout,
+    children: [
+      {
+        path: '',
+        name: 'home',
+        component: () => import('@/views/HomeView.vue'),
+        meta: { title: '工作台', permission: PERM.BASE_READ },
+      },
+      {
+        // 占位：T-WEB-005 落地基础资料页后替换。留在这里是为了让「无权限跳 403」
+        // 与「有权限进入」两条路径现在就能真跑起来，而不是只在测试里成立。
+        path: 'base/styles',
+        name: 'base-styles',
+        component: () => import('@/views/PlaceholderView.vue'),
+        meta: { title: '款号', permission: PERM.BASE_UPDATE },
+      },
+    ],
   },
   {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
-    component: () => import('@/views/NotFoundView.vue'),
+    component: () => import('@/views/Error404.vue'),
     meta: { public: true, title: '页面不存在' },
   },
 ]

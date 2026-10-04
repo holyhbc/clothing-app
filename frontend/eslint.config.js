@@ -46,6 +46,10 @@ export default tseslint.config(
       //    排版归 Prettier，eslint 只管语义。
       'vue/max-attributes-per-line': 'off',
       'vue/singleline-html-element-content-newline': 'off',
+      // 同上：eslint 要 `<input />`、Prettier 要 `<input>`，两边来回改。
+      // 实测 `pnpm lint:fix` 刚改完的文件，`format:check` 立刻报红 ——
+      // 提交前两边都要跑，于是必然有一边是红的，只能靠改配置解决而不是靠人记得顺序。
+      'vue/html-self-closing': 'off',
     },
   },
   {

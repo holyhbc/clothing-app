@@ -1,9 +1,19 @@
 <script setup lang="ts">
 /**
- * 改密页 —— `must_change_password` 的唯一出口。
+ * 改密页。
  *
- * 守卫把这类用户钉在这里，所以这个页面**必须真的能用**：口令强度与后端策略一致
- * （docs/09 §），否则用户会在这里撞墙而不知道规则是什么。
+ * `defineOptions` 不是为了好看：任务卡规定的文件名（`Login.vue` / `Error403.vue` /
+ * `Combo.vue` …）是单词，而 eslint 的 `vue/multi-word-component-names` 要求组件名
+ * 至少两个词。文件名由规范定死、组件名由 lint 定死，两者只能用 `defineOptions` 调和 ——
+ * 改文件名会同时偏离任务卡和 docs/03 §2.2 的目录约定。
+ */
+defineOptions({ name: 'PasswordView' })
+/**
+ * 改密页 —— `must_change_password` 的唯一出口（docs/06 §5「危险操作必填原因」的反例：
+ * 改密本身不填原因，但**失败文案必须说清哪一项不满足**）。
+ *
+ * 守卫把这类用户钉在这里，所以这个页面**必须真的能用**：口令强度与后端策略一致，
+ * 否则用户会在这里反复撞墙而不知道规则是什么。
  */
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'

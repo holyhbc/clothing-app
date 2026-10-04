@@ -14,6 +14,7 @@ import { permission } from '@/directives/permission'
 import { registerAuthExpiredHandler, registerErrorHandler } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import './styles/tokens.css'
+import './styles/global.css'
 
 const pinia = createPinia()
 const app = createApp(App)

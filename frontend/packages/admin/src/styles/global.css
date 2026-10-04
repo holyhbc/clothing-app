@@ -1,0 +1,89 @@
+/**
+ * 全局样式。
+ *
+ * ⚠️ **为什么是 `.css` 而不是任务卡写的 `.scss`**：用 SCSS 就得装 `sass`，而 `sass` 会把
+ *    `@parcel/watcher`（原生模块，要编译 C++）拖进依赖树，pnpm 的 `allowBuilds`
+ *    白名单因此要多批准一个原生包，Docker 构建也变慢。本卡用到的全部能力
+ *    （变量、嵌套的替代方案、CSS 自定义属性）原生 CSS 都够 —— 真正的 token 是
+ *    `tokens.css` 里的 `--*` 自定义属性，SCSS 变量反而是多余的第二套变量。
+ *
+ * 纪律（docs/06 §1）：**这里也禁止字面量颜色/间距/字号**，一律 `var(--*)`。
+ * 需要新 token 就去 `tokens.css` 加（且必须同步 docs/06 §1，有测试比对）。
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  line-height: 1.5715;
+  -webkit-font-smoothing: antialiased;
+}
+
+/**
+ * 表格密度：PC 端**密度优先**（docs/06 §0 / §2.2「工厂用户看表格」）。
+ * 同一屏能看到多少行，直接决定查单据要翻几页。
+ */
+.ant-table-tbody > tr > td,
+.ant-table-thead > tr > th {
+  padding: var(--space-2) var(--space-3) !important;
+  font-size: var(--font-size-base);
+}
+
+/**
+ * 金额：右对齐 + 等宽数字（docs/06 §6.3「表格」）。
+ * `tabular-nums` 让每个字形占同样宽度，竖着看一列金额才能对齐 ——
+ * 否则 `1.11` 和 `111.00` 的小数点错开，扫一眼看不出差别。
+ */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  text-align: right;
+  white-space: nowrap;
+}
+
+/** 编码列不换行（docs/06 §6.3），过长时由组件加 Tooltip 而不是截断。 */
+.code-cell {
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+/* 危险操作**不用红色文字按钮**（docs/06 §6.3）：靠 `...` 下拉 + 二次确认表达，
+   红色留给"状态"与"错误"。这里只把危险项的字色降到次级，避免误点。 */
+.danger-item {
+  color: var(--color-text-second);
+}
+
+/* 页面级滚动容器：内容区自己滚，Header/Sider 固定（docs/06 §2.1） */
+.layout-content {
+  overflow-y: auto;
+}
+
+/**
+ * 全局错误提示（`message`）跟随 design token ——
+ * antd 的默认样式在暗色/工厂强光下对比度不足，而 token 是工厂配色的事实来源。
+ */
+.ant-message-notice-content {
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+/* 浏览器 125%/150% 缩放时不要出现横向滚动条（docs/06 §6） */
+@media (max-width: 1366px) {
+  body {
+    font-size: var(--font-size-base);
+  }
+}

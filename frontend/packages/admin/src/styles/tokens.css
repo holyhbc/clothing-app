@@ -56,6 +56,7 @@
   /* 布局（docs/06 §2.1：Header 48 / Sider 200 / 内容最大 1680 居中） */
   --header-height: 48px;
   --sider-width: 200px;
+  --sider-collapsed-width: 48px;
   --page-max-width: 1680px;
 
   /* Z-index 层级表 */

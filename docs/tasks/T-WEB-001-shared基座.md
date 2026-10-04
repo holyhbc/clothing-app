@@ -113,9 +113,9 @@
 
 | # | 问题 | 登记到 |
 | --- | --- | --- |
-| L-036 | **`packages/mobile` 是占位包但已装 vue 依赖**（devDependencies 里 vue + plugin-vue + vue-tsc）。这是为了让 `pnpm build` / `typecheck` 真能跑通而不是配空壳脚本假装通过；T-WEB-002 的 admin 会用同一批版本 | 已在本卡解决；若后续 admin 换版本需同步 |
-| L-037 | **AGENTS §7「单次提交 ≤ 800 行」未定义生成物是否计入**。本仓先例 `7c03a6a` 是单提交 3333 行 / 22 文件。本卡按「手写代码计、生成物不计」执行（手写 2513 行仍超 800） | docs/12 §5，**待规范维护者明确** |
-| — | **闸门 5（web 镜像）仍失败**：`docker/frontend/Dockerfile` runtime 阶段要 `packages/admin/dist`，由 T-WEB-002 提供。本卡已消除 mobile 那一条 | 下一张卡 |
+| 已闭环 | **`packages/mobile` 是占位包但已装 vue 依赖**（devDependencies 里 vue + plugin-vue + vue-tsc）。这是为了让 `pnpm build` / `typecheck` 真能跑通而不是配空壳脚本假装通过；T-WEB-002 的 admin 会用同一批版本 | **已闭环 2026-10**：T-WEB-002 的 admin 用的正是同一批版本 |
+| L-037 | **AGENTS §7「单次提交 ≤ 800 行」未定义生成物是否计入**。本仓先例 `7c03a6a` 是单提交 3333 行 / 22 文件。本卡按「手写代码计、生成物不计」执行（手写 2513 行仍超 800） | **已闭环 2026-10**：AGENTS §7.1 已写明「手写代码计 800 行、生成物与锁文件不计入」 |
+| — | ~~**闸门 5（web 镜像）仍失败**~~ | **已闭环 2026-10**：闸门 5 真正失败的原因不是缺 `packages/admin/dist`（本卡归档时的判断**是错的**），而是 `docker/frontend/Dockerfile` 漏拷 workspace 包清单 + 闸门 5 压根没构建 `web-image`。T-WEB-002 一并修掉 |
 
 ## 自检清单
 
