@@ -425,7 +425,9 @@ export function validateDecl(decl: BaseResourceDecl): void {
       problems.push(`枚举字段 ${field.name} 缺中文映射（docs/06 §1：前端只做中文映射）`)
     }
   }
-  const missing = contract.create.required.filter((name) => !decl.formFields.some((f) => f.name === name))
+  const missing = contract.create.required.filter(
+    (name) => !decl.formFields.some((f) => f.name === name),
+  )
   if (missing.length > 0) {
     problems.push(`必填字段 ${missing.join('、')} 没在表单里出现 —— 用户没地方填`)
   }
@@ -531,7 +533,8 @@ function makeResourceApi(key: RegistryKey): BaseResourceApi {
       const result = await this.list({ q: keyword, size: OPTION_LIMIT, ...extra })
       return result.items.map((row) => ({
         value: row.id,
-        label: `${String(field(row, contract.codeColumn) ?? '')} ${String(field(row, contract.nameColumn) ?? '')}`.trim(),
+        label:
+          `${String(field(row, contract.codeColumn) ?? '')} ${String(field(row, contract.nameColumn) ?? '')}`.trim(),
         sub: null,
         disabled: row.is_active !== true,
       }))

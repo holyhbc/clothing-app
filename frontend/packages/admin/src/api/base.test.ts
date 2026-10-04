@@ -99,11 +99,9 @@ describe('注册表与后端契约一致（缺口②③）', () => {
 
   it('内置角标与「恢复内置库」按钮由 hasBuiltinFlag 决定，不在前端声明', () => {
     // 字典三表 → 显示内置角标；车间 / 仓库 → 不显示
-    expect(['colors', 'sizes', 'size-groups'].map((k) => contractOf(k as RegistryKey).hasBuiltinFlag)).toEqual([
-      true,
-      true,
-      true,
-    ])
+    expect(
+      ['colors', 'sizes', 'size-groups'].map((k) => contractOf(k as RegistryKey).hasBuiltinFlag),
+    ).toEqual([true, true, true])
     expect(contractOf('workshops').hasBuiltinFlag).toBe(false)
   })
 

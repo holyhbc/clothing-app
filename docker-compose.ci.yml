@@ -95,6 +95,19 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # ⚠️ 挂前端源码（只读）**是有意为之**：有几个跨语言一致性守卫要读前端的契约
+    # 生成物与常量（docs/07 §2.2 的第三处、docs/06 §1 的状态映射、T-WEB-005 的
+    # 基础资料写入契约）。不挂的话它们在容器里全部 skip —— 而闸门 3 的 skip 阈值是
+    # **硬失败**（`scripts/gate.sh` 判 >5 条即失败），于是要么闸门红，要么守卫形同虚设。
+    # 之前 `test_permission_registry.py` 的两条前端守卫正是长期处于「在容器里等于没有」
+    # 的状态（docs/12 §5 的同类遗留）。
+    # ⚠️ 挂载点是 `/frontend`：测试里 `REPO_ROOT = parents[3]`，容器里 = `/`。
+    volumes:
+      - ./frontend:/frontend:ro
+      # 同理：`test_frontend_dockerfile.py` 要读 `docker/frontend/Dockerfile`，
+      # 少了它那条「install 必须早于源码 COPY」的守卫会在容器里**失败**
+      # （不是 skip —— 它直接断言文件内容存在）
+      - ./docker:/docker:ro
     command:
       - bash
       - -c

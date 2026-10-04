@@ -95,7 +95,11 @@ function stubRouter() {
       //    `router.push({name})` 抛 "No match" —— 那是个**未捕获异常**，症状是
       //    断言莫名其妙地停在 'home'，与被测行为毫无关系。
       { path: '/base/operations', name: 'base-operations', component: { template: '<div />' } },
-      { path: '/base/operations/:code', name: 'base-operations-edit', component: { template: '<div />' } },
+      {
+        path: '/base/operations/:code',
+        name: 'base-operations-edit',
+        component: { template: '<div />' },
+      },
     ],
   })
 }
@@ -129,11 +133,21 @@ describe('字典删除的两分支（TC-W24 / TC-W25）', () => {
     resetHandlers()
     vi.restoreAllMocks()
     document.body.innerHTML = ''
-    grant([PERM.BASE_READ, PERM.BASE_CREATE, PERM.BASE_UPDATE, PERM.BASE_DISABLE, PERM.BASE_DELETE, PERM.BASE_EXPORT, PERM.SYSTEM_CONFIG_MANAGE])
+    grant([
+      PERM.BASE_READ,
+      PERM.BASE_CREATE,
+      PERM.BASE_UPDATE,
+      PERM.BASE_DISABLE,
+      PERM.BASE_DELETE,
+      PERM.BASE_EXPORT,
+      PERM.SYSTEM_CONFIG_MANAGE,
+    ])
   })
 
   it('TC-W24 被引用时：删除项禁用且写明原因，**不发 DELETE**', async () => {
-    const remove = vi.spyOn(baseApi.colors, 'remove').mockResolvedValue({ deleted: true, cascaded: 0 })
+    const remove = vi
+      .spyOn(baseApi.colors, 'remove')
+      .mockResolvedValue({ deleted: true, cascaded: 0 })
     const { wrapper } = mountList(ColorList, [row({ ...NVY, ref_count: 3 })])
     await settle()
 
@@ -151,7 +165,9 @@ describe('字典删除的两分支（TC-W24 / TC-W25）', () => {
   })
 
   it('TC-W25 无引用时：二次确认写明「不可撤销」→ 确认后真的删掉并刷新列表', async () => {
-    const remove = vi.spyOn(baseApi.colors, 'remove').mockResolvedValue({ deleted: true, cascaded: 0 })
+    const remove = vi
+      .spyOn(baseApi.colors, 'remove')
+      .mockResolvedValue({ deleted: true, cascaded: 0 })
     const { wrapper } = mountList(ColorList, [NVY])
     await settle()
 
@@ -274,7 +290,12 @@ describe('字典删除的两分支（TC-W24 / TC-W25）', () => {
       // ⚠️ `query` 声明成可选（导出允许不带筛选），所以这里要判空而不是直接读 ——
       //    漏了判空，用例会在「导出没带筛选」时抛 TypeError，报错指向测试而不是行为
       expect(query?.q, '导出必须带上当前关键字，否则导出的是全量').toBe('藏青')
-      return { blob: new Blob(['x']), filename: 'colors-20261004.xlsx', rowCount: 16, requestId: null }
+      return {
+        blob: new Blob(['x']),
+        filename: 'colors-20261004.xlsx',
+        rowCount: 16,
+        requestId: null,
+      }
     })
     const { wrapper } = mountList(ColorList, [NVY], { total: 16 })
     await settle()
@@ -375,16 +396,24 @@ describe('码表的有序尺码成员（TC-W28）', () => {
   })
 
   async function mountForm() {
-    const create = vi.spyOn(baseApi['size-groups'], 'create').mockResolvedValue(
-      row({ name: '女款模板', size_class: 'WOMENS' }),
-    )
+    const create = vi
+      .spyOn(baseApi['size-groups'], 'create')
+      .mockResolvedValue(row({ name: '女款模板', size_class: 'WOMENS' }))
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
         { path: '/', name: 'home', component: { template: '<div />' } },
         { path: '/base/size-groups', name: 'base-size-groups', component: { template: '<div />' } },
-        { path: '/base/size-groups/new', name: 'base-size-groups-new', component: { template: '<div />' } },
-        { path: '/base/size-groups/:code', name: 'base-size-groups-edit', component: { template: '<div />' } },
+        {
+          path: '/base/size-groups/new',
+          name: 'base-size-groups-new',
+          component: { template: '<div />' },
+        },
+        {
+          path: '/base/size-groups/:code',
+          name: 'base-size-groups-edit',
+          component: { template: '<div />' },
+        },
       ],
     })
     await router.push('/base/size-groups/new')
@@ -398,15 +427,18 @@ describe('码表的有序尺码成员（TC-W28）', () => {
   }
 
   /** 往 Combo 里加一个成员：focus 触发默认候选，再点第一条。 */
-  async function pickSize(wrapper: { find: (s: string) => { trigger: (e: string) => Promise<unknown> } }, label: string) {
+  async function pickSize(
+    wrapper: { find: (s: string) => { trigger: (e: string) => Promise<unknown> } },
+    label: string,
+  ) {
     const combo = wrapper.find('.combo-input')
     await combo.trigger('focus')
     await settle()
     // ⚠️ 两边都要去空白：`plain()` 会把「尺码 155/80A」中间的空格也去掉，
-  //    拿带空格的 label 去比 plain 过的文本，永远匹配不上（第一版就踩了）
-  const option = [...document.querySelectorAll('.combo-option')].find((node) =>
-    plain(node.textContent ?? '').includes(plain(label)),
-  )
+    //    拿带空格的 label 去比 plain 过的文本，永远匹配不上（第一版就踩了）
+    const option = [...document.querySelectorAll('.combo-option')].find((node) =>
+      plain(node.textContent ?? '').includes(plain(label)),
+    )
     expect(option, `候选里应有 ${label}`).toBeDefined()
     option?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
     await settle()
@@ -414,7 +446,11 @@ describe('码表的有序尺码成员（TC-W28）', () => {
 
   /** 选枚举字段（尺码类）。antd 的 Select 要先点开再点选项。 */
   async function pickEnum(
-    wrapper: { findAll: (s: string) => { at: (i: number) => { trigger: (e: string) => Promise<unknown> } | undefined } },
+    wrapper: {
+      findAll: (s: string) => {
+        at: (i: number) => { trigger: (e: string) => Promise<unknown> } | undefined
+      }
+    },
     label: string,
   ): Promise<void> {
     // ⚠️ antd 的 Select 是在 `.ant-select-selector` 的 **mousedown** 上展开的，
@@ -501,13 +537,19 @@ describe('码表的有序尺码成员（TC-W28）', () => {
   })
 
   it('编辑态**不渲染**成员编辑器（取详情接口不回显成员，渲染空编辑器会一保存清空）', async () => {
-    vi.spyOn(baseApi['size-groups'], 'get').mockResolvedValue(row({ name: '女款模板', size_class: 'WOMENS' }))
+    vi.spyOn(baseApi['size-groups'], 'get').mockResolvedValue(
+      row({ name: '女款模板', size_class: 'WOMENS' }),
+    )
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
         { path: '/', name: 'home', component: { template: '<div />' } },
         { path: '/base/size-groups', name: 'base-size-groups', component: { template: '<div />' } },
-        { path: '/base/size-groups/:code', name: 'base-size-groups-edit', component: { template: '<div />' } },
+        {
+          path: '/base/size-groups/:code',
+          name: 'base-size-groups-edit',
+          component: { template: '<div />' },
+        },
       ],
     })
     await router.push('/base/size-groups/女款模板')

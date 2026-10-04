@@ -165,8 +165,7 @@ const rules = computed<Record<string, Rule | Rule[]>>(() => {
           {
             required: true,
             // 列表字段（码表成员）单独一句：空数组不是"没填"而是"没成员"
-            message:
-              item.name === 'items' ? '至少添加 1 个尺码成员' : `请填写${item.label}`,
+            message: item.name === 'items' ? '至少添加 1 个尺码成员' : `请填写${item.label}`,
             trigger: 'blur',
           },
         ]
@@ -216,7 +215,11 @@ async function onSubmit(): Promise<void> {
     await router.replace({ name: `base-${resourceKey}` })
   } catch (caught) {
     // ⚠️ 失败**保留用户输入**（docs/06 §2.4）：清空的话他刚填的两分钟就没了
-    if (caught instanceof Error && 'code' in caught && (caught as { code: number }).code === 10003) {
+    if (
+      caught instanceof Error &&
+      'code' in caught &&
+      (caught as { code: number }).code === 10003
+    ) {
       conflicted.value = true
       submitError.value = '这条记录已被他人修改，直接保存会覆盖对方的结果。请先刷新看最新内容。'
     } else {
@@ -398,7 +401,9 @@ onMounted(() => {
             v-else-if="fieldSpec(field.name)?.type === 'bool'"
             :checked="boolValue(field)"
             :disabled="!isEditable(field.name)"
-            @update:checked="(checked: boolean | string | number) => onBool(field, checked === true)"
+            @update:checked="
+              (checked: boolean | string | number) => onBool(field, checked === true)
+            "
           />
 
           <!-- 枚举：Select + 中文映射（docs/06 §1「前端只做中文映射」） -->
@@ -420,7 +425,9 @@ onMounted(() => {
           <Combo
             v-else-if="fieldSpec(field.name)?.type === 'uuid'"
             :model-value="textValue(field) || null"
-            :fetch-options="(keyword: string) => searchCombo(comboSource(field) ?? 'workshops', keyword)"
+            :fetch-options="
+              (keyword: string) => searchCombo(comboSource(field) ?? 'workshops', keyword)
+            "
             :resolve-label="
               (value: string) => resolveComboValue(comboSource(field) ?? 'workshops', value)
             "
@@ -444,7 +451,10 @@ onMounted(() => {
             :disabled="!isEditable(field.name)"
             :placeholder="field.placeholder ?? field.label"
             style="width: 100%"
-            @update:value="(value: string | number | null) => onNumber(field, value === null ? null : Number(value))"
+            @update:value="
+              (value: string | number | null) =>
+                onNumber(field, value === null ? null : Number(value))
+            "
           />
 
           <Input

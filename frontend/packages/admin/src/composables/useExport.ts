@@ -86,7 +86,10 @@ export function useExport(options: UseExportOptions) {
       // ⚠️ 优先用**前端**按 05 §9.1 拼的名字（带筛选摘要）；服务端那个只有
       //   `colors-20261004-143000`，用户拿到手分不清是哪次筛选导出的。
       const filename = buildExportFilename(options.resourceLabel, query, options.labelOf)
-      triggerBlobDownload(result.blob, filename || result.filename || `${options.resourceLabel}.xlsx`)
+      triggerBlobDownload(
+        result.blob,
+        filename || result.filename || `${options.resourceLabel}.xlsx`,
+      )
       const rows = result.rowCount
       void message.success(rows === null ? '已导出' : `已导出 ${rows} 行`)
       return rows

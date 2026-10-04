@@ -118,16 +118,33 @@ def _expected_contract() -> dict[str, Any]:
 
 
 def _load_generated() -> dict[str, Any]:
-    assert GENERATED_TS.is_file(), (
-        f"{GENERATED_TS} 不存在：在 frontend 下跑 `node scripts/generate-frontend-contract.mjs`"
-    )
-    text = GENERATED_TS.read_text(encoding="utf-8")
+    text = GENERATED_TS.read_text(encoding="utf-8") if GENERATED_TS.is_file() else ""
     marker = "export const BASE_DICT_CONTRACT = "
     suffix = " as const satisfies"
+    if marker not in text or suffix not in text:
+        return {}
     start = text.index(marker) + len(marker)
     end = text.index(suffix)
     return dict(json.loads(text[start:end]))
 
+
+#: 闸门 3 的**容器模式**里没有前端源码（`docker/backend/Dockerfile` 的 dev 阶段只
+#: COPY `backend/` 与 `docs/`），所以读生成物的用例在这里必须跳过而不是报错 ——
+#: 报错会让 `pytest --co` 直接中断，113 个数据库用例一条都跑不了，而闸门红的原因
+#: 与被测行为毫无关系。
+#:
+#: ⚠️ **代价要说清**：这些断言在容器模式（`scripts/gate.sh` 默认、CI 的 docker 那步）
+#: 里**不执行**，只在宿主机跑（`scripts/gate.sh --host`、CI 的 `uv run pytest`、
+#: pre-commit）时执行。这与 `test_permission_registry.py` 里那两个前端守卫同病，
+#: 修它要改 CI 镜像的 COPY，属于 T-INFRA 的活，本卡不顺手改（AGENTS 禁止顺手重构）。
+FRONTEND_AVAILABLE = GENERATED_TS.is_file() and REGISTRY_TS.is_file()
+needs_frontend = pytest.mark.skipif(
+    not FRONTEND_AVAILABLE,
+    reason=(
+        f"{GENERATED_TS} 不存在（闸门 3 的容器镜像只 COPY backend/ 与 docs/）；"
+        f"在仓库根用 `scripts/gate.sh --host` 或 `uv run pytest` 跑本文件"
+    ),
+)
 
 GENERATED = _load_generated()
 
@@ -137,6 +154,7 @@ GENERATED = _load_generated()
 # ---------------------------------------------------------------------------
 
 
+@needs_frontend
 def test_generated_file_parses_as_json_and_is_not_empty() -> None:
     """守卫解析器：文件被 prettier 改了形状时（如尾逗号回来），这里先炸。"""
     assert GENERATED, "从 baseDictFields.ts 解出来的对象是空的"
@@ -148,6 +166,7 @@ def test_generated_file_parses_as_json_and_is_not_empty() -> None:
 # ---------------------------------------------------------------------------
 
 
+@needs_frontend
 def test_generated_contract_matches_backend_models() -> None:
     expected = _expected_contract()
     assert set(GENERATED) == set(expected), (
@@ -159,6 +178,7 @@ def test_generated_contract_matches_backend_models() -> None:
 
 
 @pytest.mark.parametrize("key", sorted(r.key for r in RESOURCES))
+@needs_frontend
 def test_patch_requires_version(key: str) -> None:
     """PATCH 必传 ``version``（§4.4）—— 缺了它前端就少一道乐观锁。"""
     contract = GENERATED[key]
@@ -168,6 +188,7 @@ def test_patch_requires_version(key: str) -> None:
     )
 
 
+@needs_frontend
 def test_code_field_is_not_in_create_required_for_operations() -> None:
     """``operations.operation_no`` 可改是禁止的（§4.4）。
 
@@ -180,6 +201,7 @@ def test_code_field_is_not_in_create_required_for_operations() -> None:
     assert "operation_no" in GENERATED["operations"]["create"]["required"]
 
 
+@needs_frontend
 def test_dict_resources_require_code_and_name() -> None:
     """字典三表（颜色 / 尺码 / 码表）的必填字段各有各的形态，别被统一掉。"""
     assert GENERATED["colors"]["create"]["required"] == ["color_code", "name"]
@@ -189,12 +211,14 @@ def test_dict_resources_require_code_and_name() -> None:
     assert "items" in GENERATED["size-groups"]["create"]["required"]
 
 
+@needs_frontend
 def test_physical_delete_flag_matches_adr_0025() -> None:
     """字典三表真删、其余软删（ADR-0025 / §4.4）。前端删除确认框的措辞读它。"""
     physical = {key for key, value in GENERATED.items() if value["allowPhysicalDelete"]}
     assert physical == {"colors", "sizes", "size-groups"}
 
 
+@needs_frontend
 def test_write_permissions_differ_for_category_and_operation() -> None:
     """分类与工序的写权限点不是 ``base:*``（§4.4）。
 
@@ -225,6 +249,7 @@ def _registry_keys() -> set[str]:
     return set(re.findall(r"^\s{4}key: '([a-z][a-z-]*)',$", content, re.MULTILINE))
 
 
+@needs_frontend
 def test_frontend_registry_keys_are_explained() -> None:
     """前端注册表的 key 集合 == 后端 RESOURCES 减去已登记的待做资源。"""
     frontend = _registry_keys()
@@ -246,6 +271,7 @@ def test_frontend_registry_keys_are_explained() -> None:
     assert not stale, f"PENDING_FRONTEND 里有后端已不存在的资源：{sorted(stale)}"
 
 
+@needs_frontend
 def test_frontend_registry_does_not_declare_required_fields() -> None:
     """注册表**不得**自己声明必填（缺口③）。
 
@@ -265,6 +291,7 @@ def test_frontend_registry_does_not_declare_required_fields() -> None:
     )
 
 
+@needs_frontend
 def test_registry_covers_every_required_field_of_each_resource() -> None:
     """反向：**每个必填字段都要在注册表的表单字段里出现**。
 

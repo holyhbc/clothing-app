@@ -417,7 +417,9 @@ async function generateBaseDictContract(contract) {
   lines.push(' * | 段 | 谁说了算 |')
   lines.push(' * | --- | --- |')
   lines.push(' * | `codeColumn` / `permissions` / `create` / `patch` | **后端**（本文件生成物） |')
-  lines.push(' * | 中文名、控件类型、表格列 | **前端**（`packages/admin/src/api/base.ts` 的注册表） |')
+  lines.push(
+    ' * | 中文名、控件类型、表格列 | **前端**（`packages/admin/src/api/base.ts` 的注册表） |',
+  )
   lines.push(' *')
   lines.push(' * ⚠️ 必填字段清单只有一份，就在 `create.required` / `patch.required`。')
   lines.push(' *    表单的必填红星与校验规则由它驱动，前端**不得**另写一份 —— 后端给某个')

@@ -73,7 +73,10 @@ function labelOf(sizeId: string): string {
 }
 
 function commit(next: readonly SizeGroupItem[]): void {
-  emit('update:modelValue', next.map((item, index) => ({ size_id: item.size_id, sort_order: index + 1 })))
+  emit(
+    'update:modelValue',
+    next.map((item, index) => ({ size_id: item.size_id, sort_order: index + 1 })),
+  )
 }
 
 function onPick(value: string | null): void {
@@ -110,7 +113,11 @@ function remove(index: number): void {
 
 // ⚠️ 用 `watch` 而不是 setup 里直接调一次：编辑态的成员是**加载之后**才有的，
 //    setup 时那会儿 modelValue 还是空的，标签就永远补不回来。
-watch(() => props.modelValue, () => void loadLabels(), { immediate: true, deep: true })
+watch(
+  () => props.modelValue,
+  () => void loadLabels(),
+  { immediate: true, deep: true },
+)
 </script>
 
 <template>

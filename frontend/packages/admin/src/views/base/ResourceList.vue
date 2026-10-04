@@ -269,7 +269,11 @@ async function onDelete(row: BaseDictRow): Promise<void> {
   } catch (caught) {
     // 并发兜底：查引用之后、删除之前有人插入了引用（ADR-0025 的条件 DELETE 里
     // NOT EXISTS 命中为假）→ 后端回 20003
-    if (caught instanceof Error && 'code' in caught && (caught as { code: number }).code === 20003) {
+    if (
+      caught instanceof Error &&
+      'code' in caught &&
+      (caught as { code: number }).code === 20003
+    ) {
       void message.error(blockedReason(row))
       return
     }
@@ -309,7 +313,9 @@ function rowActions(row: BaseDictRow): RowAction[] {
 }
 
 function actionLabel(action: RowAction): string {
-  return action.disabled && action.reason !== '' ? `${action.label}（${action.reason}）` : action.label
+  return action.disabled && action.reason !== ''
+    ? `${action.label}（${action.reason}）`
+    : action.label
 }
 
 async function onRowAction(row: BaseDictRow, action: RowAction): Promise<void> {
