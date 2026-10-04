@@ -16,6 +16,66 @@
 
 把 9 个主数据资源的页面一次做齐，每个列表页都是 06 §2.2 的标准三段式，并且**字典删除的两分支提示**（引用计数）与「恢复内置库」按钮真实可用。
 
+## 实现前的调查结论（2026-10-03，AI 动手前先搜了代码）
+
+后端侧**已经齐了**：9 个资源 × 8 个端点（`list` / `create` / `get` / `patch` /
+`disable` / `delete` / `options` / `exports`）全部在 `openapi.json` 里，
+`DictRow.ref_count` 与 `delete` 的 422（引用被占用）都有。所以这张卡是纯前端。
+
+但有三件事必须**先定口径**，否则做出来的东西会立刻返工：
+
+### ① `restore_builtin` **没有 HTTP 端点** —— 它是 CLI
+
+任务卡要求页面上有「恢复内置库」按钮，但真实情况是
+`backend/app/cli/restore_builtin.py`，**`openapi.json` 里没有任何 restore 路径**。
+（该文件自己的注释里就写着「用户点『恢复内置库』」—— 说明设计时预期有按钮，
+但那一层一直没做。）
+
+三个选择，**必须先定**：
+
+| 方案 | 说明 |
+| --- | --- |
+| A. 补一个 `POST /api/v1/system/dicts/{kind}/restore-builtin` | 需要一张后端卡；权限点用 `system:config:manage` |
+| B. 按钮只显示**提示**，让运维执行 `python -m app.cli.restore_builtin` | 零后端改动；但用户会看到"这个按钮没用" |
+| C. 按钮调 A 的端点，A 复用 `app/cli/restore_builtin.py` 的逻辑 | 与 A 等价，只是确保只有一份实现 |
+
+**倾向 A/C**，因为该 CLI 自己的注释就是这么写的。但这是**缺口**，不是本卡能顺手补的
+（AGENTS §6：一个会话只动一个模块）。
+
+### ② 前端不要手写 72 个函数
+
+后端已经用**声明式注册表**解决了同构问题（`app/modules/base/resources.py::RESOURCES`，
+注释写得很清楚：「九个资源的 CRUD 形状完全同构… 写成九份重复的 handler 意味着同一条
+业务规则要改九遍」）。前端若照抄成 9 × 8 = 72 个函数，就是**把同一个错误换个语言
+再犯一遍** —— 改一个路径要改 9 处，漏一处就是那个资源静默 404。
+
+**建议**：前端也写一张 `RESOURCE_REGISTRY`（9 条声明：key / path / 中文名 /
+特有字段 / 是否可引用检查 / 是否可停用），`api/base.ts` 按它生成函数，
+并加一条测试断言**与后端 `RESOURCES` 的 key 集合一致** ——
+和 `test_permission_registry.py` / `test_frontend_dockerfile.py` 同一个套路。
+
+⚠️ 注册表**不能从 `openapi.json` 推导**：它描述的是服务端 HTTP 契约，
+不包含"这个资源前端要显示哪几个字段""这个资源能不能删"。那部分只能显式声明。
+
+### ③ `DictOut` 是"一个大模型 + 大量可空字段"
+
+后端注释里明说了这个取舍：「用一个大模型换来的是每个响应都多出七八个 null 字段…
+换来的是新增资源不用改这个类」。所以前端拿到的行类型**大部分字段是 `T | null`**。
+
+后果：9 个 `Form.vue` 若各写各的空值判断，就是 9 份「哪些字段必填 / 哪些要显示」
+的真相。**建议**在注册表里加一张 `fields` 声明（每资源：表格列 / 表单字段 / 校验），
+9 个页面由它生成；至少也要有一张共享的"必填字段"清单，否则后端加一个必填字段时
+前端不会有任何提示。
+
+### 其余已就绪、不需要再决策的
+
+| 项 | 现状 |
+| --- | --- |
+| `usePageList` / `TableToolbar` / `PageLayout` / `EmptyState` / `Combo` / `confirmDanger` | T-WEB-003 / T-WEB-004 已交付并测过，直接复用 |
+| 路由与菜单 | `layouts/menu.ts` 的「基础资料」组已有「款号」一项（占位页），加 9 项即可 |
+| 导出行数与列表一致 | 后端 `exports` 与 `list` 共用同一筛选与 service 方法（`DictService.export_rows` → `list_rows`），前端只需把当前 `query` 原样传过去 |
+| 字典删除两分支 | 后端 `DictService.delete` 已实现两分支（ADR-0025），422 携带 `references[]` |
+
 ## 范围
 
 **要做**（每资源固定 `List.vue` / `Form.vue` 两件套，`warehouses` 等简单资源可省 `Detail`）：
