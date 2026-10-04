@@ -26,6 +26,8 @@ export interface BaseDictField {
   readonly nullable: boolean
   /** 仅 `type === 'enum'`：取值来自后端 PG enum，前端只做中文映射。 */
   readonly values?: readonly string[]
+  /** 后端声明的默认值（表单初值）。缺省 = 无默认（必填，或默认就是 None）。 */
+  readonly default?: string | number | boolean
 }
 
 export interface BaseDictWriteSpec {
@@ -330,7 +332,8 @@ export const BASE_DICT_CONTRACT = {
         {
           "name": "sort",
           "nullable": false,
-          "type": "int"
+          "type": "int",
+          "default": 0
         },
         {
           "name": "remark",
@@ -476,7 +479,8 @@ export const BASE_DICT_CONTRACT = {
         {
           "name": "sort_order",
           "nullable": false,
-          "type": "int"
+          "type": "int",
+          "default": 0
         },
         {
           "name": "remark",
@@ -619,17 +623,20 @@ export const BASE_DICT_CONTRACT = {
         {
           "name": "is_piecework",
           "nullable": false,
-          "type": "bool"
+          "type": "bool",
+          "default": true
         },
         {
           "name": "default_bundle_qty",
           "nullable": false,
-          "type": "decimal"
+          "type": "decimal",
+          "default": "1"
         },
         {
           "name": "sort_order",
           "nullable": false,
-          "type": "int"
+          "type": "int",
+          "default": 0
         },
         {
           "name": "remark",
@@ -734,7 +741,8 @@ export const BASE_DICT_CONTRACT = {
         {
           "name": "settlement_period_days",
           "nullable": false,
-          "type": "int"
+          "type": "int",
+          "default": 0
         },
         {
           "name": "remark",

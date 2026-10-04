@@ -187,6 +187,21 @@ def _write_spec(model):
     for name, info in model.model_fields.items():
         inner, nullable = _split_optional(info.annotation)
         entry = {"name": name, "nullable": nullable, **_type_of(inner)}
+        # ⚠️ **默认值也要出**：表单的 Switch / InputNumber 总得有个初值，而"初值等于后端
+        #    默认"是条业务口径（is_piecework 默认 true、sort 默认 0）。前端自己写一份就是
+        #    第二处真相 —— 后端把默认改成 false，前端表单还停在 true，用户不点开关就提交，
+        #    存进去的值与"什么都不填"不同。
+        if not info.is_required() and info.default is not None:
+            # Decimal 一律出字符串（docs/05 §3：金额 / 单价 / 数量响应都是字符串）。
+            # ⚠️ 判据用**映射后的类型**而不是 isinstance(inner, Decimal)：这里的 inner
+            #    是**类对象** Decimal 本身，isinstance(类, 类) 恒为 False —— 那个分支
+            #    静默不生效，报错要等到 json.dumps 才炸 "Decimal is not JSON
+            #    serializable"，与真因隔了三层。
+            #    （顺带：这段 python 在 JS 模板字符串里，不能出现反引号。）
+            if entry["type"] == "decimal":
+                entry["default"] = str(info.default)
+            else:
+                entry["default"] = info.default
         fields.append(entry)
         if info.is_required():
             required.append(name)
@@ -428,6 +443,8 @@ async function generateBaseDictContract(contract) {
   lines.push('  readonly nullable: boolean')
   lines.push("  /** 仅 `type === 'enum'`：取值来自后端 PG enum，前端只做中文映射。 */")
   lines.push('  readonly values?: readonly string[]')
+  lines.push('  /** 后端声明的默认值（表单初值）。缺省 = 无默认（必填，或默认就是 None）。 */')
+  lines.push('  readonly default?: string | number | boolean')
   lines.push('}')
   lines.push('')
   lines.push('export interface BaseDictWriteSpec {')

@@ -89,7 +89,16 @@ def _expected_contract() -> dict[str, Any]:
             required: list[str] = []
             for name, info in model.model_fields.items():
                 inner, nullable = _split_optional(info.annotation)
-                fields.append({"name": name, "nullable": nullable, **_type_of(inner)})
+                entry: dict[str, Any] = {"name": name, "nullable": nullable, **_type_of(inner)}
+                if not info.is_required() and info.default is not None:
+                    # 与生成器同一条规则：Decimal 出字符串，其余原样。
+                    # ⚠️ 判据是**映射后的类型**不是 isinstance —— `inner` 是类对象，
+                    #    isinstance(Decimal, Decimal) 恒为 False，于是 Decimal 的默认值
+                    #    会以 Decimal 实例进 JSON，报 "not JSON serializable"。
+                    entry["default"] = (
+                        str(info.default) if entry["type"] == "decimal" else info.default
+                    )
+                fields.append(entry)
                 if info.is_required():
                     required.append(name)
             return {"required": required, "fields": fields}
