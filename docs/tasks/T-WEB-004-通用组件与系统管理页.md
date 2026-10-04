@@ -117,7 +117,8 @@
 | `docs/tasks/T-AUTH-003-*.md` | +100 | 新卡 |
 
 **提交记录**：
-- `948000b` feat(web): admin 通用组件（StatusTag/MoneyText/PageLayout/EmptyState/TableToolbar）
+- `948000b` 第一阶段：通用组件（StatusTag/MoneyText/PageLayout/EmptyState/TableToolbar）
+- `6c02c0b` 第二阶段：用户管理 / 角色权限两页
 
 ## 过程中被测试抓出来的 8 个真缺陷
 
