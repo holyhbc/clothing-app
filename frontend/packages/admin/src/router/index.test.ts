@@ -77,8 +77,11 @@ describe('路由守卫', () => {
   })
 
   it('已登录且有权 → 正常进入', async () => {
-    stubMe({ permissions: [PERM.BASE_UPDATE] })
-    http.setAccessToken('token-with-base-update')
+    // ⚠️ 权限点是 `base:read` 而不是 `base:update`：款号列表是**只读**页面，
+    //    而占位页时代用的是 `base:update`（那时没有真页面，权限点是随手写的）。
+    //    能看款号的人就该能打开列表 —— 只读权限的人点进去却 403 是错的。
+    stubMe({ permissions: [PERM.BASE_READ] })
+    http.setAccessToken('token-with-base-read')
     const router = await navigate('/base/styles')
 
     expect(router.currentRoute.value.name).toBe('base-styles')
@@ -86,7 +89,7 @@ describe('路由守卫', () => {
 
   it('TC-W10 must_change_password → 强制改密页（即使目标页本来有权）', async () => {
     stubMe({
-      permissions: [PERM.BASE_UPDATE],
+      permissions: [PERM.BASE_READ],
       user: {
         id: '00000000-0000-0000-0000-000000000001',
         employee_no: 'A001',

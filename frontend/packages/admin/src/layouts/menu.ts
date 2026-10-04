@@ -47,6 +47,14 @@ export const MENU_GROUPS: readonly MenuGroup[] = [
         title: '款号',
         permission: PERM.BASE_READ,
       },
+      // T-WEB-006：款号详情里的「设价 / 调价」是独立页面，所以进菜单。
+      // ⚠️ 权限点用 `piecework:rate:manage`（调价）而不是 `base:read` —— 单价页的
+      // 主操作就是调价，只读权限的人看到入口却什么都做不了。
+      {
+        key: 'base-operation-rates',
+        title: '工序单价',
+        permission: PERM.PIECEWORK_RATE_MANAGE,
+      },
       // ⚠️ 九项**手写**而不是由注册表生成 —— 与路由表刻意不共用数据（见文件头）。
       //   这里共用会让「注册表加一个资源」同时多出一个可达页面：菜单多一项只是多一
       //   个入口（点不进去是 404，用户知道是自己没权限之外的原因），路由多一项就是

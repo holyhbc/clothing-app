@@ -62,11 +62,45 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '工作台', permission: PERM.BASE_READ },
       },
       {
-        // 占位：T-WEB-006 做款号页时替换。
+        // 款号（T-WEB-006 落地，占位页已替换）
         path: 'base/styles',
         name: 'base-styles',
-        component: () => import('@/views/PlaceholderView.vue'),
-        meta: { title: '款号', permission: PERM.BASE_UPDATE },
+        component: () => import('@/views/base/styles/List.vue'),
+        meta: { title: '款号', permission: PERM.BASE_READ },
+      },
+      {
+        path: 'base/styles/new',
+        name: 'base-styles-new',
+        component: () => import('@/views/base/styles/Form.vue'),
+        meta: { title: '新建款号', permission: PERM.BASE_CREATE },
+      },
+      {
+        // ⚠️ `new` 排在 `:styleNo` 前面 —— 反了的话 `/base/styles/new` 会被当成
+        //    "货号叫 new 的那一行"（T-WEB-004 在系统管理那两页踩过同一个坑）
+        path: 'base/styles/:styleNo',
+        name: 'base-styles-detail',
+        component: () => import('@/views/base/styles/Detail.vue'),
+        meta: { title: '款号详情', permission: PERM.BASE_READ },
+      },
+      {
+        path: 'base/styles/:styleNo/edit',
+        name: 'base-styles-edit',
+        component: () => import('@/views/base/styles/Form.vue'),
+        meta: { title: '编辑款号', permission: PERM.BASE_UPDATE },
+      },
+      {
+        path: 'base/styles/:styleNo/ratios',
+        name: 'base-styles-ratios',
+        component: () => import('@/views/base/styles/Ratios.vue'),
+        meta: { title: '尺码比例', permission: PERM.BASE_UPDATE },
+      },
+      {
+        path: 'base/operation-rates',
+        name: 'base-operation-rates',
+        component: () => import('@/views/base/operation-rates/List.vue'),
+        // ⚠️ 权限点用 `piecework:rate:manage`：这是**调价**入口（设价的主操作），
+        //    给 `base:read` 的话只读用户点进来什么都做不了。
+        meta: { title: '工序单价', permission: PERM.PIECEWORK_RATE_MANAGE },
       },
       ...baseDictRoutes(),
       {
