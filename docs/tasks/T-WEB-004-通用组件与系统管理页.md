@@ -116,7 +116,7 @@
 | `docs/tasks/T-AUTH-003-*.md` | +100 | 新卡 |
 
 **提交记录**：
-- 见 `git log --grep T-WEB-004`
+- `948000b` feat(web): admin 通用组件（StatusTag/MoneyText/PageLayout/EmptyState/TableToolbar）
 
 ## 过程中被测试抓出来的 4 个真缺陷
 
