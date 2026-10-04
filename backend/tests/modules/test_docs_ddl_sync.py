@@ -60,9 +60,6 @@ P1_PENDING_TABLES = frozenset(
         # §7.1 计件流水
         "piecework_logs",
         # §7.2 库存
-        "material_stocks",
-        "wip_stocks",
-        "wip_ledger_lines",
         # §7.5 采购
         "purchase_orders",
         "purchase_order_lines",

@@ -113,6 +113,16 @@ SCOPE_SPECS: dict[str, ScopeSpec] = {
         workshop_column="workshop_id", group_column="group_no", user_column="employee_id"
     ),
     "stock_ledgers": ScopeSpec(workshop_column=None, group_column=None, user_column="created_by"),
+    # WIP 是**车间在制品**（裁片），天然属于某个车间，车间范围必须过滤。
+    # ⚠️ 这条是 T-BASE-006 建完 `wip_stocks` 之后被 `test_scope.py` 的守卫逼出来的 ——
+    #    「有 workshop_id 但没登记数据范围」意味着车间主管能看到**所有车间**的 WIP，
+    #    而症状是「WIP 台账数字比实际多」，直到月底盘点才发现。
+    #    守卫的存在就是为了让「新表带车间列」这件事**必须**在这里留个记录
+    "wip_stocks": ScopeSpec(workshop_column="workshop_id", user_column="created_by"),
+    # ⚠️ `material_stocks` **不在这里**：它按**仓库**隔离（`warehouse_id`），
+    #    而仓库不是车间 —— 登记成车间过滤会把「工厂级仓库」里的库存凭空过滤掉。
+    #    库存的数据范围走仓库维度，见 modules/06（那是 P3 的活）。
+    #    守卫之所以不报它，是因为它**没有** workshop_id 列。
     # 组织类：按车间
     "users": ScopeSpec(workshop_column="workshop_id", group_column="group_no", user_column="id"),
     # 组别天然属于某个车间，车间范围必须过滤。
