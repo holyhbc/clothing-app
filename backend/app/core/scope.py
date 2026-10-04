@@ -94,6 +94,10 @@ SCOPE_EXEMPT_TABLES: Final[dict[str, str]] = {
     "role_workshops": "角色配置表，访问控制靠 system:role:manage 权限点",
     # append-only 台账，只进不出，不参与列表查询。
     "auth_refresh_tokens": "append-only 台账，无列表查询",
+    # 角色是"谁能看哪些车间"的定义本身（T-AUTH-003 补）。再按车间过滤它，
+    # 车间主管就看不到自己所属车间的角色配置，没法给自己配车间了。
+    # 它的访问控制靠 system:role:manage 权限点。
+    "roles": "角色配置表，访问控制靠 system:role:manage 权限点",
 }
 
 #: 常用资源的映射。**新增单据时必须在这里登记**，否则数据范围会静默失效。

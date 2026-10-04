@@ -152,6 +152,78 @@ async def test_app_role_cannot_tamper_or_drop(db_session: AsyncSession, statemen
         await db_session.execute(text(statement))
 
 
+@pytest.mark.parametrize(
+    "table",
+    ["users", "roles", "styles", "customers", "document_logs", "operations", "warehouses"],
+)
+async def test_business_tables_still_reject_delete(db_session: AsyncSession, table: str) -> None:
+    """⚠️ 业务表一律仍然不可硬删（docs/04 §6.2.1）。
+
+    这条断言是白名单的守门人：将来有人为了图省事写
+    ``GRANT DELETE ON ALL TABLES IN SCHEMA public TO erp_app``，这里立刻报红。
+    """
+    # 表名来自上面的 parametrize 字面量，不是外部输入；绑定参数只适用于值，
+    # 表名只能拼 —— 所以显式豁免 S608 并写清理由。
+    statement = text(f"DELETE FROM {table} WHERE false")  # noqa: S608
+    with pytest.raises(ProgrammingError):
+        await db_session.execute(statement)
+
+
+@pytest.mark.parametrize(
+    "table",
+    [
+        # ADR-0025：四张字典表（删掉就是不要了）
+        "colors",
+        "sizes",
+        "size_groups",
+        "size_group_items",
+        # ADR-0029：两张关联表（一行 = 一条关系，删掉不丢信息）
+        "user_roles",
+        "role_permissions",
+    ],
+)
+async def test_delete_whitelist_tables_allow_delete(
+    db_session: AsyncSession, table: str
+) -> None:
+    """白名单**恰好**是这 6 张表 —— 正面断言。
+
+    `WHERE false` 让它真的执行一条 DELETE 语句但不删任何行，
+    所以既验证了权限、又不污染数据。
+    """
+    statement = text(f"DELETE FROM {table} WHERE false")  # noqa: S608
+    result = await db_session.execute(statement)
+
+    assert result.rowcount == 0
+
+
+async def test_join_tables_allow_delete(ddl_session: AsyncSession) -> None:
+    """ADR-0029：``user_roles`` / ``role_permissions`` 可以真删（授权 = 整体替换）。
+
+    必须用 ``ddl_session``（迁移账号）造数据 —— ``erp_app`` 现在能删这两张表，
+    拿它造数据会让用例看不出"到底是谁在删"。
+    """
+    from app.common.enums import DataScope
+    from app.modules.auth.models import UserRole
+    from tests.factories.user import OPERATOR_ID, RoleFactory, UserFactory
+
+    role = await RoleFactory.create(
+        ddl_session, code="grant_probe", name="授权探针", data_scope=DataScope.SELF
+    )
+    user = await UserFactory.create(
+        ddl_session, employee_no="GRANT01", created_by=OPERATOR_ID, updated_by=OPERATOR_ID
+    )
+    await ddl_session.flush()
+    ddl_session.add(UserRole(user_id=user.id, role_id=role.id))
+    await ddl_session.flush()
+    await ddl_session.commit()
+
+    deleted = await ddl_session.execute(
+        text("WITH d AS (DELETE FROM user_roles WHERE role_id = :rid RETURNING 1) SELECT count(*) FROM d"),
+        {"rid": str(role.id)},
+    )
+    assert int(deleted.scalar() or 0) == 1
+
+
 def test_app_database_url_uses_restricted_account(app_database_url: str) -> None:
     """TC-I17：应用连接串必须是 ``erp_app``。
 

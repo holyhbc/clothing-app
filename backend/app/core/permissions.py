@@ -20,7 +20,7 @@ from app.common.enums import DataScope
 from app.core.db import get_db
 from app.core.errors import BusinessError, ErrorCode
 from app.core.security import TOKEN_TYPE_ACCESS, decode_token
-from app.modules.auth.models import Permission, RolePermission, UserRole
+from app.modules.auth.models import Permission, Role, RolePermission, UserRole
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,9 +75,19 @@ async def load_permissions(
     **每次请求都查**：docs/07 §1.1 明确要求"权限查库，避免权限变更不生效"。
     走 ``user_roles`` / ``role_permissions`` 两个复合唯一索引，QPS 与权限点规模
     都不构成瓶颈（实测见 docs/12 §5 备注：若超阈值再评估缓存，且需写 ADR）。
+
+    ⚠️ **必须过滤 ``roles.deleted_at IS NULL``**（T-AUTH-003 落地时发现并补上）。
+    ``roles`` 表没有 ``is_active`` 列 —— "停用角色"的机制就是**软删**
+    （T-AUTH-001 建表时的选择，AGENTS §2.1「禁止物理删除，一律软删」）。
+    但这里原本只 join 了 ``role_permissions``，**没碰 ``roles``**：
+    于是软删一个角色之后，它的权限点**照样授予**用户 —— 界面显示"角色已停用"，
+    而被授予的人该有的权限一点没少。这是个静默的越权漏洞，且一旦加上停用接口就会变成真的。
     """
-    stmt = select(Permission.code).join(
-        RolePermission, RolePermission.permission_id == Permission.id
+    stmt = (
+        select(Permission.code)
+        .join(RolePermission, RolePermission.permission_id == Permission.id)
+        .join(Role, Role.id == RolePermission.role_id)
+        .where(Role.deleted_at.is_(None))
     )
     if role_ids:
         stmt = stmt.where(RolePermission.role_id.in_(role_ids))
@@ -92,16 +102,25 @@ async def load_permissions(
 async def load_allowed_workshops(
     session: AsyncSession, user_id: UUID, role_ids: list[str] | None
 ) -> frozenset[UUID]:
-    """可见车间集合 = 各角色授予的车间与本人所属车间的并集。
+    """各角色授予的车间集合。
 
+    ⚠️ **不含本人所属车间**：那个合集在 :func:`app.core.scope.visible_workshops`
+    里做（``granted | own``），因为数据范围过滤只发生在那一层。
     返回空集时 ``WORKSHOP`` 范围查不到任何数据（这是**正确**行为，
     不是 bug —— docs/07 §3.2 明确要求）。
+
+    ⚠️ 同样要过滤软删角色（与 :func:`load_permissions` 同一个理由）：
+    角色被停用后，它授予的车间可见性也必须一起消失。
     """
     from app.modules.auth.models import RoleWorkshop
 
     result: set[UUID] = set()
     if role_ids:
-        stmt = select(RoleWorkshop.workshop_id).where(RoleWorkshop.role_id.in_(role_ids))
+        stmt = (
+            select(RoleWorkshop.workshop_id)
+            .join(Role, Role.id == RoleWorkshop.role_id)
+            .where(RoleWorkshop.role_id.in_(role_ids), Role.deleted_at.is_(None))
+        )
         rows = await session.execute(stmt)
         result.update(rows.scalars().all())
     return frozenset(result)

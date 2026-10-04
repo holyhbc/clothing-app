@@ -1111,6 +1111,311 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 权限点（按模块分组，供角色勾选树）
+         * @description 按模块分组的权限点。
+         *
+         *     ⚠️ 数据来自 **registry**（``app/common/permissions_registry.py``）而不是
+         *     ``permissions`` 表 —— registry 是单一来源（docs/07 §2.2），而表里可能还留着
+         *     已作废的码。两边不一致时 ``cli/seed_baseline.py --check`` 会报出来。
+         */
+        get: operations["list_permissions_api_v1_system_permissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 角色列表（含权限点与已授予用户数）
+         * @description 角色列表。
+         *
+         *     ⚠️ 角色**不进数据范围过滤**（见 ``core/scope.py::SCOPE_EXEMPT_TABLES``）：
+         *     它是"谁能看哪些车间"的定义本身，再按车间过滤它，管理员就没法给自己配车间了。
+         */
+        get: operations["list_roles_api_v1_system_roles_get"];
+        put?: never;
+        /**
+         * 新建角色
+         * @description 新建角色。⚠️ ``is_system`` 恒为 false —— 内置角色只能由 seed 建，不给接口留口子。
+         */
+        post: operations["create_role_api_v1_system_roles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/roles/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 角色候选（Combo 用）
+         * @description 角色候选。
+         *
+         *     ⚠️ 权限点写的是 ``system:user:manage`` 而不是 ``system:role:manage``：
+         *     **建号时要选角色**，而大部分车间主管没有角色管理权。
+         *     挂到 ``system:role:manage`` 的话，他们连新建用户都做不了。
+         */
+        get: operations["list_role_options_api_v1_system_roles_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/roles/{role_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * 局部更新角色（code 与 is_system 不可改）
+         * @description 局部更新角色。⚠️ **``code` 不可改** —— 它被 ``user_roles`` 与审计日志引用。
+         */
+        patch: operations["patch_role_api_v1_system_roles__role_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/system/roles/{role_id}/disables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 停用角色（软删，必填原因）
+         * @description 停用角色（软删）。
+         *
+         *     ⚠️ **内置角色禁止停用**（docs/07 §2.3）。⚠️ 软删会**真的收权** ——
+         *     ``load_permissions`` 已过滤 ``roles.deleted_at IS NULL``。
+         */
+        post: operations["disable_role_api_v1_system_roles__role_id__disables_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/roles/{role_id}/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 整体替换角色权限点
+         * @description 整体替换权限点集合。
+         *
+         *     ⚠️ **内置角色的权限可以收放**（超管必须能收权），只是 ``code`` / ``is_system``
+         *     不可改（docs/07 §2.3）。变更会写 ``document_logs``（docs/07 §5「权限变更留痕」）
+         *     且**立刻生效** —— 权限每次请求查库，被授予的用户无需重新登录（docs/07 §1.1）。
+         */
+        put: operations["replace_role_permissions_api_v1_system_roles__role_id__permissions_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 用户列表（响应不含 password_hash 与 phone）
+         * @description 用户分页列表。数据范围在 service 层用 ``apply_data_scope`` 强制。
+         *
+         *     ⚠️ ``workshop_id`` 传了也只是**再过滤一次**，**不能放大范围** ——
+         *     车间主管传一个别的车间 id 依然查不到人（docs/07 §3.2 铁律 1）。
+         */
+        get: operations["list_users_api_v1_system_users_get"];
+        put?: never;
+        /**
+         * 新建用户
+         * @description 新建用户。默认 ``must_change_password=true``。
+         *
+         *     ⚠️ 工号重复返回 ``10001``（不是 409 也不是静默失败）—— 工号是登录凭据，
+         *     重复会导致"改了别人的口令还能登进去"这类极难排查的问题。
+         */
+        post: operations["create_user_api_v1_system_users_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/users/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 用户候选（Combo 用，size ≤ 20）
+         * @description 用户候选。``label`` 是「工号 姓名」（docs/05 §9.5.2 禁止只显示编码）。
+         */
+        get: operations["list_user_options_api_v1_system_users_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 用户详情 */
+        get: operations["get_user_api_v1_system_users__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * 局部更新用户（工号不可改）
+         * @description 局部更新。⚠️ **工号不可改** —— 它被 ``document_logs.doc_no`` 引用，也是登录凭据。
+         *
+         *     ``version`` 不匹配返回 ``10003``（docs/05 §2 乐观锁）。
+         */
+        patch: operations["patch_user_api_v1_system_users__user_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/system/users/{user_id}/disables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 停用用户（必填原因）
+         * @description 停用账号：立即无法登录（``11004``）并吊销其全部 refresh token。
+         *
+         *     ⚠️ **最后一个能改权限的账号不能停用**（``10008``）。现场往往只有一两个
+         *     能改权限的人，误停用会把系统锁死，且没有任何界面能解开。
+         */
+        post: operations["disable_user_api_v1_system_users__user_id__disables_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/users/{user_id}/enables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 启用用户（必填原因）
+         * @description 解除停用。原因同样必填 —— 启用同样是敏感动作（谁把离职员工放回来了要能查）。
+         */
+        post: operations["enable_user_api_v1_system_users__user_id__enables_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/users/{user_id}/password-resets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 管理员重置口令（必填原因）
+         * @description 重置口令，并把 ``must_change_password`` 置 true + 吊销其全部 refresh token。
+         *
+         *     ⚠️ **新口令由管理员填写，不是应用生成**（口径见 schema 说明）：
+         *     应用生成随机口令就得有送达通道，而本项目没有（``auth/sms/send-code`` 是 P2 未启用）；
+         *     `cli/seed_baseline.py` 也是从环境变量取初始口令、**绝不生成弱口令**。
+         */
+        post: operations["reset_user_password_api_v1_system_users__user_id__password_resets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/users/{user_id}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 整体替换用户的角色
+         * @description 整体替换角色集合（不是增删）。
+         *
+         *     ⚠️ 整体替换而不是 PATCH 追加：授权界面天然是"勾选哪些"的全量语义，
+         *     增删式接口会让"取消勾选"这个动作无法表达。
+         */
+        put: operations["assign_user_roles_api_v1_system_users__user_id__roles_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uom-units": {
         parameters: {
             query?: never;
@@ -1924,6 +2229,35 @@ export interface components {
              */
             request_id?: string | null;
         };
+        /** ApiResponse[PageData[UserOut]] */
+        ApiResponse_PageData_UserOut__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["PageData_UserOut_"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
         /** ApiResponse[RateResolveOut] */
         ApiResponse_RateResolveOut_: {
             /**
@@ -1992,6 +2326,35 @@ export interface components {
             code: number;
             /** @description 业务数据；失败时为 null */
             data?: components["schemas"]["RefreshResponse"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
+        /** ApiResponse[RoleOut] */
+        ApiResponse_RoleOut_: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["RoleOut"] | null;
             /**
              * Details
              * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
@@ -2127,6 +2490,35 @@ export interface components {
              */
             request_id?: string | null;
         };
+        /** ApiResponse[UserOut] */
+        ApiResponse_UserOut_: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["UserOut"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
         /** ApiResponse[dict[str, Any]] */
         ApiResponse_dict_str__Any__: {
             /**
@@ -2227,6 +2619,102 @@ export interface components {
              */
             request_id?: string | null;
         };
+        /** ApiResponse[list[PermissionGroupOut]] */
+        ApiResponse_list_PermissionGroupOut__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /**
+             * Data
+             * @description 业务数据；失败时为 null
+             */
+            data?: components["schemas"]["PermissionGroupOut"][] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
+        /** ApiResponse[list[RoleOptionOut]] */
+        ApiResponse_list_RoleOptionOut__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /**
+             * Data
+             * @description 业务数据；失败时为 null
+             */
+            data?: components["schemas"]["RoleOptionOut"][] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
+        /** ApiResponse[list[RoleOut]] */
+        ApiResponse_list_RoleOut__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /**
+             * Data
+             * @description 业务数据；失败时为 null
+             */
+            data?: components["schemas"]["RoleOut"][] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
         /** ApiResponse[list[StyleColorOut]] */
         ApiResponse_list_StyleColorOut__: {
             /**
@@ -2304,6 +2792,38 @@ export interface components {
              * @description 业务数据；失败时为 null
              */
             data?: components["schemas"]["StyleSizeOut"][] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
+        /** ApiResponse[list[UserOptionOut]] */
+        ApiResponse_list_UserOptionOut__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /**
+             * Data
+             * @description 业务数据；失败时为 null
+             */
+            data?: components["schemas"]["UserOptionOut"][] | null;
             /**
              * Details
              * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
@@ -2565,6 +3085,22 @@ export interface components {
              * Reason
              * @description 停用原因，回显以便前端确认
              */
+            reason: string;
+        };
+        /**
+         * DisableUserRequest
+         * @description 停用用户。原因必填。
+         */
+        DisableUserRequest: {
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * EnableUserRequest
+         * @description 启用用户（解除停用）。原因同样必填 —— 启用同样是敏感动作。
+         */
+        EnableUserRequest: {
+            /** Reason */
             reason: string;
         };
         /** HTTPValidationError */
@@ -2906,6 +3442,83 @@ export interface components {
             total: number;
         };
         /**
+         * PageData[UserOut]
+         * @example {
+         *       "items": [],
+         *       "page": 1,
+         *       "page_size": 20,
+         *       "total": 0
+         *     }
+         */
+        PageData_UserOut_: {
+            /**
+             * Items
+             * @description 当前页数据
+             */
+            items: components["schemas"]["UserOut"][];
+            /**
+             * Page
+             * @description 当前页码，从 1 起
+             */
+            page: number;
+            /**
+             * Page Size
+             * @description 每页条数，上限 200
+             */
+            page_size: number;
+            /**
+             * Total
+             * @description 总条数（用于分页器）
+             */
+            total: number;
+        };
+        /**
+         * PasswordResetRequest
+         * @description 管理员重置口令。
+         *
+         *     ⚠️ **由管理员填写新口令，不是应用生成**（口径来源：``cli/seed_baseline.py`` 的
+         *     ``ERP_INITIAL_ADMIN_PASSWORD`` —— 初始口令只从部署侧提供，应用**绝不生成**弱口令）。
+         *     本项目也没有可用的送达通道（``auth/sms/send-code`` 是 P2 未启用），
+         *     所以"应用生成一个随机口令再想办法告诉用户"这条路根本走不通。
+         */
+        PasswordResetRequest: {
+            /** New Password */
+            new_password: string;
+            /**
+             * Reason
+             * @description 重置原因，会记入 document_logs
+             */
+            reason: string;
+        };
+        /**
+         * PermissionGroupOut
+         * @description 按模块分组的权限点，供角色表单的勾选树使用（docs/06 §6.3「权限点按模块分组树」）。
+         */
+        PermissionGroupOut: {
+            /**
+             * Module
+             * @description 模块 code，如 `base` / `cutting`
+             */
+            module: string;
+            /**
+             * Module Name
+             * @description 模块中文名，如「基础资料」
+             */
+            module_name: string;
+            /** Permissions */
+            permissions: components["schemas"]["PermissionOut"][];
+        };
+        /**
+         * PermissionOut
+         * @description 单个权限点。code / 名称都来自后端 registry（单一来源）。
+         */
+        PermissionOut: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /**
          * RateResolveOut
          * @description 取价预演结果（ADR-0026 §2）。真正的取价只发生在计件流水落库那一刻，
          *     本接口**不写库**（modules/01 §6 末条）。
@@ -3096,6 +3709,16 @@ export interface components {
             token_type: string;
         };
         /**
+         * ReplacePermissionsRequest
+         * @description 整体替换角色的权限点集合。
+         */
+        ReplacePermissionsRequest: {
+            /** Permission Codes */
+            permission_codes: string[];
+            /** Version */
+            version: number;
+        };
+        /**
          * RoleBrief
          * @description 角色概要。
          */
@@ -3112,6 +3735,107 @@ export interface components {
              * @description 角色名
              */
             name: string;
+        };
+        /**
+         * RoleCreate
+         * @description 新建角色。
+         */
+        RoleCreate: {
+            /**
+             * Code
+             * @description 小写字母开头
+             */
+            code: string;
+            /**
+             * @description 建号时的默认数据范围
+             * @default SELF
+             */
+            data_scope: components["schemas"]["DataScope"];
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name: string;
+            /** Permission Codes */
+            permission_codes?: string[];
+        };
+        /**
+         * RoleDisable
+         * @description 停用角色。原因必填（docs/06 §5）。
+         */
+        RoleDisable: {
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * RoleOptionOut
+         * @description 角色候选。
+         */
+        RoleOptionOut: {
+            /**
+             * Disabled
+             * @default false
+             */
+            disabled: boolean;
+            /** Label */
+            label: string;
+            /** Sub */
+            sub?: string | null;
+            /**
+             * Value
+             * @description 角色 code
+             */
+            value: string;
+        };
+        /**
+         * RoleOut
+         * @description 角色行。
+         */
+        RoleOut: {
+            /** Code */
+            code: string;
+            /** Created At */
+            created_at: string;
+            /** @description 建号时的默认数据范围 */
+            data_scope: components["schemas"]["DataScope"];
+            /** Description */
+            description?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is System
+             * @description 内置角色：code 只读且不可停用（docs/07 §2.3）
+             */
+            is_system: boolean;
+            /** Name */
+            name: string;
+            /** Permission Codes */
+            permission_codes?: string[];
+            /** Updated At */
+            updated_at: string;
+            /**
+             * User Count
+             * @description 已授予该角色的用户数
+             * @default 0
+             */
+            user_count: number;
+            /** Version */
+            version: number;
+        };
+        /**
+         * RolePatch
+         * @description 局部更新角色。⚠️ ``code`` **不可改** —— 它被 ``user_roles`` 与审计日志引用。
+         */
+        RolePatch: {
+            data_scope?: components["schemas"]["DataScope"] | null;
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Version */
+            version: number;
         };
         /**
          * SizeClass
@@ -3741,6 +4465,145 @@ export interface components {
              * @description 所属车间；空为总经办/未分配
              */
             workshop_id?: string | null;
+        };
+        /**
+         * UserCreate
+         * @description 新建用户。
+         */
+        UserCreate: {
+            /** @description 数据范围。这是**用户属性**，不从角色合并 */
+            data_scope: components["schemas"]["DataScope"];
+            /**
+             * Employee No
+             * @description 工号，跨车间唯一
+             */
+            employee_no: string;
+            /** Group No */
+            group_no?: string | null;
+            /**
+             * Must Change Password
+             * @description 默认 true：新建账号强制首次登录改密
+             * @default true
+             */
+            must_change_password: boolean;
+            /** Name */
+            name: string;
+            /** Password */
+            password: string;
+            /** Remark */
+            remark?: string | null;
+            /**
+             * Role Codes
+             * @description 授予的角色 code
+             */
+            role_codes?: string[];
+            /** Workshop Id */
+            workshop_id?: string | null;
+        };
+        /**
+         * UserOptionOut
+         * @description 用户候选（Combo 用，docs/05 §9.5.2）。``label`` 已含工号。
+         */
+        UserOptionOut: {
+            /**
+             * Disabled
+             * @default false
+             */
+            disabled: boolean;
+            /**
+             * Label
+             * @description `工号 姓名`
+             */
+            label: string;
+            /** Sub */
+            sub?: string | null;
+            /**
+             * Value
+             * Format: uuid
+             */
+            value: string;
+        };
+        /**
+         * UserOut
+         * @description 用户列表 / 详情行。**刻意不含** ``password_hash`` 与 ``phone``（docs/05 §3）。
+         */
+        UserOut: {
+            /** Created At */
+            created_at: string;
+            data_scope: components["schemas"]["DataScope"];
+            /** Employee No */
+            employee_no: string;
+            /** Group No */
+            group_no?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Is Active
+             * @description false = 已停用，无法登录（11004）
+             */
+            is_active: boolean;
+            /** Must Change Password */
+            must_change_password: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Role Codes
+             * @description 已授予的角色 code
+             */
+            role_codes?: string[];
+            /** Updated At */
+            updated_at: string;
+            /**
+             * Version
+             * @description 乐观锁；PATCH 必传（docs/05 §2）
+             */
+            version: number;
+            /**
+             * Workshop Id
+             * @description 所属车间；空为总经办
+             */
+            workshop_id?: string | null;
+        };
+        /**
+         * UserPatch
+         * @description 局部更新用户。⚠️ 未传的字段不动（docs/05 §2 的 PATCH 语义）。
+         */
+        UserPatch: {
+            data_scope?: components["schemas"]["DataScope"] | null;
+            /** Group No */
+            group_no?: string | null;
+            /** Must Change Password */
+            must_change_password?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Remark */
+            remark?: string | null;
+            /**
+             * Version
+             * @description 乐观锁；不匹配返回 10005（docs/05 §2）
+             */
+            version: number;
+            /** Workshop Id */
+            workshop_id?: string | null;
+        };
+        /**
+         * UserRoleAssign
+         * @description 整体替换用户的角色。
+         */
+        UserRoleAssign: {
+            /**
+             * Role Codes
+             * @description 目标角色 code 集合；整体替换而非增删
+             */
+            role_codes?: string[];
+            /**
+             * Version
+             * @description 用户的 version
+             */
+            version: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -6201,6 +7064,537 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_list_StyleSizeOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_permissions_api_v1_system_permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_PermissionGroupOut__"];
+                };
+            };
+        };
+    };
+    list_roles_api_v1_system_roles_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_RoleOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_role_api_v1_system_roles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RoleOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_role_options_api_v1_system_roles_options_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                size?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_RoleOptionOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_role_api_v1_system_roles__role_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RolePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RoleOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disable_role_api_v1_system_roles__role_id__disables_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleDisable"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RoleOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_role_permissions_api_v1_system_roles__role_id__permissions_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplacePermissionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RoleOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_users_api_v1_system_users_get: {
+        parameters: {
+            query?: {
+                /** @description 工号或姓名模糊搜索 */
+                q?: string | null;
+                workshop_id?: string | null;
+                /** @description 不传 = 全部 */
+                is_active?: boolean | null;
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PageData_UserOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_user_api_v1_system_users_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_UserOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_user_options_api_v1_system_users_options_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                size?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_UserOptionOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_api_v1_system_users__user_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_UserOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_user_api_v1_system_users__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_UserOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disable_user_api_v1_system_users__user_id__disables_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisableUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_UserOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enable_user_api_v1_system_users__user_id__enables_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnableUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_UserOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_user_password_api_v1_system_users__user_id__password_resets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_NoneType_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_user_roles_api_v1_system_users__user_id__roles_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserRoleAssign"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_UserOut_"];
                 };
             };
             /** @description Validation Error */
