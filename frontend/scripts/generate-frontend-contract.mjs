@@ -2,15 +2,23 @@
 /**
  * 前端契约生成器（docs/06 §7「接口类型只允许生成，禁止手写 DTO」）。
  *
- * 两件事：
+ * 三件事：
  *   1. `openapi.json` → `packages/shared/src/api/schema.d.ts`（`openapi-typescript`）
  *   2. 后端权限点 registry → `packages/shared/src/enums/permissions.ts`
+ *   3. 后端 `WRITE_MODELS` → `packages/shared/src/enums/baseDictFields.ts`（T-WEB-005）
  *
  * ⚠️ **为什么第 2 件事要用 Python 出数据**：权限点的单一来源是
  * `backend/app/common/permissions_registry.py`（docs/07 §2.2 要求的"三处一致"之一，
  * ADR-0008）。在 Node 里解析 Python 源码去取 code 是脆弱的 —— 改个引号风格就悄悄
  * 少一个权限点，而少一个权限点的表现是「按钮该隐藏却还显示」，越权风险。
  * 所以这里直接 `python3 -c` 问 registry 要一份 JSON。
+ *
+ * ⚠️ **第 3 件事同理由，而且后果更隐蔽**：九个基础资料的写入模型是
+ * `app/modules/base/schemas.py::WRITE_MODELS`，每个都有各自的必填字段。若前端
+ * 另抄一份「哪些字段必填」，那就是 9 份真相 —— 后端给某个模型加一个必填字段时，
+ * 前端不会有任何提示，用户填完提交才被 `10001` 拒，而那时候他已经在第 3 页表单了。
+ * 所以必填清单**由后端出**（pydantic 的 `required`），前端只声明「这个字段用什么
+ * 控件、叫什么中文名」（那是后端不知道的界面口径）。
  *
  * 用法：
  *   node scripts/generate-frontend-contract.mjs            # 用已存在的 openapi.json
@@ -30,6 +38,7 @@ const BACKEND = resolve(REPO_ROOT, 'backend')
 const OPENAPI_JSON = resolve(BACKEND, 'openapi.json')
 const SCHEMA_DTS = resolve(ROOT, 'packages/shared/src/api/schema.d.ts')
 const PERMISSIONS_TS = resolve(ROOT, 'packages/shared/src/enums/permissions.ts')
+const BASE_DICT_TS = resolve(ROOT, 'packages/shared/src/enums/baseDictFields.ts')
 
 const BANNER = '// ⚠️ 本文件由 scripts/generate-frontend-contract.mjs 生成，请勿手改。'
 const BANNER_DOCS =
@@ -117,6 +126,90 @@ print(json.dumps({
         for r in ROLES
     ],
 }, ensure_ascii=False))
+`
+  const raw = execFileSync(pythonInterpreter(), ['-c', script], {
+    cwd: BACKEND,
+    encoding: 'utf8',
+    maxBuffer: 8 * 1024 * 1024,
+  })
+  return JSON.parse(raw)
+}
+
+/**
+ * 问后端要九个基础资料的**写入契约**（T-WEB-005 缺口③的闭环）。
+ *
+ * 出数据的不是 openapi.json 而是 `WRITE_MODELS` 直接反射：openapi 里这几个 POST 的
+ * body 是 `dict[str, Any]`（后端为了运行时决定模型，`router.py::_validate` 手工校验），
+ * 精确契约只放在 `x-request-schema` 里 —— 那是给文档看的扩展字段，FastAPI 不保证它
+ * 一直在。真相在 pydantic 模型上，就从那儿取。
+ */
+function readBaseDictContract() {
+  const script = `
+import json
+from decimal import Decimal
+from enum import Enum
+from types import UnionType
+from typing import Union, get_args, get_origin
+from uuid import UUID
+
+from app.modules.base.resources import RESOURCES
+from app.modules.base.schemas import WRITE_MODELS
+
+_SCALARS = {str: "string", bool: "bool", int: "int", Decimal: "decimal", UUID: "uuid"}
+_ACTIONS = ("create", "update", "disable", "delete", "export")
+
+
+def _split_optional(annotation):
+    """拆掉 \`X | None\`：返回 (X, 是否可空)。"""
+    origin = get_origin(annotation)
+    if origin is Union or origin is UnionType:
+        args = [arg for arg in get_args(annotation) if arg is not type(None)]
+        if len(args) != len(get_args(annotation)):
+            return args[0], True
+    return annotation, False
+
+
+def _type_of(annotation):
+    if isinstance(annotation, type) and issubclass(annotation, Enum):
+        return {"type": "enum", "values": [member.value for member in annotation]}
+    if get_origin(annotation) is list:
+        return {"type": "list"}
+    try:
+        return {"type": _SCALARS[annotation]}
+    except (KeyError, TypeError):
+        # 出现新类型时**炸出来**，而不是悄悄落成 string —— 那样界面会用文本框收一个
+        # 布尔或枚举，用户填什么后端都拒，而前端没有任何提示
+        raise SystemExit(f"未登记的字段类型：{annotation!r}（请在生成器里补映射）")
+
+
+def _write_spec(model):
+    fields, required = [], []
+    for name, info in model.model_fields.items():
+        inner, nullable = _split_optional(info.annotation)
+        entry = {"name": name, "nullable": nullable, **_type_of(inner)}
+        fields.append(entry)
+        if info.is_required():
+            required.append(name)
+    return {"required": required, "fields": fields}
+
+
+print(json.dumps(
+    {
+        resource.key: {
+            "key": resource.key,
+            "codeColumn": resource.path_column,
+            "nameColumn": resource.name_column,
+            "hasBuiltinFlag": resource.has_builtin_flag,
+            "allowPhysicalDelete": resource.allow_physical_delete,
+            "refCheckers": [checker.label for checker in resource.ref_checkers],
+            "permissions": {action: resource.permission(action) for action in _ACTIONS},
+            "create": _write_spec(WRITE_MODELS[resource.key][0]),
+            "patch": _write_spec(WRITE_MODELS[resource.key][1]),
+        }
+        for resource in RESOURCES
+    },
+    ensure_ascii=False,
+))
 `
   const raw = execFileSync(pythonInterpreter(), ['-c', script], {
     cwd: BACKEND,
@@ -277,10 +370,119 @@ async function generatePermissions(contract) {
   log(`permissions.ts 已生成（${permissions.length} 个权限点 / ${roles.length} 个角色）`)
 }
 
+/**
+ * 生成 `baseDictFields.ts`：九个基础资料的**写入契约**（路径参数列 / 写权限 /
+ * 必填字段 / 字段类型）。
+ *
+ * ## 为什么要生成而不是在前端声明
+ *
+ * 任务卡缺口③点的是这件事：九个资源的写入模型各有各的必填字段，前端若各写各的
+ * 空值判断，就有 9 份「哪些字段必填」的真相，而后端加一个必填字段时前端**没有任何
+ * 提示** —— 用户填完三页表单提交才被 `10001` 拒。所以必填清单由后端 pydantic 出，
+ * 前端只声明界面口径（中文名 / 控件类型），那是后端不可能知道的。
+ *
+ * ## 为什么这个文件长成「一个 JSON 对象字面量」
+ *
+ * 后端 `tests/modules/test_base_resource_registry.py` 要断言
+ * 「生成物 == 后端模型」。若这里发的是 TS 字面量（不带引号的 key、`as const` 之类），
+ * 那个断言就只能靠正则解析 TS —— 而正则解析生成物正是本仓已经踩过的坑
+ * （改个引号风格就悄悄少一项）。所以这里刻意让**对象体是合法 JSON**：
+ *   - `.prettierrc.json` 给本文件加了 `quoteProps: 'consistent'`（key 全部带引号）
+ *   - 同一处加了 `trailingComma: 'none'`（JSON 不容许尾逗号）
+ * 于是 `json.loads` 直接可用，守卫不依赖任何正则。
+ */
+async function generateBaseDictContract(contract) {
+  const lines = []
+  lines.push(BANNER)
+  lines.push(BANNER_DOCS)
+  lines.push('')
+  lines.push('/**')
+  lines.push(' * 九个基础资料资源的写入契约（docs/modules/01 §4；数据来自后端 `WRITE_MODELS`）。')
+  lines.push(' *')
+  lines.push(' * | 段 | 谁说了算 |')
+  lines.push(' * | --- | --- |')
+  lines.push(' * | `codeColumn` / `permissions` / `create` / `patch` | **后端**（本文件生成物） |')
+  lines.push(' * | 中文名、控件类型、表格列 | **前端**（`packages/admin/src/api/base.ts` 的注册表） |')
+  lines.push(' *')
+  lines.push(' * ⚠️ 必填字段清单只有一份，就在 `create.required` / `patch.required`。')
+  lines.push(' *    表单的必填红星与校验规则由它驱动，前端**不得**另写一份 —— 后端给某个')
+  lines.push(' *    模型加必填字段时，前端会立刻跟着变（重跑生成器即可），而不是让用户')
+  lines.push(' *    填完提交才被 `10001` 拒。')
+  lines.push(' */')
+  lines.push('')
+  lines.push('/** 字段类型。与后端 pydantic 注解一一对应（未登记的类型会让生成器直接失败）。 */')
+  lines.push('export type BaseDictFieldType =')
+  lines.push("  | 'string'")
+  lines.push("  | 'int'")
+  lines.push("  | 'decimal'")
+  lines.push("  | 'bool'")
+  lines.push("  | 'uuid'")
+  lines.push("  | 'enum'")
+  lines.push("  | 'list'")
+  lines.push('')
+  lines.push('export interface BaseDictField {')
+  lines.push('  /** 字段名 = 请求体里的 key，也是 `DictOut` 里的属性名。 */')
+  lines.push('  readonly name: string')
+  lines.push('  readonly type: BaseDictFieldType')
+  lines.push('  /** 允许 `null`（后端 `X | None = None`）。必填字段不会是 null。 */')
+  lines.push('  readonly nullable: boolean')
+  lines.push("  /** 仅 `type === 'enum'`：取值来自后端 PG enum，前端只做中文映射。 */")
+  lines.push('  readonly values?: readonly string[]')
+  lines.push('}')
+  lines.push('')
+  lines.push('export interface BaseDictWriteSpec {')
+  lines.push('  /** **必填字段清单**（pydantic 的 `required`）。表单的红星与校验都读它。 */')
+  lines.push('  readonly required: readonly string[]')
+  lines.push('  readonly fields: readonly BaseDictField[]')
+  lines.push('}')
+  lines.push('')
+  lines.push('export interface BaseDictContract {')
+  lines.push('  /** 资源 key，同时是 URL 前缀（`/api/v1/{key}`）。 */')
+  lines.push('  readonly key: string')
+  lines.push('  /** 路径参数用的业务编码列（§4.4：`/colors/{color_code}`，不是 UUID）。 */')
+  lines.push('  readonly codeColumn: string')
+  lines.push('  readonly nameColumn: string')
+  lines.push('  /** 带 `is_builtin` 列（字典表有，组织表没有）→ 界面显示「内置」角标。 */')
+  lines.push('  readonly hasBuiltinFlag: boolean')
+  lines.push('  /** 允许**物理删除**（字典表）还是纯软删 —— 决定删除确认框的措辞。 */')
+  lines.push('  readonly allowPhysicalDelete: boolean')
+  lines.push('  /** 引用检查器的界面名（`style_operations` 等）。空 = 不参与引用检查。 */')
+  lines.push('  readonly refCheckers: readonly string[]')
+  lines.push('  /** 各动作的权限点。分类与工序与默认的 `base:*` 不同（§4.4）。 */')
+  lines.push('  readonly permissions: Readonly<Record<')
+  lines.push("    'create' | 'update' | 'disable' | 'delete' | 'export',")
+  lines.push('    string')
+  lines.push('  >>')
+  lines.push('  readonly create: BaseDictWriteSpec')
+  lines.push('  readonly patch: BaseDictWriteSpec')
+  lines.push('}')
+  lines.push('')
+  lines.push(
+    'export const BASE_DICT_CONTRACT = ' +
+      JSON.stringify(contract, null, 2) +
+      ' as const satisfies Record<string, BaseDictContract>',
+  )
+  lines.push('')
+  lines.push('/** 资源 key 集合。前端注册表只能取这里的值（编译期即拦 typo）。 */')
+  lines.push('export type BaseDictKey = keyof typeof BASE_DICT_CONTRACT')
+  lines.push('')
+
+  mkdirSync(dirname(BASE_DICT_TS), { recursive: true })
+  const formatted = await formatWithPrettier(lines.join('\n'), BASE_DICT_TS)
+  writeFileSync(BASE_DICT_TS, formatted, 'utf8')
+  const resources = Object.keys(contract).length
+  const requiredCount = Object.values(contract).reduce(
+    (sum, item) => sum + item.create.required.length,
+    0,
+  )
+  log(`baseDictFields.ts 已生成（${resources} 个资源 / ${requiredCount} 个必填字段）`)
+}
+
 async function main() {
   await fetchOpenApi()
   generateSchema()
   await generatePermissions(readContract())
+  await generateBaseDictContract(readBaseDictContract())
 }
 
 main().catch((error) => {

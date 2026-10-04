@@ -118,6 +118,32 @@ export type PasswordResetRequest = ApiModel<'PasswordResetRequest'>
 /** 角色行（含权限点与已授予用户数）。 */
 export type RoleOut = ApiModel<'RoleOut'>
 
+// ---- 基础资料（T-WEB-005 的九个资源共用）----
+
+/**
+ * 基础资料行 = `DictOut` + `ref_count`（后端 `DictRow`）。
+ *
+ * ⚠️ **为什么行类型要在这里拼一次**：`GET /{resource}` 的 `response_model` 是
+ * `ApiResponse[dict[str, Any]]` —— 后端为了按运行时命中的资源选写入模型，收 body
+ * 时用了 `dict`，列表的 response_model 也跟着退化成 `dict`（`router.py` 的注释
+ * 解释了为什么不能写成 Union）。所以 openapi 里**拿不到行类型**，而
+ * `DictRow` 本身也没进 `components.schemas`（只出现在 `DictOut` 上）。
+ *
+ * 用 `ApiModel<'DictOut'>` 而不是重新描述一遍字段：字段名与可空性仍由生成物决定，
+ * 手抄一份的话后端把 `color_name` 改名成 `name`（REV-2026-10 第三批真发生过）时，
+ * 前端不会有任何提示 —— 症状是表格里一整列空白。
+ */
+export type BaseDictRow = ApiModel<'DictOut'> & {
+  /** 被引用次数；`null` = 该资源不参与引用检查（纯软删表）。 */
+  readonly ref_count: number | null
+}
+
+/** 停用结果（`POST /{resource}/{code}/disables`）。原因**必填**（docs/06 §5）。 */
+export type DisableOut = ApiModel<'DisableOut'>
+
+/** 删除结果（字典表真删时 `cascaded` = 级联删掉的码表成员数）。 */
+export type DeleteOut = ApiModel<'DeleteOut'>
+
 /** 新建角色。 */
 export type RoleCreate = ApiModel<'RoleCreate'>
 

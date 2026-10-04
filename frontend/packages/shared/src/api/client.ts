@@ -158,6 +158,48 @@ export interface ClientHooks {
 
 export type QueryValue = string | number | boolean | null | undefined
 
+/** 二进制下载的结果（docs/05 §9.1 导出）。 */
+export interface DownloadResult {
+  readonly blob: Blob
+  /** 服务端 `Content-Disposition` 里的文件名；取不到为 `null`（调用方自己起名）。 */
+  readonly filename: string | null
+  /** 服务端 `X-Row-Count`：本次导出**实际行数**。用于"导出 N 行"提示与核对。 */
+  readonly rowCount: number | null
+  readonly requestId: string | null
+}
+
+/**
+ * 从 `Content-Disposition` 里取文件名。
+ *
+ * ⚠️ 后端发的是 `attachment; filename="colors-20261004-120000.xlsx"`。取值失败时
+ *    返回 `null` 而不是空串 —— 调用方要靠 `null` 区分"服务端没给名字"（自己按
+ *    docs/05 §9.1 的 `{资源}_{筛选摘要}_{时间}.xlsx` 起名）与"名字就是空"这两种情况。
+ */
+export function parseContentDispositionFilename(header: string | null): string | null {
+  if (header === null) return null
+  // RFC 5987 的 `filename*=UTF-8''…` 优先：中文名在它里面，而 `filename="…"`
+  // 只能放 ASCII（后端目前的文件名是 ASCII，但别把这条写死成"一定没有"）
+  const extended = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(header)
+  if (extended?.[1] !== undefined) {
+    try {
+      return decodeURIComponent(extended[1].trim())
+    } catch {
+      // 非法百分号编码：退回引号里的那个
+    }
+  }
+  const quoted = /filename="([^"]*)"/i.exec(header)
+  if (quoted?.[1] !== undefined && quoted[1] !== '') return quoted[1]
+  const bare = /filename=([^;]+)/i.exec(header)
+  return bare?.[1]?.trim() ?? null
+}
+
+/** 解析 `X-Row-Count`。缺头或非法都当"不知道"（`null`），不猜。 */
+export function parseRowCount(header: string | null): number | null {
+  if (header === null) return null
+  const parsed = Number.parseInt(header, 10)
+  return Number.isNaN(parsed) ? null : parsed
+}
+
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   query?: Record<string, QueryValue>
@@ -252,6 +294,70 @@ export class ApiClient {
 
   delete<T>(path: string, options: Omit<RequestOptions, 'method'> = {}): Promise<T> {
     return this.request<T>(path, { ...options, method: 'DELETE' })
+  }
+
+  /**
+   * 下载二进制响应（Excel 导出，docs/05 §9.1）。
+   *
+   * ## 为什么单独一个方法而不是给 `get` 加个 `raw` 标志位
+   *
+   * `send()` 无条件把响应体当 `{code, message, data}` 解包，而 xlsx 是 zip 包 ——
+   * `JSON.parse` 必然失败，于是落到「服务器返回了非预期的内容」那条分支。给 `get`
+   * 加标志位的话，JSON 那条路径上就要到处判断它，而导出失败与业务失败要报的文案
+   * 完全不同（前者是"下载失败，请重试"，后者是业务原因），分开更不容易写错。
+   *
+   * ⚠️ 仍然要带 access token、仍然要处理 401：导出按钮点下去拿到 401 而界面毫无
+   *    反应，用户只会以为"导出坏了"，然后反复点同一个按钮。
+   */
+  async download(
+    path: string,
+    options: Omit<RequestOptions, 'method' | 'body'> = {},
+  ): Promise<DownloadResult> {
+    const send = async (): Promise<Response> => {
+      const token = this.tokens.get()
+      const headers: Record<string, string> = { Accept: '*/*', ...options.headers }
+      if (token !== null) headers['Authorization'] = `Bearer ${token}`
+      return this.fetchImpl(`${this.baseURL}${path}${buildQuery(options.query)}`, {
+        method: 'GET',
+        headers,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      })
+    }
+
+    let response = await send()
+    // 与 `send()` 一样**只重放一次**：refresh 也 401 就走下面的失败分支，
+    // 绝不再来一轮，否则两个并发导出请求会互相把 refresh 结果冲掉
+    if (response.status === 401) {
+      if ((await this.refreshOnce()) !== null) response = await send()
+    }
+
+    if (!response.ok) {
+      const requestId = response.headers.get('X-Request-ID')
+      const body = await response.text()
+      let code = 0
+      let message = `导出失败（HTTP ${response.status}），请稍后重试`
+      try {
+        const parsed: unknown = JSON.parse(body)
+        if (typeof parsed === 'object' && parsed !== null) {
+          const candidate = parsed as { code?: unknown; message?: unknown }
+          if (typeof candidate.code === 'number') code = candidate.code
+          if (typeof candidate.message === 'string') message = candidate.message
+        }
+      } catch {
+        // 非 JSON（网关 502 / nginx 维护页）：保留上面那句含状态码的文案，
+        // 绝不把 nginx 的 HTML 甩给用户（docs/06 §5）
+      }
+      const error = new ApiError(code, message, { requestId, status: response.status })
+      this.reportError(error)
+      throw error
+    }
+
+    return {
+      blob: await response.blob(),
+      filename: parseContentDispositionFilename(response.headers.get('Content-Disposition')),
+      rowCount: parseRowCount(response.headers.get('X-Row-Count')),
+      requestId: response.headers.get('X-Request-ID'),
+    }
   }
 
   /** 发一次请求并解包响应；401 时 refresh + 重放一次。 */

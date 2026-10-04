@@ -170,3 +170,20 @@ export function formatDate(iso: string | null | undefined): string {
   if (parsed === null) return '-'
   return `${parsed.year}-${pad(parsed.month, 2)}-${pad(parsed.day, 2)}`
 }
+
+/**
+ * 紧凑时间戳 `20261004-1430`（**业务时区**）。
+ *
+ * 用途只有一个：导出文件名（docs/05 §9.1「`{资源}_{筛选摘要}_{YYYYMMDD_HHmm}.xlsx`」）。
+ * 抽出来而不是在导出逻辑里手写 `getFullYear()` —— 那样拿到的是**浏览器所在时区**，
+ * 而文件名是给工厂内部对账用的，必须与库里那条记录的时间口径一致。
+ */
+export function formatCompactStamp(when: Date = new Date()): string {
+  const stamp = when.getTime()
+  const parsed = Number.isNaN(stamp) ? null : parts(new Date(stamp).toISOString())
+  if (parsed === null) return ''
+  return (
+    `${parsed.year}${pad(parsed.month, 2)}${pad(parsed.day, 2)}` +
+    `-${pad(parsed.hour, 2)}${pad(parsed.minute, 2)}`
+  )
+}

@@ -6,5 +6,16 @@
   "trailingComma": "all",
   "arrowParens": "always",
   "endOfLine": "lf",
-  "vueIndentScriptAndStyle": false
+  "vueIndentScriptAndStyle": false,
+  "overrides": [
+    {
+      "_comment": "生成物：对象体必须是**合法 JSON** —— `singleQuote:false` 保住 JSON.stringify 的双引号、`quoteProps:preserve` 保住 key 的引号、`trailingComma:none` 不加 JSON 不容许的尾逗号。后端 tests/modules/test_base_resource_registry.py 用 json.loads 直接读它做一致性断言（正则解析生成物正是本仓踩过的坑）。生成器会自动读取本覆盖。",
+      "files": "packages/shared/src/enums/baseDictFields.ts",
+      "options": {
+        "singleQuote": false,
+        "quoteProps": "preserve",
+        "trailingComma": "none"
+      }
+    }
+  ]
 }

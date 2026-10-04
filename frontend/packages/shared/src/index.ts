@@ -15,6 +15,8 @@ export {
   buildQuery,
   createSessionTokenStorage,
   isPageResult,
+  parseContentDispositionFilename,
+  parseRowCount,
 } from './api/client.ts'
 export type {
   ApiEnvelope,
@@ -22,6 +24,7 @@ export type {
   ApiResponseOf,
   ClientHooks,
   ClientOptions,
+  DownloadResult,
   PageQuery,
   PageResult,
   QueryValue,
@@ -51,9 +54,19 @@ export {
 } from './enums/permissions.ts'
 export type { PermissionCode, RoleCode } from './enums/permissions.ts'
 
+export { BASE_DICT_CONTRACT } from './enums/baseDictFields.ts'
+export type {
+  BaseDictContract,
+  BaseDictField,
+  BaseDictFieldType,
+  BaseDictKey,
+  BaseDictWriteSpec,
+} from './enums/baseDictFields.ts'
+
 // ---- 格式化 ----
 export {
   BUSINESS_TIMEZONE,
+  formatCompactStamp,
   formatDate,
   formatDateTime,
   formatMoney,
@@ -67,7 +80,10 @@ export type {
   ActiveFilter,
   ApiEnvelope as ApiEnvelopeType,
   AuthChannel,
+  BaseDictRow,
   ChangePasswordRequest,
+  DeleteOut,
+  DisableOut,
   DisableUserRequest,
   EnableUserRequest,
   ListQuery,
