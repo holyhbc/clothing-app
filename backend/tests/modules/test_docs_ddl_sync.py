@@ -117,12 +117,57 @@ COMMON_COLUMNS = frozenset(
 #: - **允许 PG 枚举类型**（``size_class`` / ``data_scope`` / ``doc_status``）：
 #:   它们是 ``CREATE TYPE`` 建的枚举，列类型就是枚举名本身。
 #: - 大小写不敏感：``UNIQUE`` 之类靠 ``[A-Za-z_]`` 排除不掉，必须靠类型白名单。
+#: 「列名 + 类型」的类型部分。
+#:
+#: 除了内建类型，还要匹配**任意裸标识符**当类型 —— 本仓的自定义类型都是 PG 枚举
+#: （``piecework_log_type`` / ``cutting_entry_mode`` …），而其中一部分（P2/P1 的表）
+#: **模型里还没有**，从模型抽不到。少覆盖一个的后果是抽不出那一列，于是
+#: 满屏假失败；而假失败多了，人会开始习惯性忽略这条断言，那时守卫就白写了。
+#: 一个合法标识符（列名必须长这样）。
+_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
 _COLUMN_NAME_PATTERN = re.compile(
-    r"[a-z_][a-z0-9_]*\s+"
-    r"(?:uuid|varchar|boolean|integer|numeric|text|timestamptz|time|date|inet|jsonb"
-    r"|int|bigint|smallint|size_class|data_scope|doc_status)\b",
+    r"[a-z_][a-z0-9_]*\s+(?:[a-z_][a-z0-9_]*)\b",
     re.IGNORECASE,
 )
+
+
+def _looks_like_a_column(fragment: str) -> str | None:
+    """片段若是「列名 + 类型」就返回列名，否则 ``None``。
+
+    ⚠️ 排除 ``CONSTRAINT`` / ``UNIQUE`` 这类**表级**定义：它们同样是「词 + 词」的形状。
+    """
+    fragment = fragment.strip()
+    if not fragment or fragment.upper() in _SQL_KEYWORDS:
+        return None
+    # ⚠️ 第一个 token 必须是**合法标识符**：``numeric(32,0)`` 被逗号切成
+    # ``numeric(32`` 与 ``0)`` 两段，后者若不校验就成了一个叫 ``0)`` 的"列"。
+    # 那不是假失败那么简单 —— 它会让 TD-02 报出一个**根本不存在**的列名，
+    # 而读报错的人得先想到「逗号切分」这一层才知道该看哪里。
+    if _IDENTIFIER.fullmatch(fragment.split()[0]) is None:
+        return None
+    match = _COLUMN_NAME_PATTERN.search(fragment)
+    if match is None:
+        return None
+    name = fragment.split()[0]
+    if name.upper() in _SQL_KEYWORDS or name.startswith(("uq_", "ck_", "fk_", "idx_")):
+        return None
+    return name
+
+
+def _strip_comments(sql: str) -> str:
+    """把 ``--`` 行注释换成等长空格（保持位置不变，便于算「之前声明了什么」）。"""
+    return re.sub(r"--[^\n]*", lambda m: " " * len(m.group(0)), sql)
+
+
+def _strip_literals(sql: str) -> str:
+    """把字符串字面量与双引号标识符换成等长空格。
+
+    ⚠️ 不做这一步的话 ``CHECK (log_type = 'REVERSAL')`` 里的 ``REVERSAL``
+    会被当成一个「未声明的列」，守卫于是报一个**根本不存在**的问题 ——
+    而假失败多了，人就会开始习惯性地忽略这条断言，那时守卫就白写了。
+    """
+    return re.sub(r"'[^']*'|`[^`]*`", lambda m: " " * len(m.group(0)), sql)
 
 
 def _parse_columns(body: str) -> set[str]:
@@ -141,15 +186,12 @@ def _parse_columns(body: str) -> set[str]:
     # 注释里带数字与缩进时，切出来的片段会跨行匹配到下一个真列的「名字 + 类型」，
     # 于是把注释里的词当成列名（实测收进来过一个叫 ``--`` 的"列"）。
     # 注释里的信息由人读，机器只需要知道它不是列。
-    body = re.sub(r"--[^\n]*", "", body)
-    columns: set[str] = set()
-    for fragment in body.split(","):
-        # 每段取**第一个**「名字 + 类型」的匹配：`DEFAULT gen_random_uuid()` 这类
-        # 表达式里不会出现第二个「名字 + 已知类型」的形状
-        match = _COLUMN_NAME_PATTERN.search(fragment)
-        if match is not None:
-            columns.add(fragment.strip().split()[0])
-    return columns
+    body = _strip_literals(_strip_comments(body))
+    return {
+        name
+        for name in (_looks_like_a_column(fragment) for fragment in body.split(","))
+        if name is not None
+    }
 
 
 def _model_tables() -> dict[str, set[str]]:
@@ -284,6 +326,277 @@ def test_docs_04_section7_columns_match_the_model(table: str) -> None:
         f"{sorted(model_columns - columns)}。\n"
         f"补上；公共字段（04 §2）不用重复抄，但**业务字段**必须列全。"
     )
+
+
+# ---------------------------------------------------------------- 引用完整性
+
+#: SQL 关键字（大写或全小写形式都见得到）。抽标识符时要排除，否则 ``CHECK (x IS NOT NULL)``
+#: 里的 ``NULL`` 会被当成列名。
+_SQL_KEYWORDS = frozenset(
+    {
+        "NULL",
+        "NOT",
+        "AND",
+        "OR",
+        "IS",
+        "IN",
+        "EXISTS",
+        "BETWEEN",
+        "LIKE",
+        "ILIKE",
+        "TRUE",
+        "FALSE",
+        "CHECK",
+        "CONSTRAINT",
+        "PRIMARY",
+        "UNIQUE",
+        "FOREIGN",
+        "REFERENCES",
+        "DEFAULT",
+        "EXCLUDE",
+        "DEFERRABLE",
+        "INITIALLY",
+        "AS",
+        "CASE",
+        "WHEN",
+        "THEN",
+        "ELSE",
+        "END",
+    }
+)
+
+
+def _blocks() -> list[str]:
+    """:func:`_documented_ddl` 的块级版本：``(表名声明顺序里的表, 整块 SQL)``。
+
+    ⚠️ 要**整块**而不是单个 ``CREATE TABLE``：块里还有 ``ALTER TABLE`` /
+    ``CREATE INDEX`` / ``CREATE TYPE``，而「某个约束引用了同块后面才声明的列」
+    这类缺陷只有看整块才发现得了（`cutting_orders` 就是这样）。
+    """
+    text = DOC_04.read_text(encoding="utf-8")
+    section = text.split("## 7. 关键表结构约定")[1].split("\n## 8.")[0]
+    return re.findall(r"```sql\n(.*?)```", section, re.DOTALL)
+
+
+def _declared_before(block: str, position: int) -> set[str]:
+    """``position`` 之前（含所在 ``CREATE TABLE`` 的括号内）已经声明的列名。
+
+    ⚠️ 「之前」是这条守卫的全部意义：``CHECK (hands_total > 0)`` 引用的列必须在
+    它**之前**声明过 —— PG 建表时先解析约束再落列，所以「后面才声明」等于照抄
+    建表直接失败。
+
+    ⚠️ **不能只取「已闭合的 CREATE TABLE」**：约束就写在建表括号**里面**，
+    到它为止那张表还没闭合。所以要分两路取：
+
+    1. 从**最近一次** ``CREATE TABLE``（或 ``ALTER TABLE``）起到 ``position`` 的片段 ——
+       这一段含同一张表里排在约束之前的列。用 ``rfind`` 而不是从头扫，是为了
+       **不把上一张表的列算进来**（那会让守卫漏报：``b(x int, CHECK (y > 0))``
+       里若前面有张表含 ``y``，就看不出 ``y`` 其实没声明）。
+    2. ``position`` 之前的**所有** ``ALTER TABLE ... ADD COLUMN`` ——
+       不管它在哪个位置，因为「前面某条 ALTER 加的列」当然也算已声明。
+    """
+    prefix = block[:position]
+    start = max(
+        prefix.rfind("CREATE TABLE"),
+        prefix.rfind("ALTER TABLE"),
+        prefix.rfind("CREATE TYPE"),
+    )
+    head = prefix[start:] if start >= 0 else prefix
+    declared = _parse_columns(head)
+    declared |= set(re.findall(r"ALTER TABLE\s+\w+\s+ADD COLUMN (?:IF NOT EXISTS )?(\w+)", prefix))
+    return declared
+
+
+def _check_references() -> list[str]:
+    """返回所有「``CHECK`` 引用了此时还没声明的列」的描述（空 = 全过）。"""
+    known = set(COMMON_COLUMNS)
+    for columns in _model_tables().values():
+        known |= columns
+    problems: list[str] = []
+    for raw in _blocks():
+        # ⚠️ **先剥注释**再找 CHECK：``CHECK (hands_total > 0)  -- 见下`` 后面紧跟的
+        # 注释里可能有别的语句，按原文匹配会把 ``); ALTER TABLE ...`` 一起吞进表达式，
+        # 报出来的「引用的列」完全无关（实测报过一条 `ALTER TABLE cutting_orders A`）。
+        block = _strip_comments(raw)
+        for match in re.finditer(r"CHECK\s*\((.*?)\)(?:\s*[,)]|$)", block, re.DOTALL):
+            available = known | _declared_before(block, match.start())
+            for token in re.findall(
+                r"(?<![.\w:])([A-Za-z_][A-Za-z0-9_]*)", _strip_literals(match.group(1))
+            ):
+                upper = token.upper()
+                if upper in _SQL_KEYWORDS or token in available:
+                    continue
+                # 后面跟 ``(`` 的是函数调用（``length(x) > 0``）
+                after = block[match.start(1) + match.group(1).index(token) + len(token) :]
+                if after.lstrip().startswith("("):
+                    continue
+                problems.append(f"CHECK ({match.group(1)[:60]}) 里的 `{token}` 不是已声明的列")
+    return problems
+
+
+#: **被外键引用、但 04 §7 里没有 DDL** 的表 → 值是「缺到什么程度」。
+#:
+#: ⚠️ 这不是白名单式的放行，每一条都是一个**已登记的设计缺口**，两个性质不同：
+#:
+#: - ``字段表``：modules 里有完整字段表，只是没搬进 04 §7。规范分裂但**信息不缺**。
+#: - ``只有一行描述``：连字段表都没有 —— 照现在这些文字**无法建表**。
+#:
+#: 分开标注是因为补的代价完全不同：前者是搬运，后者要**先设计**。
+#: 两条都登记在 docs/12（`bundling_*` 见 L-070、`materials` / `suppliers` 见 L-071），
+#: 闭环后从这里删掉 —— 守卫会要求删，而那是它生效的证明。
+TABLES_WITHOUT_DDL: dict[str, str] = {
+    # modules/03-打菲.md §3.1 有字段表；04 §7 号称是关键表结构约定却没有它们
+    "bundling_orders": "字段表",
+    "bundling_order_lines": "字段表",
+    # modules/06 §147 / modules/01 §343 只有散落的字段描述，连字段表都没有
+    "materials": "只有一行描述",
+    "suppliers": "只有一行描述",
+}
+
+
+def _check_foreign_keys() -> list[str]:
+    """返回所有「``REFERENCES`` 指向了任何规范里都没定义的表」（空 = 全过）。"""
+    documented_tables = set(_documented_ddl())
+    known_tables = set(_model_tables()) | documented_tables | set(TABLES_WITHOUT_DDL)
+    problems: list[str] = []
+    for raw in _blocks():
+        for target in re.findall(r"REFERENCES\s+(\w+)", _strip_comments(raw)):
+            if target in TABLES_WITHOUT_DDL:
+                continue  # 已登记的设计缺口，由 TD2-05 单独守
+            if target not in known_tables:
+                problems.append(f"REFERENCES {target}：04 §7 里既没有这张表、模型里也没有")
+    return problems
+
+
+def test_docs_04_check_constraints_only_reference_declared_columns() -> None:
+    """TD2-01：``CHECK`` 里引用的列必须**在该 ``CHECK`` 之前**声明过。
+
+    ⚠️ 这条与 TD-02（列名双向一致）是**两个正交**的缺陷类型。T-DOCS-001 只抓后者，
+    而 ``04 §7.1`` 的 ``cutting_orders`` 正好是前者的活标本：
+
+    .. code-block:: sql
+
+        CREATE TABLE cutting_orders (
+            ...
+            CONSTRAINT ck_cutting_orders_hand CHECK (hands_total > 0)
+        );
+        ALTER TABLE cutting_orders ADD COLUMN hands_total integer NOT NULL DEFAULT 0;
+
+    列名对得上（TD-02 过），但 PG 建表时**先解析约束**，于是报
+    ``column "hands_total" does not exist``。这类缺陷只会在**真去建那张表**的那张卡上
+    才暴露 —— 而那张卡往往是三天后才开工的卡。
+    """
+    problems = _check_references()
+    assert not problems, "docs/04 §7 的 CHECK 引用了当时还没声明的列：\n  " + "\n  ".join(problems)
+
+
+def test_docs_04_foreign_keys_point_at_documented_tables() -> None:
+    """TD2-02：``REFERENCES`` 的目标表必须在规范里**有 DDL**。
+
+    ⚠️ 分成两条断言而不是混成一条，是因为两类缺口的**严重程度差一个量级**：
+
+    - ``TABLES_WITHOUT_DDL`` 里的表（已登记）→ 不让这条红，但**列出来**。
+      它们是设计缺口，闭环时间取决于排期，不该让守卫天天红。
+    - 不在任何清单里的表 → **直接红**。那意味着有人新引用了一张谁都没定义的表，
+      而那通常是打错了一个表名（比缺表更常见也更容易犯）。
+    """
+    problems = [item for item in _check_foreign_keys() if not item.startswith("KNOWN-GAP")]
+    assert not problems, "docs/04 §7 的外键指向了谁都没定义的表：\n  " + "\n  ".join(problems)
+
+
+def test_tables_without_ddl_are_registered_gaps() -> None:
+    """TD2-05：``TABLES_WITHOUT_DDL`` 里每一张表**都必须真的被引用过**。
+
+    ⚠️ 看着多此一举，其实防的是最容易发生的一种退化：某天有人补了
+    ``materials`` 的 DDL，忘了从这个 dict 里删掉 —— 于是那张表从此**免检**，
+    文档写错列名也不会有人发现。
+
+    代价极小（一条 6 行的守卫），而它保证「登记表不会烂掉」。
+    """
+    referenced = set()
+    for block in _blocks():
+        referenced |= set(re.findall(r"REFERENCES\s+(\w+)", _strip_comments(block)))
+    for table in sorted(TABLES_WITHOUT_DDL):
+        assert table in referenced, (
+            f"{table} 在 TABLES_WITHOUT_DDL 里但 §7 已经没有外键引用它 —— "
+            f"要么补了 DDL（那就从这里删掉），要么改掉这张表"
+        )
+
+
+def test_reference_guards_can_fail() -> None:
+    """TD2-03 / TD2-04：反验两条引用守卫都会红。
+
+    ⚠️ 注入的是**原文里就有的形状**（一行 ``ALTER TABLE ADD COLUMN`` 与一处
+    ``REFERENCES``），而不是造一段人造 SQL —— 人造 SQL 的失败往往是因为写法
+    不符合正则，而那证明不了正则抓得住真实文档里的问题。
+    """
+    block = next(
+        (item for item in _blocks() if "ck_cutting_orders_hand" in item),
+        None,
+    )
+    assert block is not None, "反验失败：04 §7 里找不到 cutting_orders 的 DDL 块"
+
+    # TD2-03：把 hands_total 的**声明**抽掉（模拟「声明写在 CHECK 之后」那个缺陷）
+    stripped = re.sub(
+        r"^\s*hands_total\s+integer[^,]*,",
+        "",
+        block,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    assert stripped != block, "反验失败：正则没能定位到 hands_total 的声明"
+    assert _problems_of(stripped), (
+        "反验失败：抽掉 hands_total 的声明之后守卫没有报出来 —— "
+        "也就是说 TD2-01 在真实场景下抓不住这一类缺陷"
+    )
+    # 位置敏感：把声明挪到 CHECK **之后**（就是 §7.1 原先那个缺陷的形状）也必须被抓
+    moved = stripped.replace(
+        "CONSTRAINT ck_cutting_orders_hand",
+        "ALTER TABLE cutting_orders ADD COLUMN hands_total integer;\n"
+        "CONSTRAINT ck_cutting_orders_hand",
+        1,
+    )
+    assert _problems_of(moved), (
+        "反验失败：把声明挪到 CHECK 之后守卫却没报 —— 它只看「有没有声明过」"
+    )
+
+    # TD2-04：把一个外键指向改成不存在的表
+    broken_fk = block.replace(
+        "REFERENCES styles(style_no)", "REFERENCES no_such_table(style_no)", 1
+    )
+    if broken_fk == block:
+        broken_fk = block.replace("REFERENCES styles(id)", "REFERENCES no_such_table(id)", 1)
+    assert broken_fk != block, "反验失败：没找到 cutting_orders 里的一处外键"
+    assert _foreign_key_problems_of(broken_fk), "反验失败：改坏外键之后守卫没有报"
+
+
+def _problems_of(block: str) -> list[str]:
+    """:func:`_check_references` 的单块版本（反验用）。"""
+    known = set(COMMON_COLUMNS)
+    for columns in _model_tables().values():
+        known |= columns
+    problems: list[str] = []
+    for match in re.finditer(r"CHECK\s*\((.*?)\)(?:\s*[,)]|$)", block, re.DOTALL):
+        available = known | _declared_before(block, match.start())
+        for token in re.findall(
+            r"(?<![.\w:])([A-Za-z_][A-Za-z0-9_]*)", _strip_literals(match.group(1))
+        ):
+            if token.upper() in _SQL_KEYWORDS or token in available:
+                continue
+            if (
+                block[match.start(1) + match.group(1).index(token) + len(token) :]
+                .lstrip()
+                .startswith("(")
+            ):
+                continue
+            problems.append(token)
+    return problems
+
+
+def _foreign_key_problems_of(block: str) -> list[str]:
+    """:func:`_check_foreign_keys` 的单块版本（反验用）。"""
+    known = set(_model_tables()) | set(_documented_ddl()) | set(TABLES_WITHOUT_DDL)
+    return [t for t in re.findall(r"REFERENCES\s+(\w+)", block) if t not in known]
 
 
 def test_the_guards_themselves_can_fail() -> None:
