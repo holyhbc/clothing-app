@@ -182,9 +182,7 @@ async def test_business_tables_still_reject_delete(db_session: AsyncSession, tab
         "role_permissions",
     ],
 )
-async def test_delete_whitelist_tables_allow_delete(
-    db_session: AsyncSession, table: str
-) -> None:
+async def test_delete_whitelist_tables_allow_delete(db_session: AsyncSession, table: str) -> None:
     """白名单**恰好**是这 6 张表 —— 正面断言。
 
     `WHERE false` 让它真的执行一条 DELETE 语句但不删任何行，
@@ -218,7 +216,9 @@ async def test_join_tables_allow_delete(ddl_session: AsyncSession) -> None:
     await ddl_session.commit()
 
     deleted = await ddl_session.execute(
-        text("WITH d AS (DELETE FROM user_roles WHERE role_id = :rid RETURNING 1) SELECT count(*) FROM d"),
+        text(
+            "WITH d AS (DELETE FROM user_roles WHERE role_id = :rid RETURNING 1) SELECT count(*) FROM d"
+        ),
         {"rid": str(role.id)},
     )
     assert int(deleted.scalar() or 0) == 1

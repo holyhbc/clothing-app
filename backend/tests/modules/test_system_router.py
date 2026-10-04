@@ -173,9 +173,7 @@ async def test_disable_user_requires_reason(client, auth_headers, db_session):
     assert response.status_code == 422
 
 
-async def test_disable_user_writes_log_and_revokes_refresh_tokens(
-    client, auth_headers, db_session
-):
+async def test_disable_user_writes_log_and_revokes_refresh_tokens(client, auth_headers, db_session):
     """停用要写日志、且立刻吊销 refresh token。"""
     from app.modules.auth.models import AuthRefreshToken
 
@@ -386,9 +384,7 @@ async def test_replace_permissions_takes_effect_immediately(client, auth_headers
     after = await client.get(f"{PREFIX}/roles", headers=victim_headers)
     assert after.status_code == 200
     # 旧权限点真的没了
-    assert (
-        await client.get(f"{PREFIX}/users", headers=victim_headers)
-    ).status_code == 403
+    assert (await client.get(f"{PREFIX}/users", headers=victim_headers)).status_code == 403
 
 
 async def test_replace_permissions_writes_document_log(client, auth_headers, db_session):
@@ -407,10 +403,16 @@ async def test_replace_permissions_writes_document_log(client, auth_headers, db_
     )
 
     logs = (
-        await db_session.execute(
-            select(DocumentLog).where(DocumentLog.doc_type == "Role", DocumentLog.doc_id == role.id)
+        (
+            await db_session.execute(
+                select(DocumentLog).where(
+                    DocumentLog.doc_type == "Role", DocumentLog.doc_id == role.id
+                )
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(logs) == 1
     assert logs[0].changed_fields is not None
     assert logs[0].changed_fields["added"] == ["system:log:view"]
@@ -468,7 +470,10 @@ async def test_role_list_omits_soft_deleted(client, auth_headers, db_session):
         json={"reason": "该角色不再使用，回收其权限"},
     )
 
-    codes = {item["code"] for item in (await client.get(f"{PREFIX}/roles", headers=headers)).json()["data"]}
+    codes = {
+        item["code"]
+        for item in (await client.get(f"{PREFIX}/roles", headers=headers)).json()["data"]
+    }
     assert "gone_role" not in codes
     options = (await client.get(f"{PREFIX}/roles/options", headers=headers)).json()["data"]
     assert "gone_role" not in {item["value"] for item in options}

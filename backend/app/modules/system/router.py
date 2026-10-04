@@ -67,9 +67,7 @@ def _require(ctx: AuthContext, permission: str, action: str) -> None:
     而错误文案是通用的"无操作权限"。这里能给出**具体动作**，用户报错时知道该找谁。
     """
     if not ctx.has(permission):
-        raise BusinessError(
-            ErrorCode.PERMISSION_DENIED, f"你没有{action}的权限，请联系管理员开通"
-        )
+        raise BusinessError(ErrorCode.PERMISSION_DENIED, f"你没有{action}的权限，请联系管理员开通")
 
 
 def _users(session: AsyncSession, ctx: AuthContext) -> SystemUserService:

@@ -116,9 +116,7 @@ class BuiltinRestoreService:
         用户点了按钮却看到"已恢复 0 条"，会以为是 bug。
         """
         if not (permissions or roles or dicts):
-            raise BusinessError(
-                ErrorCode.MISSING_BUSINESS_PARAM, "请至少勾选一类要恢复的内置数据"
-            )
+            raise BusinessError(ErrorCode.MISSING_BUSINESS_PARAM, "请至少勾选一类要恢复的内置数据")
 
         before = await self.list_missing()
 
@@ -145,7 +143,9 @@ class BuiltinRestoreService:
             if dicts:
                 for table, codes in before.dicts.items():
                     if codes:
-                        await clear_tombstones(conn, codes, DICT_DOC_TYPES[table], **self._operator())
+                        await clear_tombstones(
+                            conn, codes, DICT_DOC_TYPES[table], **self._operator()
+                        )
                 dict_detail = await seed_dict_library(conn)
 
         return BuiltinRestoreResult(
@@ -155,6 +155,7 @@ class BuiltinRestoreService:
             restored_dicts=sum(dict_detail.values()),
             dict_detail=dict_detail,
         )
+
 
 __all__ = [
     "DICT_TABLES",

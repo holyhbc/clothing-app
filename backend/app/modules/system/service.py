@@ -234,7 +234,14 @@ class SystemUserService:
             )
         # ⚠️ **不允许改工号**：它被 document_logs.doc_no 引用，也是登录凭据。
         changes: dict[str, Any] = {}
-        for field in ("name", "data_scope", "workshop_id", "group_no", "must_change_password", "remark"):
+        for field in (
+            "name",
+            "data_scope",
+            "workshop_id",
+            "group_no",
+            "must_change_password",
+            "remark",
+        ):
             value = getattr(payload, field)
             if value is None:
                 continue
@@ -420,9 +427,7 @@ class SystemUserService:
         found = set(
             (
                 await self.session.execute(
-                    select(Role.code).where(
-                        Role.code.in_(role_codes), Role.deleted_at.is_(None)
-                    )
+                    select(Role.code).where(Role.code.in_(role_codes), Role.deleted_at.is_(None))
                 )
             )
             .scalars()
@@ -436,14 +441,14 @@ class SystemUserService:
         if not role_codes:
             return []
         return list(
-            (
-                await self.session.execute(select(Role.id).where(Role.code.in_(role_codes)))
-            )
+            (await self.session.execute(select(Role.id).where(Role.code.in_(role_codes))))
             .scalars()
             .all()
         )
 
-    async def _replace_user_roles(self, user_id: UUID, role_ids: list[UUID], *, reason: str) -> None:
+    async def _replace_user_roles(
+        self, user_id: UUID, role_ids: list[UUID], *, reason: str
+    ) -> None:
         await self.session.execute(delete(UserRole).where(UserRole.user_id == user_id))
         for role_id in role_ids:
             self.session.add(UserRole(user_id=user_id, role_id=role_id))
@@ -509,8 +514,6 @@ class SystemUserService:
             "请先建另一个管理员并授予 system:role:manage",
         )
 
-
-
     def _duplicate_user(self, exc: IntegrityError) -> BusinessError:
         text = str(exc.orig) if exc.orig is not None else str(exc)
         if "uq_users_employee_no" in text or "employee_no" in text:
@@ -553,11 +556,11 @@ class SystemRoleService:
         rows = list((await self.session.execute(stmt.order_by(Role.code.asc()))).scalars().all())
         perms = await self._permissions_by_role([row.id for row in rows])
         counts = await self._user_counts([row.id for row in rows])
-        return [
-            self._out(row, perms.get(row.id, []), counts.get(row.id, 0)) for row in rows
-        ]
+        return [self._out(row, perms.get(row.id, []), counts.get(row.id, 0)) for row in rows]
 
-    async def role_options(self, keyword: str | None, size: int, offset: int) -> list[dict[str, Any]]:
+    async def role_options(
+        self, keyword: str | None, size: int, offset: int
+    ) -> list[dict[str, Any]]:
         if offset > MAX_OFFSET:
             raise BusinessError(ErrorCode.PARAM_INVALID, "offset 过大，请改用关键字搜索")
         stmt = select(Role).where(Role.deleted_at.is_(None)).order_by(Role.code.asc())
@@ -800,9 +803,7 @@ class SystemRoleService:
         if not codes:
             return []
         return list(
-            (
-                await self.session.execute(select(Permission.id).where(Permission.code.in_(codes)))
-            )
+            (await self.session.execute(select(Permission.id).where(Permission.code.in_(codes))))
             .scalars()
             .all()
         )
@@ -810,9 +811,7 @@ class SystemRoleService:
     async def _replace_permissions(
         self, role_id: UUID, permission_ids: list[UUID], *, reason: str
     ) -> None:
-        await self.session.execute(
-            delete(RolePermission).where(RolePermission.role_id == role_id)
-        )
+        await self.session.execute(delete(RolePermission).where(RolePermission.role_id == role_id))
         for permission_id in permission_ids:
             self.session.add(RolePermission(role_id=role_id, permission_id=permission_id))
         await self.session.flush()
@@ -830,8 +829,7 @@ class SystemRoleService:
         if int(await self.session.scalar(others) or 0) > 1:
             return
         admins = await self.session.scalar(
-            select(func.count())
-            .select_from(
+            select(func.count()).select_from(
                 select(UserRole.user_id)
                 .join(User, User.id == UserRole.user_id)
                 .where(User.is_active.is_(True), User.deleted_at.is_(None))

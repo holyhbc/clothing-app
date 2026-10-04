@@ -123,7 +123,9 @@ class RoleCreate(BaseModel):
 
     code: Annotated[
         str,
-        Field(min_length=1, max_length=32, pattern=r"^[a-z][a-z0-9_]*$", description="小写字母开头"),
+        Field(
+            min_length=1, max_length=32, pattern=r"^[a-z][a-z0-9_]*$", description="小写字母开头"
+        ),
     ]
     name: Annotated[str, Field(min_length=1, max_length=64)]
     data_scope: DataScope = Field(default=DataScope.SELF, description="建号时的默认数据范围")

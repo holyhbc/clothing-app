@@ -145,12 +145,16 @@ async def test_restore_writes_audit_log(client, auth_headers, db_session):
     assert restored.status_code == 200, restored.json()
 
     logs = (
-        await db_session.execute(
-            select(DocumentLog).where(
-                DocumentLog.doc_type == "Color", DocumentLog.doc_no == "GRY"
+        (
+            await db_session.execute(
+                select(DocumentLog).where(
+                    DocumentLog.doc_type == "Color", DocumentLog.doc_no == "GRY"
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     restores = [log for log in logs if log.action == "RESTORE"]
     assert restores, [log.action for log in logs]
     # ⚠️ CLI 调用时 operator_id 落随机 UUID、operator_name 记成 'restore_builtin'
@@ -180,12 +184,10 @@ async def test_role_and_permission_restores_are_selectable(client, auth_headers)
     """两类可以分开勾：只恢复字典时**不该**动权限点。"""
     headers = await auth_headers()
 
-    body = (
-        await client.post(
-            f"{PREFIX}/builtin-restores",
-            headers=headers,
-            json={"permissions": False, "roles": False, "dicts": False},
-        )
+    body = await client.post(
+        f"{PREFIX}/builtin-restores",
+        headers=headers,
+        json={"permissions": False, "roles": False, "dicts": False},
     )
     assert body.json()["code"] == 10002
 
