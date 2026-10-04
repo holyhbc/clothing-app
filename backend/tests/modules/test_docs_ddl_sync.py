@@ -73,10 +73,6 @@ P1_PENDING_TABLES = frozenset(
         # 打菲单表与明细表（T-BASE-004 已搬运到 04 §7.16，建表卡待开）
         "bundling_orders",
         "bundling_order_lines",
-        # 物料类目 / 物料档案 / 供应商（T-BASE-003 已出设计 04 §7.15，建表卡待开）
-        "material_categories",
-        "materials",
-        "suppliers",
         # 裁剪单（P1）
         "cutting_orders",
         "cutting_order_lines",

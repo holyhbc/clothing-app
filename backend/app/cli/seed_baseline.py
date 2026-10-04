@@ -34,9 +34,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from app.cli.seed_dicts import (
     BUILTIN_COLORS,
+    BUILTIN_MATERIAL_CATEGORIES,
     BUILTIN_PRODUCT_CATEGORIES,
     BUILTIN_SIZE_GROUPS,
     BUILTIN_SIZES,
+    BUILTIN_UOM_UNITS,
     check_dict_library,
     seed_dict_library,
 )
@@ -218,7 +220,8 @@ async def run(check_only: bool = False) -> int:
                 print(
                     f"OK: 基线数据一致（权限点 {len(PERMISSIONS)} 个 / 角色 {len(ROLES)} 个 / "
                     f"内置色 {len(BUILTIN_COLORS)} / 内置尺码 {len(BUILTIN_SIZES)} / "
-                    f"内置码表 {len(BUILTIN_SIZE_GROUPS)} / 内置分类 {len(BUILTIN_PRODUCT_CATEGORIES)}）"
+                    f"内置码表 {len(BUILTIN_SIZE_GROUPS)} / 内置分类 {len(BUILTIN_PRODUCT_CATEGORIES)} / "
+                    f"物料类目 {len(BUILTIN_MATERIAL_CATEGORIES)} / 计量单位 {len(BUILTIN_UOM_UNITS)}）"
                 )
                 return 0
 

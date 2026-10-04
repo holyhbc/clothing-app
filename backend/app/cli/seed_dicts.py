@@ -24,7 +24,15 @@ from sqlalchemy import func, select, text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from app.modules.base.models import Color, ProductCategory, Size, SizeGroup, SizeGroupItem
+from app.modules.base.models import (
+    Color,
+    MaterialCategory,
+    ProductCategory,
+    Size,
+    SizeGroup,
+    SizeGroupItem,
+    UomUnit,
+)
 
 # 字典内置库（docs/04 §7.4 + modules/01 §3.6.4 定稿清单）
 # ==================================================================
@@ -80,6 +88,42 @@ BUILTIN_PRODUCT_CATEGORIES: tuple[tuple[str, str, int], ...] = (
     ("THERMAL", "打底裤", 6),
 )
 
+#: 计量单位（``04 §7.14.1`` 的建表注释里明确列了这三个）。
+#:
+#: ⚠️ **只搬规范里已写明的，不自行扩充**：``04 §7.14.1`` 的注释给的是
+#: ``'PCS' 件 / 'M' 米 / 'KG' 千克``，所以就种这三个。面料行业常用的 ``YD``（英码）
+#: **故意不加** —— 它没在任何规范里出现过，而「度量衡码表该有哪些」是业务方的口径
+#: （有的厂按米、有的按码、有的按公斤报价）。用户可以在界面上自建。
+#:
+#: ⚠️ 这三行是 T-BASE-005 顺带发现的缺口：**表建了但一直是空的**，而
+#: ``materials.uom_unit_id`` 是必填外键 —— 也就是说物料档案**一条都建不了**。
+#: 空表 + 必填外键的组合，症状是「页面打开就报外键违反」，而报错完全看不出
+#: 「根因是码表没有初始数据」。
+BUILTIN_UOM_UNITS: tuple[tuple[str, str, int], ...] = (
+    # code, name, decimal_places（04 §7.14.1 无 sort 列）
+    ("M", "米", 3),
+    ("KG", "千克", 3),
+    ("PCS", "件", 0),
+)
+
+#: 物料类目（09 §2.3 物料编码 ``F-{类目码}-{6 位}`` 的第二段；DDL 见 04 §7.15.1）。
+#:
+#: ⚠️ 这是**种子候选值**而不是封闭枚举 —— 用户可以按自己的料号体系加 ``ZZ-1``。
+#:    封闭枚举会逼着用户改编码规则，而 09 §2.2 明写物料编码「不做格式正则校验」。
+#:    真正必须在代码里分支的是 ``materials.material_type``（那个是 PG 枚举）。
+BUILTIN_MATERIAL_CATEGORIES: tuple[tuple[str, str, int], ...] = (
+    ("CT", "纯棉布", 1),
+    ("TW", "混纺布", 2),
+    ("KN", "针织布", 3),
+    ("FL", "毛料", 4),
+    ("DM", "牛仔布", 5),
+    ("ZL", "拉链", 6),
+    ("NX", "纽扣", 7),
+    ("WD", "织带", 8),
+    ("TH", "缝纫线", 9),
+    ("LB", "唛头", 10),
+)
+
 #: 操作人（seed 是运维动作，不存在真实登录用户）
 _SEED_OPERATOR = "00000000-0000-0000-0000-000000000001"
 
@@ -94,6 +138,10 @@ DICT_DOC_TYPES: dict[str, str] = {
     "sizes": "Size",
     "size_groups": "SizeGroup",
     "product_categories": "ProductCategory",
+    # ⚠️ 类目码表**当前不在 ADR-0025 的硬删白名单里**（04 §7.15.1），所以理论上
+    #    不会有真删墓碑。仍然登记在这里的原因：**白名单以后放开时不需要改两处**
+    #    —— 墓碑跳过逻辑先摆好，别等放开那天才想起来（那时数据已经写坏了）。
+    "material_categories": "MaterialCategory",
 }
 
 
@@ -146,6 +194,8 @@ async def seed_dict_library(conn: AsyncConnection) -> dict[str, int]:
     result.update(await seed_sizes(conn))
     result.update(await seed_size_groups(conn))
     result.update(await seed_product_categories(conn))
+    result.update(await seed_material_categories(conn))
+    result.update(await seed_uom_units(conn))
     return result
 
 
@@ -282,6 +332,56 @@ async def seed_product_categories(conn: AsyncConnection) -> dict[str, int]:
     return {"product_categories": count}
 
 
+async def seed_uom_units(conn: AsyncConnection) -> dict[str, int]:
+    """计量单位。
+
+    ⚠️ **不是字典表**（没有 ``is_builtin``），所以 ``--check`` 单独数它：
+    它与 ``material_categories`` 不同 —— 计量单位是全厂共用的固定集，
+    不像物料类目那样允许用户按自己的料号体系扩充。
+    """
+    count = 0
+    for code, name, decimal_places in BUILTIN_UOM_UNITS:
+        stmt = (
+            postgresql.insert(UomUnit)
+            .values(
+                code=code,
+                name=name,
+                decimal_places=decimal_places,
+                created_by=_SEED_OPERATOR,
+                updated_by=_SEED_OPERATOR,
+            )
+            .on_conflict_do_nothing(index_elements=["code"])
+        )
+        result = await conn.execute(stmt)
+        count += result.rowcount or 0
+    return {"uom_units": count}
+
+
+async def seed_material_categories(conn: AsyncConnection) -> dict[str, int]:
+    """物料类目。⚠️ 与 ``product_categories`` 同口径：软删表 + 墓碑跳过 + 幂等。"""
+    count = 0
+    skip = await _skip_tombstoned(conn, "material_categories")
+    for code, name, order in BUILTIN_MATERIAL_CATEGORIES:
+        if code in skip:
+            continue
+        stmt = (
+            postgresql.insert(MaterialCategory)
+            .values(
+                code=code,
+                name=name,
+                sort=order,
+                is_active=True,
+                is_builtin=True,
+                created_by=_SEED_OPERATOR,
+                updated_by=_SEED_OPERATOR,
+            )
+            .on_conflict_do_nothing(index_elements=["code"])
+        )
+        result = await conn.execute(stmt)
+        count += result.rowcount or 0
+    return {"material_categories": count}
+
+
 async def check_dict_library(conn: AsyncConnection) -> list[str]:
     """校验字典内置库完整性（``--check`` 用）。
 
@@ -309,6 +409,21 @@ async def check_dict_library(conn: AsyncConnection) -> list[str]:
             "product_categories",
             select(func.count()).select_from(ProductCategory),
             len(BUILTIN_PRODUCT_CATEGORIES),
+        ),
+        (
+            # ⚠️ 计量单位**数全表**：它是固定集（``BUILTIN_UOM_UNITS`` 就三条），
+            #    用户自建的不算在内，所以不能按 is_builtin 数
+            "uom_units",
+            select(func.count()).select_from(UomUnit),
+            len(BUILTIN_UOM_UNITS),
+        ),
+        (
+            # ⚠️ 数 **is_builtin** 而不是全表：类目码表是**用户可扩展**的
+            #    （09 §2.3「不做格式正则校验」），用户加一个 ``ZZ-1`` 不该让
+            #    ``seed_baseline --check`` 报「数量不符」
+            "material_categories",
+            select(func.count()).select_from(MaterialCategory).where(MaterialCategory.is_builtin),
+            len(BUILTIN_MATERIAL_CATEGORIES),
         ),
     )
     for label, stmt, expected in checks:

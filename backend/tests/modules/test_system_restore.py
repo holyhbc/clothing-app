@@ -22,6 +22,7 @@ from app.cli.seed_dicts import BUILTIN_COLORS
 from app.common.models import DocumentLog
 from app.modules.auth.models import Permission, Role
 from app.modules.base.models import Color
+from app.modules.system.restore import DICT_TABLES
 
 PREFIX = "/api/v1/system/dicts"
 
@@ -44,7 +45,13 @@ async def test_missing_lists_builtin_and_role_gaps(client, auth_headers, db_sess
 
     body = (await client.get(f"{PREFIX}/builtin-missing", headers=headers)).json()["data"]
 
-    assert set(body["dicts"]) == {"colors", "sizes", "size_groups", "product_categories"}
+    # ⚠️ 从 ``DICT_TABLES`` 派生而不是写死四个表名：那张清单来自
+    #    ``DICT_DOC_TYPES``（墓碑机制的登记表），**新增字典表会自动进来**。
+    #    写死一份副本的话，加表那天这条测试会红，而它红的原因（"字典表清单变了"）
+    #    与真正该改的地方（「恢复内置库」的页面文案）都不在一处。
+    assert set(body["dicts"]) == set(DICT_TABLES)
+    # ⚠️ 顺带钉住「注册了就真的在清单里」：上面那句在 DICT_TABLES 为空时也会通过
+    assert len(DICT_TABLES) >= 4
     assert isinstance(body["permissions"], list)
     assert isinstance(body["roles"], list)
     assert isinstance(body["total"], int)
