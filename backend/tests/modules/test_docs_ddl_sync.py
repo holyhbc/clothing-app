@@ -687,6 +687,65 @@ def _not_in_bundling_ddl(table: str) -> set[str]:
     return set()
 
 
+# ---------------------------------------------------------------- 外键目标列可引用性
+
+
+async def test_docs_04_foreign_key_targets_are_referenceable(db_session) -> None:
+    """TD5-01：外键的**目标列**必须是「普通唯一约束或主键」，不能是部分索引。
+
+    ⚠️ **这是 TD2-02 的补漏**。TD2-02 只问「目标表在不在规范里」，而这一条问
+    「那根列能不能被引用」—— 两件事都会让 ``CREATE TABLE`` 失败，而报错**只说前者**：
+
+        there is no unique constraint matching given keys for referenced table "styles"
+
+    而 ``docs/04`` 里曾有**三处** ``REFERENCES styles(style_no)``：
+    ``cutting_orders`` / ``operation_rates`` / ``wip_stocks``。原因是
+    ``styles.uq_styles_no`` 是**部分索引**（``WHERE deleted_at IS NULL``，为了款号
+    软删后可复用同号），而 PG 不允许外键引用部分唯一索引。
+
+    ⚠️ 其中 ``operation_rates`` 是**已建表** —— 迁移 0005 早就把外键改指 ``styles.id``
+    了（文件头注 4 写明了原因），而文档没跟上。所以这不是「还没建所以先这么写」，
+    是**规范落后于代码**：任何人照文档理解都会以为「改款号会被子表外键挡住」。
+
+    ⚠️ 只能对**已建的表**查 —— 未建的表没有真实索引可查，那种情况留给真建表检查。
+    """
+    import sqlalchemy as sa
+
+    violations: list[str] = []
+    for block in _blocks():
+        for table, column in re.findall(
+            r"REFERENCES\s+(\w+)\s*\(\s*(\w+)\s*\)", _strip_comments(block)
+        ):
+            exists = (
+                await db_session.execute(
+                    sa.text("SELECT to_regclass(:t) IS NOT NULL"), {"t": table}
+                )
+            ).scalar_one()
+            if not exists:
+                continue  # 表还没建，查不到索引 —— 不是本条要管的
+            # ⚠️ **必须排除部分索引**（``indpred IS NOT NULL``）：那是本次要抓的那一类
+            ok = (
+                await db_session.execute(
+                    sa.text(
+                        "SELECT count(*) FROM pg_index i "
+                        "JOIN pg_class c ON c.oid = i.indrelid "
+                        "JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey) "
+                        "WHERE c.relname = :t AND a.attname = :col "
+                        "AND (i.indisprimary OR (i.indisunique AND i.indpred IS NULL))"
+                    ),
+                    {"t": table, "col": column},
+                )
+            ).scalar_one()
+            if not ok:
+                violations.append(f"{table}({column}) 只能被**部分索引**覆盖，PG 不允许外键引用它")
+
+    assert not violations, (
+        "docs/04 §7 有外键指向了不可引用的列（照抄建表会报 "
+        "`there is no unique constraint matching given keys`）：\n  "
+        + "\n  ".join(sorted(set(violations)))
+    )
+
+
 def test_the_guards_themselves_can_fail() -> None:
     """TD-03 / TD-04：反验守卫不是「永远通过的空壳」。
 
