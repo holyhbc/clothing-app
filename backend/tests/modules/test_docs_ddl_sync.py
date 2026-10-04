@@ -70,6 +70,10 @@ P1_PENDING_TABLES = frozenset(
         "purchase_arrival_lines",
         # §7.6 工资结算周期
         "payroll_periods",
+        # 物料类目 / 物料档案 / 供应商（T-BASE-003 已出设计 04 §7.15，建表卡待开）
+        "material_categories",
+        "materials",
+        "suppliers",
         # 裁剪单（P1）
         "cutting_orders",
         "cutting_order_lines",
@@ -448,9 +452,10 @@ TABLES_WITHOUT_DDL: dict[str, str] = {
     # modules/03-打菲.md §3.1 有字段表；04 §7 号称是关键表结构约定却没有它们
     "bundling_orders": "字段表",
     "bundling_order_lines": "字段表",
-    # modules/06 §147 / modules/01 §343 只有散落的字段描述，连字段表都没有
-    "materials": "只有一行描述",
-    "suppliers": "只有一行描述",
+    # ⚠️ T-BASE-003 已补 `materials` / `suppliers` 的 DDL（04 §7.15），
+    #    所以它们**从这里消失**了 —— 这不是漏删，是 TD2-05 生效的证明：
+    #    补了 DDL 却不删登记，那张表从此免检，而没人会发现。
+    #    这里保留两行注释占位，免得下次有人「顺手」又加回来。
 }
 
 
