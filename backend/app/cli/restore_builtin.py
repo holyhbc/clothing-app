@@ -67,23 +67,42 @@ async def list_missing(conn: AsyncConnection) -> tuple[list[str], list[str]]:
     return missing_permissions, missing_roles
 
 
-async def clear_tombstones(conn: AsyncConnection, codes: list[str], doc_type: str) -> int:
+async def clear_tombstones(
+    conn: AsyncConnection,
+    codes: list[str],
+    doc_type: str,
+    *,
+    operator_id: str | None = None,
+    operator_name: str | None = None,
+) -> int:
     """清除墓碑：写入 ``RESTORE`` 记录（ADR-0025 §决策 3 的解除方式）。
 
     判定口径：存在 ``DELETE`` 且不存在更新的 ``RESTORE`` 才算墓碑。
+
+    :param operator_id: 操作人。⚠️ **CLI 不传**（没有用户上下文，落一个随机 UUID，
+        ``operator_name`` 记成 ``restore_builtin``）；接口层**必须传真实用户** ——
+        否则「谁恢复了内置库」查不出来，而 docs/07 §5 要求权限/配置变更可追溯。
+        这是 T-AUTH-003 补接口时发现的：CLI 的默认值对界面操作是错的。
+    :param operator_name: 操作人姓名（冗余存一份，用户改名后历史日志仍可读）
     """
     if not codes:
         return 0
-    operator_id = await conn.scalar(sa.text("SELECT gen_random_uuid()"))
+    resolved_id = operator_id or await conn.scalar(sa.text("SELECT gen_random_uuid()"))
+    resolved_name = operator_name or "restore_builtin"
     await conn.execute(
         sa.text(
             "INSERT INTO document_logs (doc_type, doc_id, doc_no, action, "
             "operator_id, operator_name, reason) "
             "SELECT :doc_type, gen_random_uuid(), code, 'RESTORE', :operator_id, "
-            "'restore_builtin', '用户显式恢复内置数据' "
+            ":operator_name, '用户显式恢复内置数据' "
             "FROM unnest(CAST(:codes AS text[])) AS code"
         ),
-        {"doc_type": doc_type, "operator_id": operator_id, "codes": codes},
+        {
+            "doc_type": doc_type,
+            "operator_id": resolved_id,
+            "operator_name": resolved_name,
+            "codes": codes,
+        },
     )
     return len(codes)
 

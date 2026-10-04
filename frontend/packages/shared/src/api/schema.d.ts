@@ -1111,6 +1111,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/dicts/builtin-missing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 列出被真删且未恢复的内置项
+         * @description 缺失清单 —— 「恢复内置库」按钮的**前置提示**。
+         *
+         *     ⚠️ 没这一步的话用户点了按钮才知道"原来少了 3 个颜色"，而恢复是不可逆的
+         *     （会把用户自己改过的同编码行按 seed 值覆盖回去的场景需要人工确认）。
+         */
+        get: operations["list_builtin_missing_api_v1_system_dicts_builtin_missing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/dicts/builtin-restores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 恢复被真删的内置项（权限点 / 角色 / 字典）
+         * @description 恢复内置数据（docs/04 §7.4 规则第 4 条 / ADR-0025 §决策 3）。
+         *
+         *     ⚠️ **不是**重新跑 ``seed_baseline``：那个命令只补"键不存在"的行，
+         *     被真删的（有墓碑）不补 —— 所以用户删掉的颜色不会自己长回来，但点本接口会。
+         *
+         *     墓碑的 DELETE/RESTORE 日志由 ``restore_builtin.clear_tombstones`` 写，
+         *     所以"谁在什么时候恢复了哪一批"可审计（docs/07 §5）。
+         */
+        post: operations["restore_builtin_api_v1_system_dicts_builtin_restores_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/permissions": {
         parameters: {
             query?: never;
@@ -1936,6 +1985,64 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ApiResponse[BuiltinMissingOut] */
+        ApiResponse_BuiltinMissingOut_: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["BuiltinMissingOut"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
+        /** ApiResponse[BuiltinRestoreOut] */
+        ApiResponse_BuiltinRestoreOut_: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["BuiltinRestoreOut"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
         /** ApiResponse[DeleteOut] */
         ApiResponse_DeleteOut_: {
             /**
@@ -2849,6 +2956,82 @@ export interface components {
          * @enum {string}
          */
         AuthChannel: "PC" | "H5_SMS" | "H5_WECOM" | "H5_WECHAT_MP";
+        /**
+         * BuiltinMissingOut
+         * @description 缺失（被真删且未恢复）的内置项清单。
+         */
+        BuiltinMissingOut: {
+            /**
+             * Dicts
+             * @description 按表列出缺失的字典编码（colors / sizes / size_groups / product_categories）
+             */
+            dicts: {
+                [key: string]: string[];
+            };
+            /**
+             * Permissions
+             * @description 缺失的权限点 code
+             */
+            permissions: string[];
+            /**
+             * Roles
+             * @description 缺失的内置角色 code
+             */
+            roles: string[];
+            /**
+             * Total
+             * @description 合计数量；为 0 时界面提示「没有缺失项」
+             */
+            total: number;
+        };
+        /**
+         * BuiltinRestoreOut
+         * @description 恢复结果。``restored_*`` 是**本次新增**的行数，不是"库里现在有多少"。
+         */
+        BuiltinRestoreOut: {
+            /**
+             * Dict Detail
+             * @description 按表的新增行数
+             */
+            dict_detail: {
+                [key: string]: number;
+            };
+            /**
+             * Message
+             * @description 给用户看的一句话摘要
+             */
+            message: string;
+            /** Restored Dicts */
+            restored_dicts: number;
+            /** Restored Permissions */
+            restored_permissions: number;
+            /** Restored Role Bindings */
+            restored_role_bindings: number;
+            /** Restored Roles */
+            restored_roles: number;
+        };
+        /**
+         * BuiltinRestoreRequest
+         * @description 恢复哪些内置数据。三类都不勾 → ``10002``（明确报错，不静默成功）。
+         */
+        BuiltinRestoreRequest: {
+            /**
+             * Dicts
+             * @description 默认开 —— 这是界面上那个按钮的语义
+             * @default true
+             */
+            dicts: boolean;
+            /**
+             * Permissions
+             * @default false
+             */
+            permissions: boolean;
+            /**
+             * Roles
+             * @default false
+             */
+            roles: boolean;
+        };
         /**
          * ChangePasswordRequest
          * @description ``PUT /auth/password`` 请求体。
@@ -7064,6 +7247,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_list_StyleSizeOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_builtin_missing_api_v1_system_dicts_builtin_missing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BuiltinMissingOut_"];
+                };
+            };
+        };
+    };
+    restore_builtin_api_v1_system_dicts_builtin_restores_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BuiltinRestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BuiltinRestoreOut_"];
                 };
             };
             /** @description Validation Error */

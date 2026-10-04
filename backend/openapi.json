@@ -1,6 +1,114 @@
 {
   "components": {
     "schemas": {
+      "ApiResponse_BuiltinMissingOut_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BuiltinMissingOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[BuiltinMissingOut]",
+        "type": "object"
+      },
+      "ApiResponse_BuiltinRestoreOut_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BuiltinRestoreOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[BuiltinRestoreOut]",
+        "type": "object"
+      },
       "ApiResponse_DeleteOut_": {
         "properties": {
           "code": {
@@ -1663,6 +1771,119 @@
         ],
         "title": "AuthChannel",
         "type": "string"
+      },
+      "BuiltinMissingOut": {
+        "description": "缺失（被真删且未恢复）的内置项清单。",
+        "properties": {
+          "dicts": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "description": "按表列出缺失的字典编码（colors / sizes / size_groups / product_categories）",
+            "title": "Dicts",
+            "type": "object"
+          },
+          "permissions": {
+            "description": "缺失的权限点 code",
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "roles": {
+            "description": "缺失的内置角色 code",
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "total": {
+            "description": "合计数量；为 0 时界面提示「没有缺失项」",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "permissions",
+          "roles",
+          "dicts",
+          "total"
+        ],
+        "title": "BuiltinMissingOut",
+        "type": "object"
+      },
+      "BuiltinRestoreOut": {
+        "description": "恢复结果。``restored_*`` 是**本次新增**的行数，不是\"库里现在有多少\"。",
+        "properties": {
+          "dict_detail": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "按表的新增行数",
+            "title": "Dict Detail",
+            "type": "object"
+          },
+          "message": {
+            "description": "给用户看的一句话摘要",
+            "title": "Message",
+            "type": "string"
+          },
+          "restored_dicts": {
+            "title": "Restored Dicts",
+            "type": "integer"
+          },
+          "restored_permissions": {
+            "title": "Restored Permissions",
+            "type": "integer"
+          },
+          "restored_role_bindings": {
+            "title": "Restored Role Bindings",
+            "type": "integer"
+          },
+          "restored_roles": {
+            "title": "Restored Roles",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "restored_permissions",
+          "restored_roles",
+          "restored_role_bindings",
+          "restored_dicts",
+          "dict_detail",
+          "message"
+        ],
+        "title": "BuiltinRestoreOut",
+        "type": "object"
+      },
+      "BuiltinRestoreRequest": {
+        "additionalProperties": false,
+        "description": "恢复哪些内置数据。三类都不勾 → ``10002``（明确报错，不静默成功）。",
+        "properties": {
+          "dicts": {
+            "default": true,
+            "description": "默认开 —— 这是界面上那个按钮的语义",
+            "title": "Dicts",
+            "type": "boolean"
+          },
+          "permissions": {
+            "default": false,
+            "title": "Permissions",
+            "type": "boolean"
+          },
+          "roles": {
+            "default": false,
+            "title": "Roles",
+            "type": "boolean"
+          }
+        },
+        "title": "BuiltinRestoreRequest",
+        "type": "object"
       },
       "ChangePasswordRequest": {
         "description": "``PUT /auth/password`` 请求体。",
@@ -12896,6 +13117,84 @@
           "title": "StyleSizeCreate",
           "type": "object"
         }
+      }
+    },
+    "/api/v1/system/dicts/builtin-missing": {
+      "get": {
+        "description": "缺失清单 —— 「恢复内置库」按钮的**前置提示**。\n\n⚠️ 没这一步的话用户点了按钮才知道\"原来少了 3 个颜色\"，而恢复是不可逆的\n（会把用户自己改过的同编码行按 seed 值覆盖回去的场景需要人工确认）。",
+        "operationId": "list_builtin_missing_api_v1_system_dicts_builtin_missing_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_BuiltinMissingOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "列出被真删且未恢复的内置项",
+        "tags": [
+          "系统管理",
+          "系统管理"
+        ],
+        "x-permission": "system:config:manage"
+      }
+    },
+    "/api/v1/system/dicts/builtin-restores": {
+      "post": {
+        "description": "恢复内置数据（docs/04 §7.4 规则第 4 条 / ADR-0025 §决策 3）。\n\n⚠️ **不是**重新跑 ``seed_baseline``：那个命令只补\"键不存在\"的行，\n被真删的（有墓碑）不补 —— 所以用户删掉的颜色不会自己长回来，但点本接口会。\n\n墓碑的 DELETE/RESTORE 日志由 ``restore_builtin.clear_tombstones`` 写，\n所以\"谁在什么时候恢复了哪一批\"可审计（docs/07 §5）。",
+        "operationId": "restore_builtin_api_v1_system_dicts_builtin_restores_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuiltinRestoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_BuiltinRestoreOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "恢复被真删的内置项（权限点 / 角色 / 字典）",
+        "tags": [
+          "系统管理",
+          "系统管理"
+        ],
+        "x-permission": "system:config:manage"
       }
     },
     "/api/v1/system/permissions": {

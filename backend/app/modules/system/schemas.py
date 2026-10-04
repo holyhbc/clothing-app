@@ -192,6 +192,38 @@ class RoleOptionOut(BaseModel):
     disabled: bool = False
 
 
+class BuiltinMissingOut(BaseModel):
+    """缺失（被真删且未恢复）的内置项清单。"""
+
+    permissions: list[str] = Field(description="缺失的权限点 code")
+    roles: list[str] = Field(description="缺失的内置角色 code")
+    dicts: dict[str, list[str]] = Field(
+        description="按表列出缺失的字典编码（colors / sizes / size_groups / product_categories）"
+    )
+    total: int = Field(description="合计数量；为 0 时界面提示「没有缺失项」")
+
+
+class BuiltinRestoreRequest(BaseModel):
+    """恢复哪些内置数据。三类都不勾 → ``10002``（明确报错，不静默成功）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    permissions: bool = False
+    roles: bool = False
+    dicts: bool = Field(default=True, description="默认开 —— 这是界面上那个按钮的语义")
+
+
+class BuiltinRestoreOut(BaseModel):
+    """恢复结果。``restored_*`` 是**本次新增**的行数，不是"库里现在有多少"。"""
+
+    restored_permissions: int
+    restored_roles: int
+    restored_role_bindings: int
+    restored_dicts: int
+    dict_detail: dict[str, int] = Field(description="按表的新增行数")
+    message: str = Field(description="给用户看的一句话摘要")
+
+
 class DisableUserRequest(BaseModel):
     """停用用户。原因必填。"""
 
@@ -211,6 +243,9 @@ class EnableUserRequest(BaseModel):
 PermissionGroupOut.model_rebuild()
 
 __all__ = [
+    "BuiltinMissingOut",
+    "BuiltinRestoreOut",
+    "BuiltinRestoreRequest",
     "DisableUserRequest",
     "EnableUserRequest",
     "Literal",

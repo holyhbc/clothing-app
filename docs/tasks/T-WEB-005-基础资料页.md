@@ -24,23 +24,26 @@
 
 但有三件事必须**先定口径**，否则做出来的东西会立刻返工：
 
-### ① `restore_builtin` **没有 HTTP 端点** —— 它是 CLI
+### ① `restore_builtin` 的 HTTP 端点 —— **已补**（2026-10-03，`96a6a9a`）
 
-任务卡要求页面上有「恢复内置库」按钮，但真实情况是
-`backend/app/cli/restore_builtin.py`，**`openapi.json` 里没有任何 restore 路径**。
-（该文件自己的注释里就写着「用户点『恢复内置库』」—— 说明设计时预期有按钮，
-但那一层一直没做。）
+原本只有 CLI（`app/cli/restore_builtin.py`），而那个文件自己的注释写着
+"用户点『恢复内置库』" —— 设计时就预期有界面，那一层一直没做。
+现在有了两个端点（权限点 `system:config:manage`）：
 
-三个选择，**必须先定**：
-
-| 方案 | 说明 |
+| 端点 | 用途 |
 | --- | --- |
-| A. 补一个 `POST /api/v1/system/dicts/{kind}/restore-builtin` | 需要一张后端卡；权限点用 `system:config:manage` |
-| B. 按钮只显示**提示**，让运维执行 `python -m app.cli.restore_builtin` | 零后端改动；但用户会看到"这个按钮没用" |
-| C. 按钮调 A 的端点，A 复用 `app/cli/restore_builtin.py` 的逻辑 | 与 A 等价，只是确保只有一份实现 |
+| `GET /api/v1/system/dicts/builtin-missing` | 缺失清单 —— 按钮的**前置提示**（先告诉用户"少了 3 个颜色"再让他确认） |
+| `POST /api/v1/system/dicts/builtin-restores` | 恢复。body `{permissions?, roles?, dicts?}`，`dicts` 默认 `true`（这是那个按钮的语义）；三类都不勾返回 `10002` 而不是静默"恢复 0 条" |
 
-**倾向 A/C**，因为该 CLI 自己的注释就是这么写的。但这是**缺口**，不是本卡能顺手补的
-（AGENTS §6：一个会话只动一个模块）。
+⚠️ 三个做前端时必须知道的语义：
+
+1. **只恢复内置项**。用户自建的字典项删掉就是删掉了 —— `seed_colors` 只重建
+   `BUILTIN_COLORS` 清单里的编码，而墓碑机制（ADR-0025 §决策 3）正是为此。
+   按钮的文案要写"恢复**内置**库"，别写成"找回删除的数据"。
+2. **墓碑顺序敏感**：先解除墓碑、再 seed。反了会出现"日志说恢复了、数据没回来"。
+   已经接的是 CLI 的同一组函数，顺序由那边保证，别在调用侧重排。
+3. **`operator_name` 是真实用户**。CLI 调用时那里没有用户上下文，落的是随机 UUID +
+   `restore_builtin`；接口层传真实 ctx。所以界面可以放心显示"张三 恢复了内置库"。
 
 ### ② 前端不要手写 72 个函数
 
