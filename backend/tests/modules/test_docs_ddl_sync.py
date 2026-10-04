@@ -70,6 +70,9 @@ P1_PENDING_TABLES = frozenset(
         "purchase_arrival_lines",
         # §7.6 工资结算周期
         "payroll_periods",
+        # 打菲单表与明细表（T-BASE-004 已搬运到 04 §7.16，建表卡待开）
+        "bundling_orders",
+        "bundling_order_lines",
         # 物料类目 / 物料档案 / 供应商（T-BASE-003 已出设计 04 §7.15，建表卡待开）
         "material_categories",
         "materials",
@@ -422,7 +425,7 @@ def _check_references() -> list[str]:
         # 注释里可能有别的语句，按原文匹配会把 ``); ALTER TABLE ...`` 一起吞进表达式，
         # 报出来的「引用的列」完全无关（实测报过一条 `ALTER TABLE cutting_orders A`）。
         block = _strip_comments(raw)
-        for match in re.finditer(r"CHECK\s*\((.*?)\)(?:\s*[,)]|$)", block, re.DOTALL):
+        for match in re.finditer(r"CHECK\s*\((.*?)\)(?:\s*[,);]|$)", block, re.DOTALL):
             available = known | _declared_before(block, match.start())
             for token in re.findall(
                 r"(?<![.\w:])([A-Za-z_][A-Za-z0-9_]*)", _strip_literals(match.group(1))
@@ -449,9 +452,6 @@ def _check_references() -> list[str]:
 #: 两条都登记在 docs/12（`bundling_*` 见 L-070、`materials` / `suppliers` 见 L-071），
 #: 闭环后从这里删掉 —— 守卫会要求删，而那是它生效的证明。
 TABLES_WITHOUT_DDL: dict[str, str] = {
-    # modules/03-打菲.md §3.1 有字段表；04 §7 号称是关键表结构约定却没有它们
-    "bundling_orders": "字段表",
-    "bundling_order_lines": "字段表",
     # ⚠️ T-BASE-003 已补 `materials` / `suppliers` 的 DDL（04 §7.15），
     #    所以它们**从这里消失**了 —— 这不是漏删，是 TD2-05 生效的证明：
     #    补了 DDL 却不删登记，那张表从此免检，而没人会发现。
@@ -581,7 +581,7 @@ def _problems_of(block: str) -> list[str]:
     for columns in _model_tables().values():
         known |= columns
     problems: list[str] = []
-    for match in re.finditer(r"CHECK\s*\((.*?)\)(?:\s*[,)]|$)", block, re.DOTALL):
+    for match in re.finditer(r"CHECK\s*\((.*?)\)(?:\s*[,);]|$)", block, re.DOTALL):
         available = known | _declared_before(block, match.start())
         for token in re.findall(
             r"(?<![.\w:])([A-Za-z_][A-Za-z0-9_]*)", _strip_literals(match.group(1))
@@ -602,6 +602,93 @@ def _foreign_key_problems_of(block: str) -> list[str]:
     """:func:`_check_foreign_keys` 的单块版本（反验用）。"""
     known = set(_model_tables()) | set(_documented_ddl()) | set(TABLES_WITHOUT_DDL)
     return [t for t in re.findall(r"REFERENCES\s+(\w+)", block) if t not in known]
+
+
+# ---------------------------------------------------------------- 搬运保真度
+
+DOC_03 = Path(__file__).resolve().parents[3] / "docs" / "modules" / "03-打菲.md"
+
+#: `04 §7.3` 的单据公共列 + `04 §2` 的公共字段：它们**不在** `modules/03` 的字段表里，
+#: 因为字段表默认「所有表含 04 §2 公共字段」并在 §3 开头单列了 §7.3 的适用性。
+#: 比对时把这些列从两边都拿掉 —— 否则会报出一堆「文档漏了 created_at」的假失败。
+NOT_IN_MODULE_FIELD_TABLES = COMMON_COLUMNS | frozenset(
+    {
+        "doc_no",
+        "status",
+        "doc_date",
+        "workshop_id",
+        "approved_by",
+        "approved_at",
+        "rejected_reason",
+        "cancelled_reason",
+        "doc_id",
+        "line_no",
+    }
+)
+
+#: `modules/03` 字段表 → `04 §7` 的小节。只对这两张表断言 —— 其他模块的「设计」形态
+#: 各不相同（`04` 里已有一批表来自它们，统一解析会误报）。
+#: ⚠️ 每往这里加一张表都要先确认它的字段表能被下面那个正则解析。
+MODULE_FIELD_TABLE_SECTIONS: dict[str, tuple[str, str]] = {
+    "bundling_orders": ("### 3.1 `bundling_orders`", "### 3.2 "),
+    "bundling_order_lines": ("### 3.2 `bundling_order_lines`", "### 3.3 "),
+}
+
+
+def _module_field_columns(table: str) -> set[str]:
+    """从 `modules/03` 的字段表抽出列名。
+
+    ⚠️ 字段表里**有一行是 `` `approved_by` / `approved_at` `` 这种「两个字段写在一行」**
+    的形态，所以不能只取反引号里的第一个 —— 要把行内**所有**反引号标识符都算上。
+    漏掉后半截会让「文档比字段表多一列」永远不成立，而那正是要抓的方向之一。
+    """
+    start_marker, end_marker = MODULE_FIELD_TABLE_SECTIONS[table]
+    text = DOC_03.read_text(encoding="utf-8")
+    section = text.split(start_marker)[1].split(end_marker)[0]
+    columns: set[str] = set()
+    for line in section.split("\n"):
+        if not line.strip().startswith("|"):
+            continue
+        first_cell = line.strip().strip("|").split("|")[0]
+        columns |= set(re.findall(r"`([a-z_][a-z0-9_]*)`", first_cell))
+    return columns - NOT_IN_MODULE_FIELD_TABLES
+
+
+@pytest.mark.parametrize("table", sorted(MODULE_FIELD_TABLE_SECTIONS))
+def test_bundling_tables_match_module_field_tables(table: str) -> None:
+    """TD4-01：`04 §7.16` 的列与 `modules/03` 字段表**双向一致**（搬运保真度）。
+
+    ⚠️ 为什么「搬运」也需要守卫：搬错的概率不低，而**搬错不一定报错** ——
+    列少一个，代码里的 INSERT 会报；列类型差一位（`numeric(14,3)` vs `numeric(14,4)`），
+    要到运行时数据溢出才炸。而搬运是**一次性动作**：搬完之后没人会再对照两边，
+    所以「搬错了但没人发现」能一直留着。
+
+    ⚠️ 这条守卫同时把「搬运」的**代价显式化**：以后任何人改其中一边，
+    另一边会被逼着同步 —— 那正是「搬运」应该有的后续维护。
+    """
+    documented = _documented_ddl()
+    if table not in documented:
+        pytest.skip(f"04 §7 还没有 {table} 的 DDL")
+
+    in_doc = (documented[table] - COMMON_COLUMNS) - _not_in_bundling_ddl(table)
+    in_module = _module_field_columns(table)
+
+    assert not (in_module - in_doc), (
+        f"modules/03 的 {table} 字段表里有列，而 04 §7 的 DDL 没建：{sorted(in_module - in_doc)}"
+    )
+    assert not (in_doc - in_module), (
+        f"04 §7 的 {table} DDL 有列，而 modules/03 的字段表里没有："
+        f"{sorted(in_doc - in_module)}。要么补字段表，要么这列不该建 —— "
+        f"（字段表里有两处明确标了「❌ 作废列」的，**不要**照抄成真列）"
+    )
+
+
+def _not_in_bundling_ddl(table: str) -> set[str]:
+    """`04 §7.16` 刻意不建、且字段表里也没有的列（作废列）。"""
+    if table == "bundling_orders":
+        # ADR-0016 后码内不再有全局件序号，无「件号区间」概念
+        return {"source_bundle_seq_from", "source_bundle_seq_to"}
+    return set()
 
 
 def test_the_guards_themselves_can_fail() -> None:
