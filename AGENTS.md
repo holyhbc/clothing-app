@@ -186,7 +186,14 @@ module 枚举：`base` `cut` `bundling` `piece` `payroll` `stock` `sales` `finan
 
 ### 7.2 推送
 
-**闸门通过后直接推送 `origin/main`，不需要每次询问。** 理由：闸门已经代替人做了验收，再问一次只是形式；但**推送前必须如实说明闸门 5 是否通过**（若因依赖未就绪而失败，如实标注归属卡片，不粉饰成全绿）。
+**闸门通过后直接提交并推送 `origin/main`，不需要每次询问。** 理由：闸门已经代替人做了验收，再问一次只是形式；但**推送前必须如实说明闸门 5 是否通过**（若因依赖未就绪而失败，如实标注归属卡片，不粉饰成全绿）。
+
+对应地，`opencode.json` 里 `git commit*` / `git push*` 已设为 `allow`，
+`docker compose *` 等闸门命令同样放行 —— 否则每条命令都弹一次授权，
+反而更容易在弹窗里**顺手点了允许**，那才是真的失去控制。真正危险的操作仍然是 `deny`：
+`git reset` / `git clean` / `git stash` / `git push --force` / `rm -rf` /
+`docker volume` / `docker compose down` / `dropdb` / `TRUNCATE`。
+**要放开哪一条，改 `opencode.json`，不要靠人肉点允许。**
 
 ---
 
