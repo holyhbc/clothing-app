@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { adminSrc, repoRoot } from '@/test-support/paths'
 
 /**
  * design token 守卫（TC-W18）。
@@ -17,27 +18,10 @@ import { describe, expect, it } from 'vitest'
  * 是同一个思路：把"靠人记住的约定"变成闸门会失败的事实。
  */
 
-/**
- * 仓库根目录。
- *
- * ⚠️ 不用 `import.meta.url`：vitest 的 jsdom 环境里它是 http 形式的 URL，
- *    `fileURLToPath` 直接抛 "The URL must be of scheme file"。改成从 `cwd`
- *    逐级往上找 `docs/06-前端与UI规范.md` —— 这样无论从仓库根还是包目录跑测试都能定位。
- */
-function findRepoRoot(): string {
-  let dir = resolve(process.cwd())
-  for (;;) {
-    if (existsSync(join(dir, 'docs', '06-前端与UI规范.md'))) return dir
-    const parent = dirname(dir)
-    if (parent === dir)
-      throw new Error(`从 ${process.cwd()} 往上找不到仓库根（缺 docs/06-前端与UI规范.md）`)
-    dir = parent
-  }
-}
-
-const REPO_ROOT = findRepoRoot()
-const DOC_06 = join(REPO_ROOT, 'docs', '06-前端与UI规范.md')
-const SRC_ROOT = join(REPO_ROOT, 'frontend', 'packages', 'admin', 'src')
+// 路径解析见 `@/test-support/paths`（不能用 `import.meta.url`：vitest 的 jsdom
+// 环境里它是 http 形式的 URL，`fileURLToPath` 会抛 "must be of scheme file"）
+const DOC_06 = join(repoRoot(), 'docs', '06-前端与UI规范.md')
+const SRC_ROOT = adminSrc()
 const TOKENS_CSS = join(SRC_ROOT, 'styles', 'tokens.css')
 
 /** 抽 `--name: value` 里的 name。 */

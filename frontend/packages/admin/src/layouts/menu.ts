@@ -31,6 +31,16 @@ export interface MenuGroup {
  *
  * ⚠️ 权限点一律用 `PERM.*` 具名常量，不写裸字符串 —— 裸字符串打错了要等用户点进去
  * 撞 403 才发现，具名常量打错了编译就红。
+ *
+ * ⚠️ **只有真的有页面才登记**（T-WEB-004 移除系统管理两项时定下的规矩）：
+ *  菜单里出现一个点进去是 404 的入口，比没有这个入口更糟 —— 用户会以为权限有问题、
+ *  反复重登、找管理员。端点与页面都到位了再加。
+ */
+/**
+ * ⚠️ T-WEB-004 原本在这里有「系统管理」（用户管理 / 角色权限）两项，已**移除**：
+ * 后端没有 `users` / `roles` 的任何端点（`openapi.json` 里与账号相关的只有
+ * `auth` 那六个），页面无处可接。菜单里留一个点进去是 404 的入口比没有更糟。
+ * 端点与页面都到位后再加回来 —— 见 `docs/tasks/T-AUTH-003-用户与角色管理接口.md`。
  */
 export const MENU_GROUPS: readonly MenuGroup[] = [
   {
@@ -41,22 +51,6 @@ export const MENU_GROUPS: readonly MenuGroup[] = [
         key: 'base-styles',
         title: '款号',
         permission: PERM.BASE_READ,
-      },
-    ],
-  },
-  {
-    key: 'system',
-    title: '系统管理',
-    children: [
-      {
-        key: 'system-users',
-        title: '用户管理',
-        permission: PERM.SYSTEM_USER_MANAGE,
-      },
-      {
-        key: 'system-roles',
-        title: '角色权限',
-        permission: PERM.SYSTEM_ROLE_MANAGE,
       },
     ],
   },
