@@ -91,7 +91,7 @@ X0ms 后发请求，候选 ≤20 ✓ |
 | `frontend/eslint.config.js` | +4 | 第三条与 Prettier 冲突的 vue 规则 |
 
 **提交记录**：
-- 见 `git log --grep T-WEB-003`
+- `d9f84df` feat(web): admin 通用层（token/布局/Combo/登录与错误页）
 
 ## 过程中被测试抓出来的 5 个真缺陷
 
