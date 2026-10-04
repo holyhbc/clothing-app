@@ -92,6 +92,56 @@ export type DataScope = ApiModel<'DataScope'>
 /** 认证渠道（`LoginRequest.channel`）。PC 端固定 `PC`。 */
 export type AuthChannel = ApiModel<'AuthChannel'>
 
+// ---- 系统管理（T-AUTH-003；T-WEB-004 的用户 / 角色两页用）----
+
+/** 用户行。**不含** `password_hash` 与 `phone` —— 后端模型层就没有这两列。 */
+export type UserOut = ApiModel<'UserOut'>
+
+/** 新建用户请求。 */
+export type UserCreate = ApiModel<'UserCreate'>
+
+/** 局部更新用户。⚠️ `version` 是乐观锁，后端不匹配返回 10003。 */
+export type UserPatch = ApiModel<'UserPatch'>
+
+/** 整体替换用户角色。 */
+export type UserRoleAssign = ApiModel<'UserRoleAssign'>
+
+/** 停用用户（原因必填，docs/06 §5）。 */
+export type DisableUserRequest = ApiModel<'DisableUserRequest'>
+
+/** 启用用户（原因同样必填）。 */
+export type EnableUserRequest = ApiModel<'EnableUserRequest'>
+
+/** 管理员重置口令。⚠️ 新口令由**管理员填写**，不是应用生成。 */
+export type PasswordResetRequest = ApiModel<'PasswordResetRequest'>
+
+/** 角色行（含权限点与已授予用户数）。 */
+export type RoleOut = ApiModel<'RoleOut'>
+
+/** 新建角色。 */
+export type RoleCreate = ApiModel<'RoleCreate'>
+
+/** 局部更新角色。⚠️ `code` 与 `is_system` 不可改。 */
+export type RolePatch = ApiModel<'RolePatch'>
+
+/** 停用角色（软删，原因必填）。 */
+export type RoleDisable = ApiModel<'RoleDisable'>
+
+/** 整体替换角色权限点。 */
+export type ReplacePermissionsRequest = ApiModel<'ReplacePermissionsRequest'>
+
+/** 按模块分组的权限点（角色勾选树）。 */
+export type PermissionGroupOut = ApiModel<'PermissionGroupOut'>
+
+/** 单个权限点。 */
+export type PermissionOut = ApiModel<'PermissionOut'>
+
+/** 用户候选（Combo 用）。 */
+export type UserOptionOut = ApiModel<'UserOptionOut'>
+
+/** 角色候选（Combo 用）。 */
+export type RoleOptionOut = ApiModel<'RoleOptionOut'>
+
 /**
  * 单据创建 / 修改请求体的公共形状（docs/05 §2：PATCH 必传 `version`）。
  *

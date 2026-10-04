@@ -68,6 +68,53 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/PlaceholderView.vue'),
         meta: { title: '款号', permission: PERM.BASE_UPDATE },
       },
+      {
+        path: 'system/users',
+        name: 'system-users',
+        component: () => import('@/views/system/users/List.vue'),
+        meta: { title: '用户管理', permission: PERM.SYSTEM_USER_MANAGE },
+      },
+      {
+        path: 'system/users/new',
+        name: 'system-user-create',
+        component: () => import('@/views/system/users/Form.vue'),
+        meta: { title: '新建用户', permission: PERM.SYSTEM_USER_MANAGE },
+      },
+      {
+        // ⚠️ 路由是 `system/users/new` 与 `system/users/:id` 两条，**顺序不能反** ——
+        // 反了的话 `/system/users/new` 会被 `:id` 吃掉，`id` 变成字符串 "new"，
+        // 于是页面去查一个不存在的用户，界面显示"加载失败"而看不出是路由写错了。
+        path: 'system/users/:id',
+        name: 'system-user-edit',
+        component: () => import('@/views/system/users/Form.vue'),
+        meta: { title: '编辑用户', permission: PERM.SYSTEM_USER_MANAGE },
+      },
+      {
+        path: 'system/roles',
+        name: 'system-roles',
+        component: () => import('@/views/system/roles/List.vue'),
+        meta: { title: '角色权限', permission: PERM.SYSTEM_ROLE_MANAGE },
+      },
+      {
+        path: 'system/roles/new',
+        name: 'system-role-create',
+        component: () => import('@/views/system/roles/Form.vue'),
+        meta: { title: '新建角色', permission: PERM.SYSTEM_ROLE_MANAGE },
+      },
+      {
+        path: 'system/roles/:id',
+        name: 'system-role-permissions',
+        component: () => import('@/views/system/roles/Form.vue'),
+        meta: { title: '配置权限点', permission: PERM.SYSTEM_ROLE_MANAGE },
+      },
+      {
+        // `system-role-edit` 与 `system-role-permissions` 指向同一个组件，
+        // 只是标题不同 —— 后端"改名称"和"改权限"是两个端点，但从一个页面提交。
+        path: 'system/roles/:id/meta',
+        name: 'system-role-edit',
+        component: () => import('@/views/system/roles/Form.vue'),
+        meta: { title: '编辑角色', permission: PERM.SYSTEM_ROLE_MANAGE },
+      },
     ],
   },
   {

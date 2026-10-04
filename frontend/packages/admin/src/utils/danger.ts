@@ -50,9 +50,20 @@ export function isReasonValid(reason: string): boolean {
 /**
  * 弹出危险操作确认框。
  *
+ * ## 为什么有重载
+ *
+ * `requireReason: true` 时返回的 `reason` **一定是字符串**。用单一返回类型的话，
+ * 每次调用都要写 `if (result.reason === null) return` 才敢往下传 ——
+ * 而那个判断在类型上永远不成立（要求理由时后端也会再拒一次），于是它变成噪声，
+ * 真正该防的"忘了判空"反而被淹没。这里用重载把"要么有理由要么是 null"编码进类型。
+ *
  * @returns 取消或理由不合格 → `null`（`onOk` 里校验不过会**保持弹窗打开**并给出提示，
  *   所以 promise 不结束）；确认 → `{ reason }`。
  */
+export function confirmDanger(
+  options: DangerConfirmOptions & { requireReason: true },
+): Promise<{ reason: string } | null>
+export function confirmDanger(options: DangerConfirmOptions): Promise<DangerConfirmResult | null>
 export function confirmDanger(options: DangerConfirmOptions): Promise<DangerConfirmResult | null> {
   const requireReason = options.requireReason ?? false
 

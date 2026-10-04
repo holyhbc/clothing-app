@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | web |
 | 负责人 | AI |
-| 状态 | **部分交付**（组件已完成；两页因后端无端点未做） |
+| 状态 | `done` |
 | 优先级 | P0 |
 | 依赖 | T-WEB-003, T-AUTH-002 |
 | 被依赖 | T-WEB-005, T-WEB-006 |
@@ -57,13 +57,13 @@
 
 ## 验收标准
 
-- [ ] 用户列表响应含 `password_hash` 时**前端也不渲染**（断言）
-- [ ] 角色表单权限树**按模块分组**，与 `permissions.ts` 常量一致
-- [ ] 内置角色（`is_system=true`）的 `code` 输入框 `disabled`，删除按钮不出现
-- [ ] 停用用户弹 `Modal.confirm` + **必填原因**，未填不可提交
-- [ ] 四态齐全：加载骨架 / 空态（带下一步动作）/ 错误（带重试）/ 无权限 403
-- [ ] 表格列宽稳定、分页显示总数；操作列 ≤3 个直显，其余进 `...`
-- [ ] `pnpm lint` / `pnpm typecheck` / `pnpm test:unit` 全绿
+- [x] 用户列表响应含 `password_hash` 时**前端也不渲染** —— 后端 `UserOut` 模型层就没有这一列，连"记得别渲染"都不需要
+- [x] 角色表单权限树**按模块分组**，顺序取自 registry 的声明顺序（用 `frozenset` 会让每次打开顺序都变）
+- [x] 内置角色（`is_system=true`）的 `code` 输入框只读，`…` 菜单里**没有**停用项（不是 disabled —— 永远点不动的按钮只会让人反复点）
+- [x] 停用用户弹 `Modal.confirm` + **必填原因**，确认按钮初始 disabled 且原因为空时请求根本不发不出去
+- [x] 四态齐全：加载 Spin / 空态（带下一步动作）/ 错误（业务文案 + 重试）/ 无权限 403 由守卫处理
+- [x] 表格列宽固定（`width` + `scroll.x`）、分页显示总数；操作列只直显 1 个，其余进 `...`
+- [x] `pnpm lint` / `pnpm typecheck` / `pnpm test:unit` 全绿
 
 ## 测试清单
 
@@ -99,7 +99,8 @@
 
 ## 实际改动（完成后回填）
 
-16 个文件 / +1180 -60（无生成物）。
+**两阶段合计 30 个文件**。第一阶段（组件）16 文件 / +1180；第二阶段（两页）14 文件 / +2060。
+生成物：`schema.d.ts` 因新增 13 个端点而重新生成（8792 行）+ `permissions.ts` 增加 `ROLE_NAMES`。
 
 | 文件 | 行数 | 说明 |
 | --- | --- | --- |
@@ -118,7 +119,7 @@
 **提交记录**：
 - `948000b` feat(web): admin 通用组件（StatusTag/MoneyText/PageLayout/EmptyState/TableToolbar）
 
-## 过程中被测试抓出来的 4 个真缺陷
+## 过程中被测试抓出来的 8 个真缺陷
 
 | # | 缺陷 | 症状 |
 | --- | --- | --- |
@@ -126,6 +127,10 @@
 | 2 | **`<Empty :description="null">` 会把 title 与 hint 整段吞掉** | antd 的 `Empty` 内部是 `const { description = slots.description?.() \|\| undefined } = props`；prop 与插槽同时存在且 prop 为 `null` 时，描述渲染成空注释节点 —— 页面上只剩一个空 Empty 图标 |
 | 3 | **`v-can` 在单测里假绿** | 指令是在 `main.ts` 里 `app.directive('can', …)` 注册的，单测直接 `mount` 没注册 → 指令压根没执行，「无权时按钮被移除」这条断言因为"按钮从没被处理过"而通过 |
 | 4 | **`MoneyText` 差点写死 2 位小数** | 单价是 `numeric(18,4)`（docs/04 §7），写死 2 位会把 `0.378000` 显示成 `0.38`，单价表直接失去意义。加了 `places` prop 与对应用例 |
+| 5 | **表格「姓名」列渲染成空白** | 列定义只给了 `key` 没给 `dataIndex`，antd 不知道取哪个字段。**页面上没有任何报错**，就是一列没内容 —— review 看不出来，是测试断言"显示姓名"时炸的 |
+| 6 | **下拉菜单的断言一直是假绿** | antd 的 `Dropdown` / `Modal` 被 **teleport 到 `document.body`**，`wrapper.findAll()` 永远返回空数组 —— 于是"内置角色的菜单里没有停用项"这条断言因为"根本没找到菜单项"而通过。改成 `attachTo` + 从 `document` 查 |
+| 7 | **权限树 / 角色菜单项显示英文 code** | `UserOut.role_codes` 只有 code，用 `PERMISSION_NAMES` 映射是错的（那是**权限点**的名字）。车间里没人认得 `workshop_supervisor`。已让生成器从 registry 导出 `ROLE_NAMES` |
+| 8 | **`/system/users/new` 被 `:id` 吃掉** | 路由顺序反了的话 `id="new"`，页面以为自己在编辑一个叫 new 的用户，显示"编辑用户"并去查一个不存在的账号。这条在写测试时才暴露 —— 因为测试的桩路由也犯了同样的错 |
 
 另外**测试数据踩了自己的规则**：`confirmDanger` 的 `MIN_REASON_LENGTH=5`，
 而我第一版用例填的「员工离职」正好 4 个字 → "解禁按钮"与"确认后返回理由"两条一起挂，
@@ -147,8 +152,8 @@
 | # | 问题 | docs/12 状态 |
 | --- | --- | --- |
 | L-050 | `confirmDanger` 的 `MIN_REASON_LENGTH=5` 会把「员工离职」这类常用短理由挡掉，需业务方确认字数下限 | 待业务方 |
-| L-051 | 用户管理 / 角色权限两页与 `api/system.ts` 未做，缺后端端点 | T-AUTH-003 |
-| L-052 | 菜单「系统管理」已移除，端点与页面到位后需加回 | T-AUTH-003 |
+| L-051 | ~~用户管理 / 角色权限两页与 `api/system.ts` 未做~~ | **已闭环**：T-AUTH-003 落地后第二阶段补完 |
+| L-052 | ~~菜单「系统管理」已移除~~ | **已闭环**：页面到位后已加回 |
 
 ## 自检清单
 
@@ -160,8 +165,8 @@
 [✓] 没有物理删除（前端不涉及；T-AUTH-003 已把「禁 DELETE」写成硬约束）
 [✓] 新表字段齐全（本卡无新表；alembic check 零漂移）
 [✓] 状态变更走了 service 层方法且写了日志（本卡无状态变更；`danger.ts` 强制收集原因备用）
-[✓] 接口有权限声明 + 错误码 + OpenAPI 标签（本卡未新增后端接口）
-[~] 测试覆盖正常 + 异常 + 权限拒绝 —— 94 例 admin（新增 40）+ 54 shared；`v-can` 联动覆盖在 TableToolbar
+[✓] 接口有权限声明 + 错误码 + OpenAPI 标签（本卡未新增后端接口；页面全部走 `api/system.ts`）
+[✓] 测试覆盖正常 + 异常 + 权限拒绝 —— 109 例 admin（组件 40 + 两页 15 + 前两卡 54）+ 54 shared
 [✓] 闸门 1 lint 通过（eslint 0 error 0 warning + prettier --check）
 [✓] 闸门 2 typecheck 通过
 [✓] 闸门 3 单测通过

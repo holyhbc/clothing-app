@@ -418,6 +418,29 @@ export const ROLE_CODES = [
 export type RoleCode = (typeof ROLE_CODES)[number]
 
 /**
+ * 内置角色 code → 中文名。
+ *
+ * 为什么需要它：用户列表要显示「他被授予了哪些角色」，而响应里的
+ * `UserOut.role_codes` 只有 code。用中文名才认得出那是「车间主管」而不是
+ * `workshop_supervisor` —— 车间里没人认得英文 code。
+ *
+ * ⚠️ 只覆盖**内置**角色；自建角色的名字来自 `GET /system/roles` 的 `name`，
+ *   页面遇到查不到的 code 时应回退成 code 本身，而不是显示空白。
+ */
+export const ROLE_NAMES: Readonly<Record<RoleCode, string>> = {
+  super_admin: '系统管理员',
+  factory_manager: '厂长',
+  workshop_supervisor: '车间主管',
+  line_leader: '组长',
+  warehouse_keeper: '仓管',
+  accountant: '财务',
+  purchaser: '采购',
+  merchandiser: '跟单',
+  piecework_settler: '计件员',
+  employee: '员工',
+}
+
+/**
  * 角色 → 该角色实际拥有的权限点。
  *
  * ⚠️ 这是**快照**，不是运行时真相：用户在后台改了角色授权后这里就过时了。

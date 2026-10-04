@@ -36,12 +36,7 @@ export interface MenuGroup {
  *  菜单里出现一个点进去是 404 的入口，比没有这个入口更糟 —— 用户会以为权限有问题、
  *  反复重登、找管理员。端点与页面都到位了再加。
  */
-/**
- * ⚠️ T-WEB-004 原本在这里有「系统管理」（用户管理 / 角色权限）两项，已**移除**：
- * 后端没有 `users` / `roles` 的任何端点（`openapi.json` 里与账号相关的只有
- * `auth` 那六个），页面无处可接。菜单里留一个点进去是 404 的入口比没有更糟。
- * 端点与页面都到位后再加回来 —— 见 `docs/tasks/T-AUTH-003-用户与角色管理接口.md`。
- */
+
 export const MENU_GROUPS: readonly MenuGroup[] = [
   {
     key: 'base',
@@ -51,6 +46,24 @@ export const MENU_GROUPS: readonly MenuGroup[] = [
         key: 'base-styles',
         title: '款号',
         permission: PERM.BASE_READ,
+      },
+    ],
+  },
+  // T-WEB-004 曾把这一组删掉过（后端没有端点，菜单里点进去是 404）；
+  // T-AUTH-003 补齐端点后按上面的规矩加回来。
+  {
+    key: 'system',
+    title: '系统管理',
+    children: [
+      {
+        key: 'system-users',
+        title: '用户管理',
+        permission: PERM.SYSTEM_USER_MANAGE,
+      },
+      {
+        key: 'system-roles',
+        title: '角色权限',
+        permission: PERM.SYSTEM_ROLE_MANAGE,
       },
     ],
   },
