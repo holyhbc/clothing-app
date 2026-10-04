@@ -77,11 +77,15 @@ def visible_workshops(ctx: AuthContext) -> frozenset[UUID]:
 PENDING_TABLES: Final[frozenset[str]] = frozenset(
     {
         # P1 的单据表
-        "cutting_orders",
         "bundling_orders",
         "piecework_logs",
         "stock_ledgers",
-        # T-BASE-002 已建（迁移 0005），从待建清单移出
+        # `cutting_orders` 已建（迁移 0009 / T-CUT-001a），从待建清单移出 ——
+        # 与 0005 对 `style_color_size_ratios` 同样处理。⚠️ 它上面的 `SCOPE_SPECS`
+        # 条目是当初「前瞻登记」写的，现在**终于**有真表可依。
+        # 漏掉这次移出的后果不是报错，而是那张表从此既不在待建清单也不在
+        # `test_scope_specs_keys_are_real_tables` 的待建分支里 —— 而那条守卫
+        # 恰恰是为了抓「登记了不存在的表名」，清单烂掉它就看不见了
     }
 )
 
