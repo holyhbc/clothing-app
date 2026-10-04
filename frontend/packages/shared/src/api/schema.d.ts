@@ -1000,6 +1000,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/styles/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 导出货号 xlsx（与列表同一套筛选）
+         * @description 导出货号。
+         *
+         *     ⚠️ **与列表共用同一个 service 筛选路径**（docs/07 §3.2 铁律 3）：另写一条
+         *     导出查询的话，「列表看到的」与「导出的」会不一致，而那只有对账时才发现。
+         *
+         *     ⚠️ **不导出数据范围之外的款号**：跟单（SELF）导出的也只有本人款号 ——
+         *     导出是绕过界面直接拿数据的地方，比界面更容易泄露。
+         *
+         *     ⚠️ 需要**两个**权限点同时具备：``base:export`` + ``system:export:manage``。
+         */
+        get: operations["export_styles_api_v1_styles_exports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/styles/options": {
         parameters: {
             query?: never;
@@ -1086,6 +1114,29 @@ export interface paths {
          * @description 新增色组行。色码重复 → ``10001``。
          */
         post: operations["create_style_color_api_v1_styles__style_no__colors_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/styles/{style_no}/disables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 停用款号（必填原因 + 必传 version）
+         * @description 停用款号：不允许新建裁剪/打菲单，**历史单据照常**（R2）。
+         *
+         *     ⚠️ 恢复走 ``PATCH /styles/{style_no}``（``is_active=true``）—— 不另开 enable 端点，
+         *     理由见 ``StyleService.disable`` 的注释。
+         */
+        post: operations["disable_style_api_v1_styles__style_no__disables_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4378,11 +4429,45 @@ export interface components {
             style: components["schemas"]["StyleListOut"];
         };
         /**
+         * StyleDisableIn
+         * @description 停用款号的请求体 = ``reason`` + ``version``。
+         *
+         *     ⚠️ ``version`` 必传：款号是**共享档案**，停用之前必须确认手上这份还是最新的
+         *     （否则会把别人刚改完的款号停掉，而界面还在显示旧内容）。字典的
+         *     ``POST /{key}/{code}/disables`` 不需要 version —— 字典行没有子表、没人会在
+         *     另一个界面上同时改它；款号有工序/单价/比例四张子表，必须乐观锁。
+         * @example {
+         *       "reason": "该色已停用"
+         *     }
+         */
+        StyleDisableIn: {
+            /**
+             * Reason
+             * @description 停用原因（必填）
+             */
+            reason: string;
+            /**
+             * Remark
+             * @description 备注
+             */
+            remark?: string | null;
+            /**
+             * Version
+             * @description 乐观锁版本号（必传，不匹配报 10003）
+             */
+            version: number;
+        };
+        /**
          * StyleListOut
          * @description 款号列表行。多带 ``customer_name`` / ``category_name`` —— 前端列表要直接显示，
          *     为此让前端再查两次字典是不可接受的往返。
          */
         StyleListOut: {
+            /**
+             * Bulk Qty
+             * @description 大货数量
+             */
+            bulk_qty?: number | null;
             /**
              * Category Id
              * Format: uuid
@@ -4401,6 +4486,11 @@ export interface components {
             /** Customer Name */
             customer_name?: string | null;
             /**
+             * Customer Style No
+             * @description 客户款号，印在唛头上
+             */
+            customer_style_no?: string | null;
+            /**
              * Id
              * Format: uuid
              * @description 主键
@@ -4415,6 +4505,11 @@ export interface components {
             last_used_at?: string | null;
             /** Merchandiser Id */
             merchandiser_id?: string | null;
+            /**
+             * Merchandiser Name
+             * @description 跟单员姓名（列表/详情都要直接显示 UUID 之外的东西）
+             */
+            merchandiser_name?: string | null;
             /** Name */
             name: string;
             /**
@@ -7242,6 +7337,41 @@ export interface operations {
             };
         };
     };
+    export_styles_api_v1_styles_exports_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                is_active?: boolean | null;
+                customer_id?: string | null;
+                category_id?: string | null;
+                merchandiser_id?: string | null;
+                sort_by?: string | null;
+                sort_order?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_style_options_api_v1_styles_options_get: {
         parameters: {
             query?: {
@@ -7395,6 +7525,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_list_StyleColorOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disable_style_api_v1_styles__style_no__disables_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                style_no: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StyleDisableIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_StyleOut_"];
                 };
             };
             /** @description Validation Error */

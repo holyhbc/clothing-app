@@ -35,6 +35,9 @@ export type StyleDetailOut = ApiModel<'StyleDetailOut'>
 /** 款号列表行。 */
 export type StyleListOut = ApiModel<'StyleListOut'>
 
+/** 停用款号的请求体（`POST /api/v1/styles/{style_no}/disables`）：`reason` + `version`。 */
+export type StyleDisableIn = ApiModel<'StyleDisableIn'>
+
 /** 尺码比例查询结果（含 `hands_total` 与 `missing_size_codes`）。 */
 export type RatioListOut = ApiModel<'RatioListOut'>
 
@@ -220,6 +223,23 @@ export type OperationRateCreate = ApiModel<'OperationRateCreate'>
 
 /** 设价结果：新档 + 被关闭的旧档（只追加，不改历史价，R11）。 */
 export type OperationRateSetOut = ApiModel<'OperationRateSetOut'>
+
+/**
+ * 模板复制的三个模式。⚠️ **没有系统默认值**（ADR-0009）：默认值会让"用户到底选了哪个
+ * 模式"变得不可追溯，而复制错误率必须为 0。
+ */
+export type TemplateCopyMode = ApiModel<'TemplateCopyMode'>
+
+/** 模板复制的冲突策略。同样不设默认 —— 默默覆盖别人配的工价比报错危险。 */
+export type ConflictPolicy = ApiModel<'ConflictPolicy'>
+
+/**
+ * 取价档位（ADR-0026 三档）。
+ *
+ * ⚠️ **不是 PG enum**：库里没有这一列，由匹配结果**派生**（所以加值不需要迁移）。
+ * 前端只做中文映射（docs/06 §1「枚举值来自后端，前端只做中文映射」）。
+ */
+export type RateSource = ApiModel<'RateSource'>
 
 /** 缺失（被真删且未恢复）的内置项清单 —— 「恢复内置库」按钮的前置提示。 */
 export type BuiltinMissingOut = ApiModel<'BuiltinMissingOut'>

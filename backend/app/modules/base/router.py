@@ -51,6 +51,7 @@ from app.modules.base.schemas import (
     StyleColorOut,
     StyleCreate,
     StyleDetailOut,
+    StyleDisableIn,
     StyleListOut,
     StyleOperationOut,
     StyleOperationsListOut,
@@ -625,6 +626,21 @@ def _signature_without_resource(handler: Callable[..., EndpointResult]) -> inspe
 
 STYLE_TAGS: list[str | Enum] = ["基础资料"]
 
+#: 款号导出的列。⚠️ **不含 UUID**：款号导出是给车间/跟单对账用的，
+#: 他们要的是「款号 / 款名 / 客户 / 分类 / 大货数量」，
+#: 导出 `category_id` 这种 UUID 对他们毫无意义（而且 docs/05 §3 要求带业务名）。
+STYLE_EXPORT_COLUMNS: list[Column] = [
+    Column("style_no", "款号"),
+    Column("name", "款名"),
+    Column("customer_name", "归属客户"),
+    Column("customer_style_no", "客户货号"),
+    Column("category_name", "商品分类"),
+    Column("bulk_qty", "大货数量"),
+    Column("merchandiser_name", "跟单员"),
+    Column("is_active", "启用"),
+    Column("last_used_at", "最近使用"),
+]
+
 #: 单价导出的列。⚠️ 顺序即表头顺序；金额 / 单价导出为**字符串**（docs/05 §3）
 RATE_EXPORT_COLUMNS: list[Column] = [
     Column("style_no", "款号"),
@@ -683,6 +699,64 @@ async def list_styles(
         )
     )
     return page_ok([item.model_dump(mode="json") for item in items], total, page, size)
+
+
+@router.get(
+    "/styles/exports",
+    response_class=StreamingResponse,
+    summary="导出货号 xlsx（与列表同一套筛选）",
+    openapi_extra={
+        "x-permission": f"base:export 且 {EXPORT_GLOBAL_PERMISSION}",
+    },
+    tags=STYLE_TAGS,
+)
+async def export_styles(
+    ctx: ContextDep,
+    session: SessionDep,
+    q: Annotated[str | None, Query(max_length=64)] = None,
+    is_active: bool | None = None,
+    customer_id: UUID | None = None,
+    category_id: UUID | None = None,
+    merchandiser_id: UUID | None = None,
+    sort_by: Annotated[str | None, Query()] = None,
+    sort_order: Annotated[str, Query(pattern="^(asc|desc)$")] = "asc",
+) -> StreamingResponse:
+    """导出货号。
+
+    ⚠️ **与列表共用同一个 service 筛选路径**（docs/07 §3.2 铁律 3）：另写一条
+    导出查询的话，「列表看到的」与「导出的」会不一致，而那只有对账时才发现。
+
+    ⚠️ **不导出数据范围之外的款号**：跟单（SELF）导出的也只有本人款号 ——
+    导出是绕过界面直接拿数据的地方，比界面更容易泄露。
+
+    ⚠️ 需要**两个**权限点同时具备：``base:export`` + ``system:export:manage``。
+    """
+    for required in ("base:export", EXPORT_GLOBAL_PERMISSION):
+        if not ctx.has(required):
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, f"无导出权限：缺少 {required}")
+    rows = await _style_service(session, ctx).export_styles(
+        StyleQuery(
+            q=q,
+            is_active=is_active,
+            customer_id=customer_id,
+            category_id=category_id,
+            merchandiser_id=merchandiser_id,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+    )
+    payload = [row.model_dump(mode="json") for row in rows]
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="styles-{datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")}.xlsx"'
+        ),
+        "X-Row-Count": str(len(payload)),
+    }
+    return StreamingResponse(
+        stream_xlsx(STYLE_EXPORT_COLUMNS, iter(payload)),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
 
 
 @router.get(
@@ -776,6 +850,32 @@ async def get_style(
     _require_base(ctx, "base:read", "查看款号")
     detail = await _style_service(session, ctx).get_detail(style_no)
     return ok(detail.model_dump(mode="json"))
+
+
+@router.post(
+    "/styles/{style_no}/disables",
+    response_model=ApiResponse[StyleOut],
+    summary="停用款号（必填原因 + 必传 version）",
+    openapi_extra={
+        "x-permission": "base:disable",
+        "x-request-schema": StyleDisableIn.model_json_schema(),
+    },
+    tags=STYLE_TAGS,
+)
+async def disable_style(
+    style_no: Annotated[str, Path(min_length=1, max_length=32)],
+    payload: StyleDisableIn,
+    ctx: ContextDep,
+    session: SessionDep,
+) -> dict[str, object]:
+    """停用款号：不允许新建裁剪/打菲单，**历史单据照常**（R2）。
+
+    ⚠️ 恢复走 ``PATCH /styles/{style_no}``（``is_active=true``）—— 不另开 enable 端点，
+    理由见 ``StyleService.disable`` 的注释。
+    """
+    _require_base(ctx, "base:disable", "停用款号")
+    style = await _style_service(session, ctx).disable(style_no, payload.reason, payload.version)
+    return ok(style.model_dump(mode="json"))
 
 
 @router.patch(

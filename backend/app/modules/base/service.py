@@ -732,7 +732,8 @@ def _style_list_stmt(ctx: AuthContext) -> Select[Any]:
         apply_data_scope(select(Style), Style, ctx)
         .outerjoin(Customer, Customer.id == Style.customer_id)
         .outerjoin(ProductCategory, ProductCategory.id == Style.category_id)
-        .add_columns(Customer.name, ProductCategory.name)
+        .outerjoin(User, User.id == Style.merchandiser_id)
+        .add_columns(Customer.name, ProductCategory.name, User.name)
     )
 
 
@@ -765,21 +766,7 @@ class StyleService:
         第一行就是 ``apply_data_scope``（docs/07 §3.2 铁律 1）：跟单（``SELF``）
         只能看到 ``merchandiser_id`` 是自己的款号，其他人是 **0 条**（不是全部）。
         """
-        query.validate()
-        stmt = _style_list_stmt(self.ctx)
-        if query.q:
-            # ⚠️ 必须用与 ``idx_styles_trgm`` **同一个表达式**，否则 planner 匹配不上，
-            #    04 §5.1 精心要求的模糊检索退化成全表扫且毫无征兆
-            stmt = stmt.where(literal_column(STYLE_TRGM_QUALIFIED).ilike(f"%{query.q}%"))
-        if query.is_active is not None:
-            stmt = stmt.where(Style.is_active == query.is_active)
-        if query.customer_id is not None:
-            stmt = stmt.where(Style.customer_id == query.customer_id)
-        if query.category_id is not None:
-            stmt = stmt.where(Style.category_id == query.category_id)
-        if query.merchandiser_id is not None:
-            stmt = stmt.where(Style.merchandiser_id == query.merchandiser_id)
-
+        stmt = self._filtered_styles(query)
         column = getattr(Style, STYLE_SORT_WHITELIST[query.sort_by or "style_no"])
         direction = column.desc() if query.sort_order == "desc" else column.asc()
         stmt = stmt.order_by(direction, Style.style_no.asc())
@@ -847,6 +834,64 @@ class StyleService:
             )
         assert_in_scope(style, self.ctx)
         return style
+
+    def _filtered_styles(self, query: StyleQuery) -> Select[Any]:
+        """款号列表与导出**共用**的筛选 + 数据范围。
+
+        ⚠️ 抽出来是因为有**两个**消费方（列表分页、导出不分页）：复制一份的
+        后果是将来改了一个筛选条件忘了改另一个 —— 而「列表看到的」与「导出的」
+        不一致，只有对账时才发现（docs/07 §3.2 铁律 3）。
+
+        第一行就是 ``apply_data_scope``（铁律 1）：跟单（``SELF``）只能看到
+        ``merchandiser_id`` 是自己的款号，导出也一样 —— 导出是绕过界面直接拿数据的
+        地方，比界面更容易泄露。
+        """
+        query.validate()
+        stmt = _style_list_stmt(self.ctx)
+        if query.q:
+            # ⚠️ 必须用与 ``idx_styles_trgm`` **同一个表达式**，否则 planner 匹配不上，
+            #    04 §5.1 精心要求的模糊检索退化成全表扫且毫无征兆
+            stmt = stmt.where(literal_column(STYLE_TRGM_QUALIFIED).ilike(f"%{query.q}%"))
+        if query.is_active is not None:
+            stmt = stmt.where(Style.is_active == query.is_active)
+        if query.customer_id is not None:
+            stmt = stmt.where(Style.customer_id == query.customer_id)
+        if query.category_id is not None:
+            stmt = stmt.where(Style.category_id == query.category_id)
+        if query.merchandiser_id is not None:
+            stmt = stmt.where(Style.merchandiser_id == query.merchandiser_id)
+        return stmt
+
+    async def export_styles(self, query: StyleQuery) -> list[StyleListOut]:
+        """导出货号：**与列表同一套筛选**、不分页（docs/07 §3.2 铁律 3、docs/05 §9.1）。
+
+        ⚠️ 刻意复用 :meth:`_filtered_styles`（也就是列表用的那一份 WHERE）而不是
+        另写一条 SELECT：另写的话，「列表看到的」与「导出的」会不一致 —— 那只有
+        对账时才发现（比如列表按 ``last_used_at`` 排、导出按款号排，用户以为漏了行）。
+
+        ⚠️ 行数上限 ``11011``：超了直接拒绝而不是截断 —— 截断出来的导出会让用户
+        以为导全了，那比报错危险得多（与 :meth:`RateService.export_rates` 同判据）。
+        """
+        stmt = self._filtered_styles(query)
+        column = getattr(Style, STYLE_SORT_WHITELIST[query.sort_by or "style_no"])
+        direction = column.desc() if query.sort_order == "desc" else column.asc()
+        stmt = stmt.order_by(direction, Style.style_no.asc())
+
+        total = int(
+            (
+                await self.session.execute(
+                    select(func.count()).select_from(stmt.order_by(None).subquery())
+                )
+            ).scalar_one()
+        )
+        if total > MAX_EXPORT_ROWS:
+            raise BusinessError(
+                ErrorCode.EXPORT_RANGE_TOO_LARGE,
+                f"导出结果 {total} 行超过上限 {MAX_EXPORT_ROWS}，请缩小筛选范围",
+                details={"row_count": total, "max_rows": MAX_EXPORT_ROWS},
+            )
+        rows = list((await self.session.execute(stmt)).all())
+        return [self._style_row(row) for row in rows]
 
     async def get_detail(self, style_no: str) -> StyleDetailOut:
         """款号详情 = 款号 + 色组 + 尺码 + 款号工序 + 现行价（设计稿 §4.5）。"""
@@ -932,7 +977,7 @@ class StyleService:
     def _style_row(row: tuple[Any, ...]) -> StyleListOut:
         # ⚠️ 这里取的是 ``add_columns`` 出来的**标量列**（客户名 / 分类名），
         # 不是 Customer / ProductCategory 实体 —— 写成实体解包会得到 str
-        style, customer_name, category_name = row
+        style, customer_name, category_name, merchandiser_name = row
         return StyleListOut(
             id=style.id,
             version=style.version,
@@ -945,7 +990,10 @@ class StyleService:
             category_name=category_name,
             customer_id=style.customer_id,
             customer_name=customer_name,
+            customer_style_no=style.customer_style_no,
+            bulk_qty=style.bulk_qty,
             merchandiser_id=style.merchandiser_id,
+            merchandiser_name=merchandiser_name,
             is_active=style.is_active,
             last_used_at=style.last_used_at,
         )
@@ -1078,6 +1126,68 @@ class StyleService:
                 action=ACTION_UPDATE,
                 reason="修改款号",
                 changed_fields=changes,
+            )
+        await self.session.refresh(style)
+        return self._style_out(style)
+
+    async def disable(self, style_no: str, reason: str, version: int) -> StyleOut:
+        """停用款号（R2：**不允许新建裁剪/打菲单，历史照常**）。
+
+        ⚠️ 为什么是独立端点而不是靠 ``PATCH is_active``：停用有三重语义 ——
+        原因必填（§4.4）、要写 ``document_logs``、且是**不可逆方向的单向动作**。
+        让它走通用 PATCH 的话，这三条都可能被绕过（PATCH 里 ``is_active`` 只是
+        一个普通字段，谁都能顺手改，且没原因）。同理也不复用字典的
+        ``POST /{key}/{code}/disables``：那条路径的键是「业务编码列」，而款号的
+        停用还要求 ``version`` 做乐观锁（有人在别的界面上刚改过款号时不该被覆盖）。
+
+        ⚠️ **不做启用端点**：款号停用后的恢复走 PATCH（``is_active=true``），
+        由通用修改的审计链路记录 —— 现场不会「误停用要立刻撤销」，但会
+        「季度重开一个款号」，走同一条修改路径更省事，也不会多出第二种权限语义。
+        """
+        code = normalize_style_no(style_no)
+        if not reason or not reason.strip():
+            raise BusinessError(ErrorCode.MISSING_BUSINESS_PARAM, "停用必须填写原因（reason）")
+        style = await self.get_required(code)
+        if not style.is_active:
+            raise BusinessError(
+                ErrorCode.ILLEGAL_OPERATION, f"款号 {code} 已经是停用状态，无需重复停用"
+            )
+
+        async with unit_of_work(self.session):
+            stmt = (
+                update(Style)
+                .where(
+                    Style.id == style.id,
+                    Style.version == version,
+                    Style.deleted_at.is_(None),
+                    Style.is_active.is_(True),
+                )
+                .values(
+                    is_active=False,
+                    remark=reason[:500],
+                    version=Style.version + 1,
+                    updated_by=self.ctx.user_id,
+                )
+                .execution_options(synchronize_session=False)
+            )
+            result = await self.session.execute(stmt)
+            if cast("CursorResult[Any]", result).rowcount == 0:
+                # ⚠️ 与 PATCH 同一判据，但文案不同：这里更可能是「刚被别人停用」，
+                #    笼统说「已被他人修改」会让用户以为是款名/分类被改了
+                raise BusinessError(
+                    ErrorCode.OPTIMISTIC_LOCK_CONFLICT,
+                    "款号已被他人修改或已被停用，请刷新后重试",
+                    details={"expected_version": version},
+                )
+            await write_document_log(
+                self.session,
+                self.ctx,
+                doc_type=DOC_STYLE,
+                doc_id=style.id,
+                doc_no=code,
+                action=ACTION_UPDATE,
+                reason=reason,
+                changed_fields={"is_active": False},
             )
         await self.session.refresh(style)
         return self._style_out(style)

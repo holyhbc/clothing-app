@@ -15,6 +15,7 @@
 import type {
   CopiedPriceOut,
   DocumentLogOut,
+  DownloadResult,
   OperationRateCreate,
   OperationRateOut,
   OperationRateSetOut,
@@ -27,7 +28,9 @@ import type {
   StyleColorOut,
   StyleCreate,
   StyleDetailOut,
+  StyleDisableIn,
   StyleListOut,
+  StyleOperationItemIn,
   StyleOperationsListOut,
   StyleOperationsReplaceIn,
   StyleOut,
@@ -59,7 +62,9 @@ export type {
   StyleColorOut,
   StyleCreate,
   StyleDetailOut,
+  StyleDisableIn,
   StyleListOut,
+  StyleOperationItemIn,
   StyleOperationsListOut,
   StyleOperationsReplaceIn,
   StyleOut,
@@ -78,7 +83,17 @@ function pathOf(styleNo: string): string {
 
 // ------------------------------------------------------------------ 款号
 
-export interface StyleListQuery {
+/**
+ * 款号列表查询。
+ *
+ * ⚠️ 必须 `extends Record<string, QueryValue>`：`usePageList<TQuery extends PageQuery>`
+ *    的约束要求 TQuery 是索引签名类型，否则 `applyFilter({category_id})` 传不进去。
+ *    `api/system.ts` 的 `UserQuery` 是同一个原因这么写的。
+ */
+export interface StyleListQuery extends Record<
+  string,
+  string | number | boolean | null | undefined
+> {
   /** 编码 / 款名 / 客户名 / 分类名模糊搜索（05 §9.5.1）。 */
   q?: string
   is_active?: boolean
@@ -111,6 +126,24 @@ export function patchStyle(styleNo: string, payload: StylePatch): Promise<StyleO
 }
 
 /**
+ * 停用款号：不允许新建裁剪/打菲单，**历史单据照常**（R2）。
+ *
+ * ⚠️ `reason` 与 `version` 都必传。走独立端点而不是 `patchStyle({is_active: false})`：
+ *   停用有三重语义（原因必填 / 要写日志 / 单向不可逆），塞进通用 PATCH 三条都会被绕过。
+ * ⚠️ 权限是 `base:disable`，**不是** `base:update` —— 款号是档案主体，停用它的
+ *   影响面（不允许新建裁剪单）比改款名大。
+ * ⚠️ **恢复走 `patchStyle({ is_active: true })`**，后端不另开 enable 端点。
+ */
+export function disableStyle(styleNo: string, payload: StyleDisableIn): Promise<StyleOut> {
+  return http.post<StyleOut>(`${pathOf(styleNo)}/disables`, payload)
+}
+
+/** 导出货号 xlsx。⚠️ **不传分页**：后端导出与列表共用同一套筛选（docs/07 §3.2 铁律 3）。 */
+export function exportStyles(query: StyleListQuery = {}): Promise<DownloadResult> {
+  return http.download('/styles/exports', { query: { ...query } })
+}
+
+/**
  * 取一个建议款号（**不建档**；⚠️ 会消耗一个序号）。
  *
  * ⚠️ 权限点是 `base:create` —— 取号是写操作。只给 `base:read` 的话任何能看款号的人
@@ -125,6 +158,33 @@ export function suggestStyleNo(customerId: string | null): Promise<SuggestedStyl
 /** 候选（`Combo` 用）。⚠️ 默认按 `last_used_at DESC` —— 常用优先（05 §9.5.2）。 */
 export function searchStyleOptions(keyword: string): Promise<OptionOut[]> {
   return http.get<OptionOut[]>('/styles/options', { query: { q: keyword, size: 20 } })
+}
+
+/**
+ * 客户候选（款号表单的「归属客户」`Combo` 用）。
+ *
+ * ⚠️ 客户**没有页面**（docs/12 L-063：T-BASE-002 交付了端点，T-WEB-006 的范围不含
+ *    客户页），所以这里直接调 `/customers/options` 而**不**走 `baseApi` 注册表 ——
+ *    把 `customers` 加进注册表会自动生成路由，而路由指向的页面不存在 → 点菜单白屏
+ *    （`pageLoader` 缺页时才抛，那已经是一次点击之后了）。
+ * ⚠️ `value` 是**客户编码**（业务键）不是 UUID：款号表的 `customer_id` 是 UUID，
+ *    而 `/options` 的 value 是编码（05 §9.5.2 明文规定），所以这里另给一个按 id 的版本。
+ */
+export function searchCustomerOptions(keyword: string): Promise<OptionOut[]> {
+  return http.get<OptionOut[]>('/customers/options', { query: { q: keyword, size: 20 } })
+}
+
+/** 客户候选（`value` 是 **UUID**）—— 提交 `styles.customer_id` 要的是这个。 */
+export async function searchCustomerOptionsById(keyword = ''): Promise<OptionOut[]> {
+  const result = await http.get<
+    PageData<{ id: string; code: string; name: string; is_active: boolean }>
+  >('/customers', { query: { q: keyword, size: 20 } })
+  return result.items.map((row) => ({
+    value: row.id,
+    label: `${row.code} ${row.name}`.trim(),
+    sub: null,
+    disabled: row.is_active !== true,
+  }))
 }
 
 // ------------------------------------------------------------------ 色组

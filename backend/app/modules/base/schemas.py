@@ -443,6 +443,18 @@ class StylePatch(PatchIn):
     remark: str | None = Field(default=None, max_length=500)
 
 
+class StyleDisableIn(DisableIn):
+    """停用款号的请求体 = ``reason`` + ``version``。
+
+    ⚠️ ``version`` 必传：款号是**共享档案**，停用之前必须确认手上这份还是最新的
+    （否则会把别人刚改完的款号停掉，而界面还在显示旧内容）。字典的
+    ``POST /{key}/{code}/disables`` 不需要 version —— 字典行没有子表、没人会在
+    另一个界面上同时改它；款号有工序/单价/比例四张子表，必须乐观锁。
+    """
+
+    version: Annotated[int, Field(ge=1, description="乐观锁版本号（必传，不匹配报 10003）")]
+
+
 class StyleOut(Versioned):
     """款号详情。"""
 
@@ -470,7 +482,15 @@ class StyleListOut(Versioned):
     category_name: str | None = None
     customer_id: UUID | None = None
     customer_name: str | None = None
+    # ⚠️ 这两个字段不是「列表页装饰」：`customer_style_no` 是印在唛头上的客户货号，
+    #    `bulk_qty` 是大货数量（09 §1.1）。列表页要能排序/筛选、详情页要能编辑回显，
+    #    缺了它们页面只能显示「接口未返回」—— 那是把数据缺失误报成功能缺失。
+    customer_style_no: str | None = Field(default=None, description="客户款号，印在唛头上")
+    bulk_qty: int | None = Field(default=None, description="大货数量")
     merchandiser_id: UUID | None = None
+    merchandiser_name: str | None = Field(
+        default=None, description="跟单员姓名（列表/详情都要直接显示 UUID 之外的东西）"
+    )
     is_active: bool = True
     last_used_at: datetime | None = None
 

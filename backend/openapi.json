@@ -4118,9 +4118,61 @@
         "title": "StyleDetailOut",
         "type": "object"
       },
+      "StyleDisableIn": {
+        "description": "停用款号的请求体 = ``reason`` + ``version``。\n\n⚠️ ``version`` 必传：款号是**共享档案**，停用之前必须确认手上这份还是最新的\n（否则会把别人刚改完的款号停掉，而界面还在显示旧内容）。字典的\n``POST /{key}/{code}/disables`` 不需要 version —— 字典行没有子表、没人会在\n另一个界面上同时改它；款号有工序/单价/比例四张子表，必须乐观锁。",
+        "example": {
+          "reason": "该色已停用"
+        },
+        "properties": {
+          "reason": {
+            "description": "停用原因（必填）",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "remark": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "备注",
+            "title": "Remark"
+          },
+          "version": {
+            "description": "乐观锁版本号（必传，不匹配报 10003）",
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reason",
+          "version"
+        ],
+        "title": "StyleDisableIn",
+        "type": "object"
+      },
       "StyleListOut": {
         "description": "款号列表行。多带 ``customer_name`` / ``category_name`` —— 前端列表要直接显示，\n为此让前端再查两次字典是不可接受的往返。",
         "properties": {
+          "bulk_qty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "大货数量",
+            "title": "Bulk Qty"
+          },
           "category_id": {
             "format": "uuid",
             "title": "Category Id",
@@ -4166,6 +4218,18 @@
             ],
             "title": "Customer Name"
           },
+          "customer_style_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "客户款号，印在唛头上",
+            "title": "Customer Style No"
+          },
           "id": {
             "description": "主键",
             "format": "uuid",
@@ -4200,6 +4264,18 @@
               }
             ],
             "title": "Merchandiser Id"
+          },
+          "merchandiser_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "跟单员姓名（列表/详情都要直接显示 UUID 之外的东西）",
+            "title": "Merchandiser Name"
           },
           "name": {
             "title": "Name",
@@ -12575,6 +12651,151 @@
         }
       }
     },
+    "/api/v1/styles/exports": {
+      "get": {
+        "description": "导出货号。\n\n⚠️ **与列表共用同一个 service 筛选路径**（docs/07 §3.2 铁律 3）：另写一条\n导出查询的话，「列表看到的」与「导出的」会不一致，而那只有对账时才发现。\n\n⚠️ **不导出数据范围之外的款号**：跟单（SELF）导出的也只有本人款号 ——\n导出是绕过界面直接拿数据的地方，比界面更容易泄露。\n\n⚠️ 需要**两个**权限点同时具备：``base:export`` + ``system:export:manage``。",
+        "operationId": "export_styles_api_v1_styles_exports_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_active",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Active"
+            }
+          },
+          {
+            "in": "query",
+            "name": "customer_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "merchandiser_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Merchandiser Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort By"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_order",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "pattern": "^(asc|desc)$",
+              "title": "Sort Order",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "导出货号 xlsx（与列表同一套筛选）",
+        "tags": [
+          "基础资料",
+          "基础资料"
+        ],
+        "x-permission": "base:export 且 system:export:manage"
+      }
+    },
     "/api/v1/styles/options": {
       "get": {
         "description": "款号候选。``q`` 为空时按 ``last_used_at DESC NULLS LAST`` 返回前 N 条。",
@@ -13047,6 +13268,108 @@
             "color_name"
           ],
           "title": "StyleColorCreate",
+          "type": "object"
+        }
+      }
+    },
+    "/api/v1/styles/{style_no}/disables": {
+      "post": {
+        "description": "停用款号：不允许新建裁剪/打菲单，**历史单据照常**（R2）。\n\n⚠️ 恢复走 ``PATCH /styles/{style_no}``（``is_active=true``）—— 不另开 enable 端点，\n理由见 ``StyleService.disable`` 的注释。",
+        "operationId": "disable_style_api_v1_styles__style_no__disables_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "style_no",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Style No",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StyleDisableIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_StyleOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "停用款号（必填原因 + 必传 version）",
+        "tags": [
+          "基础资料",
+          "基础资料"
+        ],
+        "x-permission": "base:disable",
+        "x-request-schema": {
+          "description": "停用款号的请求体 = ``reason`` + ``version``。\n\n⚠️ ``version`` 必传：款号是**共享档案**，停用之前必须确认手上这份还是最新的\n（否则会把别人刚改完的款号停掉，而界面还在显示旧内容）。字典的\n``POST /{key}/{code}/disables`` 不需要 version —— 字典行没有子表、没人会在\n另一个界面上同时改它；款号有工序/单价/比例四张子表，必须乐观锁。",
+          "example": {
+            "reason": "该色已停用"
+          },
+          "properties": {
+            "reason": {
+              "description": "停用原因（必填）",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Reason",
+              "type": "string"
+            },
+            "remark": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "备注",
+              "title": "Remark"
+            },
+            "version": {
+              "description": "乐观锁版本号（必传，不匹配报 10003）",
+              "minimum": 1,
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "reason",
+            "version"
+          ],
+          "title": "StyleDisableIn",
           "type": "object"
         }
       }

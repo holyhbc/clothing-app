@@ -25,8 +25,15 @@ import type { BaseListQuery, BaseResourceApi } from '@/api/base'
 export interface UseExportOptions {
   /** 中文资源名（进文件名与提示）。 */
   resourceLabel: string
-  /** 资源 API（`baseApi[某个 key]`）。 */
-  api: BaseResourceApi
+  /**
+   * 只要求有 `exportXlsx(query)` —— **不是**整个 `BaseResourceApi`。
+   *
+   * ⚠️ 别把类型写成 `BaseResourceApi`：款号这一族不是九个基础资料那种同构资源，
+   *    走的是 `@/api/styles` 里手写的封装（6 种不同语义，塞不进注册表）。
+   *    要求整个 `BaseResourceApi` 就等于逼款号页**伪造一个假 api 对象**才能导出，
+   *    那份伪造品没有任何端点与它对应 —— 看起来能导出，实际请求打不到任何地方。
+   */
+  api: Pick<BaseResourceApi, 'exportXlsx'>
   /** 取当前筛选条件。**每次点击时求值**，不是创建时快照 —— 否则翻页/改筛选后导出的还是旧范围。 */
   currentQuery: () => BaseListQuery
   /** 筛选值 → 中文（用于文件名摘要）。缺省用原始值。 */
