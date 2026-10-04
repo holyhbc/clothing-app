@@ -29,6 +29,7 @@ from app.core.idempotency import load_idempotent, store_idempotent
 from app.core.numbering import business_today
 from app.core.permissions import AuthContext, get_auth_context
 from app.core.responses import ApiResponse, PageData, ok, page_ok
+from app.modules.base.document_logs import list_document_logs
 from app.modules.base.repository import ListQuery
 from app.modules.base.resources import RESOURCES, DictResource
 from app.modules.base.schemas import (
@@ -38,6 +39,7 @@ from app.modules.base.schemas import (
     DictRow,
     DisableIn,
     DisableOut,
+    DocumentLogOut,
     OperationRateCreate,
     OperationRateOut,
     OperationRateSetOut,
@@ -57,6 +59,7 @@ from app.modules.base.schemas import (
     StylePatch,
     StyleSizeCreate,
     StyleSizeOut,
+    SuggestedStyleNoOut,
     TemplateCopyIn,
     TemplateCopyOut,
 )
@@ -722,6 +725,41 @@ async def create_style(
     return ok(style.model_dump(mode="json"))
 
 
+# ⚠️ **必须注册在 `/styles/{style_no}` 之前**：FastAPI 按注册顺序匹配，排在后面的话
+#    `/styles/suggested-no` 会被当成「款号叫 suggested-no 的那一行」→ 404，
+#    症状是"这个接口明明在 OpenAPI 里却 404"，极难定位（字典路由踩过同一个坑，
+#    见 `_register_one` 的注释）。
+@router.get(
+    "/styles/suggested-no",
+    response_model=ApiResponse[SuggestedStyleNoOut],
+    summary="取一个建议款号（**只读建议，不建档**；⚠️ 会消耗一个序号）",
+    openapi_extra={"x-permission": "base:create"},
+    tags=STYLE_TAGS,
+)
+async def suggest_style_no_endpoint(
+    ctx: ContextDep,
+    session: SessionDep,
+    customer_id: Annotated[UUID | None, Query(description="归属客户；不给 = 全厂序列")] = None,
+) -> dict[str, object]:
+    """取建议款号。
+
+    ⚠️ **权限点用 `base:create` 而不是 `base:read`**：取号会 `UPDATE
+    style_no_sequences.next_no`，是一个**写操作**。给 `base:read` 的话，任何能看款号的
+    人都能狂点把某一年的序号消耗光（虽然不影响正确性，但建议号会跳得很难看）。
+
+    为什么不复用 ``POST /styles?suggest_style_no=true``：那个端点会**真的建档**
+    （建议号是建档时"额外回一个"）。表单上的「生成建议号」按钮要的是"填进去让我改"，
+    复用它等于每点一次按钮就多一个款号。
+    """
+    _require_base(ctx, "base:create", "生成建议款号")
+    return ok(
+        SuggestedStyleNoOut(
+            style_no=await _style_service(session, ctx).suggest(customer_id),
+            customer_id=customer_id,
+        ).model_dump(mode="json")
+    )
+
+
 @router.get(
     "/styles/{style_no}",
     response_model=ApiResponse[StyleDetailOut],
@@ -932,6 +970,34 @@ async def copy_style_template(
     if idempotent is not None:
         await store_idempotent(idempotent, response)
     return response
+
+
+@router.get(
+    "/document-logs",
+    response_model=ApiResponse[PageData[DocumentLogOut]],
+    summary="变更历史（按 doc_type + doc_no 查审计日志，docs/06 §2.3 的抽屉）",
+    openapi_extra={"x-permission": "base:read"},
+    tags=["基础资料"],
+)
+async def list_logs(
+    ctx: ContextDep,
+    session: SessionDep,
+    doc_type: Annotated[str, Query(max_length=32, description="Style / OperationRate / ...")],
+    doc_no: Annotated[str, Query(max_length=64, description="单据号 / 业务编码")],
+    page: Annotated[int, Query(ge=1)] = 1,
+    size: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> dict[str, object]:
+    """某张单据 / 一条主数据的变更历史。
+
+    ⚠️ ``doc_type`` 与 ``doc_no`` **都必填**：审计表没有归属列，"查全部日志"这种用法
+    在数据范围（Q-P0-05 跟单只看自己的款号）下根本无法表达 —— 强行支持就只能给一个
+    全厂都能看的"操作日志大屏"，那是另一个需求、另一个权限点。
+    """
+    _require_base(ctx, "base:read", "查看变更历史")
+    data = await list_document_logs(
+        session, ctx, doc_type=doc_type, doc_no=doc_no, page=page, size=size
+    )
+    return ok(data.model_dump(mode="json"))
 
 
 # ------------------------------------------------------------------ 单价

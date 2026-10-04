@@ -535,6 +535,60 @@
         "title": "ApiResponse[OperationRateSetOut]",
         "type": "object"
       },
+      "ApiResponse_PageData_DocumentLogOut__": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageData_DocumentLogOut_"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[PageData[DocumentLogOut]]",
+        "type": "object"
+      },
       "ApiResponse_PageData_OperationRateOut__": {
         "properties": {
           "code": {
@@ -1073,6 +1127,60 @@
           }
         },
         "title": "ApiResponse[StyleOut]",
+        "type": "object"
+      },
+      "ApiResponse_SuggestedStyleNoOut_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SuggestedStyleNoOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[SuggestedStyleNoOut]",
         "type": "object"
       },
       "ApiResponse_TemplateCopyOut_": {
@@ -2321,6 +2429,100 @@
         "title": "DisableUserRequest",
         "type": "object"
       },
+      "DocumentLogOut": {
+        "description": "一条审计日志（docs/04 §7.9；详情页「变更历史」抽屉的每一行）。\n\n⚠️ **刻意不含 `operator_id`**：界面显示的是冗余的 `operator_name`（用户改名后日志\n仍可读，这是那张列存在的理由），而 UUID 对用户没有意义 —— 把它暴露出去只会诱使\n前端拿它去拼\"用户详情\"的跳转，而那条路径不存在。",
+        "properties": {
+          "action": {
+            "description": "CREATE/UPDATE/SUBMIT/DELETE/RESTORE/...",
+            "title": "Action",
+            "type": "string"
+          },
+          "changed_fields": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "字段级 diff（各单据自定义）",
+            "title": "Changed Fields"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "doc_no": {
+            "description": "单据号 / 业务编码；单价是 `{款号或ALL}/{工序号}`",
+            "title": "Doc No",
+            "type": "string"
+          },
+          "doc_type": {
+            "description": "单据 / 主数据类型，如 Style / OperationRate",
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "from_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "变更前状态",
+            "title": "From Status"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "operator_name": {
+            "description": "操作人姓名（冗余，不随改名变）",
+            "title": "Operator Name",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "变更原因",
+            "title": "Reason"
+          },
+          "to_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "变更后状态",
+            "title": "To Status"
+          }
+        },
+        "required": [
+          "id",
+          "doc_type",
+          "doc_no",
+          "action",
+          "operator_name",
+          "created_at"
+        ],
+        "title": "DocumentLogOut",
+        "type": "object"
+      },
       "EnableUserRequest": {
         "additionalProperties": false,
         "description": "启用用户（解除停用）。原因同样必填 —— 启用同样是敏感动作。",
@@ -2793,6 +2995,51 @@
           "label"
         ],
         "title": "OptionOut",
+        "type": "object"
+      },
+      "PageData_DocumentLogOut_": {
+        "example": {
+          "items": [],
+          "page": 1,
+          "page_size": 20,
+          "total": 0
+        },
+        "properties": {
+          "items": {
+            "description": "当前页数据",
+            "items": {
+              "$ref": "#/components/schemas/DocumentLogOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "description": "当前页码，从 1 起",
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "description": "每页条数，上限 200",
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "description": "总条数（用于分页器）",
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "PageData[DocumentLogOut]",
         "type": "object"
       },
       "PageData_OperationRateOut_": {
@@ -4589,6 +4836,34 @@
           "sort_no"
         ],
         "title": "StyleSizeOut",
+        "type": "object"
+      },
+      "SuggestedStyleNoOut": {
+        "description": "建议款号（Q-P0-04：**只作参考，用户输入一律优先**）。\n\n⚠️ 调这个接口会**消耗一个序号**（`style_no_sequences.next_no + 1`），所以它是\n「帮我看看下一个号是多少」，不是「预览」。用户拿了这个号又改掉，序号就空了一格\n—— 空一号不影响唯一性（唯一索引在 `styles` 上），只影响\"建议号跳号\"。",
+        "properties": {
+          "customer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "归属客户；null = 走全厂序列（前缀 ST）",
+            "title": "Customer Id"
+          },
+          "style_no": {
+            "description": "建议款号，如 HB-2026-0001；**不保证最终被采用**",
+            "title": "Style No",
+            "type": "string"
+          }
+        },
+        "required": [
+          "style_no"
+        ],
+        "title": "SuggestedStyleNoOut",
         "type": "object"
       },
       "TemplateCopyIn": {
@@ -7346,6 +7621,94 @@
           "基础资料"
         ],
         "x-permission": "base:disable"
+      }
+    },
+    "/api/v1/document-logs": {
+      "get": {
+        "description": "某张单据 / 一条主数据的变更历史。\n\n⚠️ ``doc_type`` 与 ``doc_no`` **都必填**：审计表没有归属列，\"查全部日志\"这种用法\n在数据范围（Q-P0-05 跟单只看自己的款号）下根本无法表达 —— 强行支持就只能给一个\n全厂都能看的\"操作日志大屏\"，那是另一个需求、另一个权限点。",
+        "operationId": "list_logs_api_v1_document_logs_get",
+        "parameters": [
+          {
+            "description": "Style / OperationRate / ...",
+            "in": "query",
+            "name": "doc_type",
+            "required": true,
+            "schema": {
+              "description": "Style / OperationRate / ...",
+              "maxLength": 32,
+              "title": "Doc Type",
+              "type": "string"
+            }
+          },
+          {
+            "description": "单据号 / 业务编码",
+            "in": "query",
+            "name": "doc_no",
+            "required": true,
+            "schema": {
+              "description": "单据号 / 业务编码",
+              "maxLength": 64,
+              "title": "Doc No",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PageData_DocumentLogOut__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "变更历史（按 doc_type + doc_no 查审计日志，docs/06 §2.3 的抽屉）",
+        "tags": [
+          "基础资料",
+          "基础资料"
+        ],
+        "x-permission": "base:read"
       }
     },
     "/api/v1/events/stream": {
@@ -12292,6 +12655,66 @@
           "基础资料"
         ],
         "x-permission": "base:read"
+      }
+    },
+    "/api/v1/styles/suggested-no": {
+      "get": {
+        "description": "取建议款号。\n\n⚠️ **权限点用 `base:create` 而不是 `base:read`**：取号会 `UPDATE\nstyle_no_sequences.next_no`，是一个**写操作**。给 `base:read` 的话，任何能看款号的\n人都能狂点把某一年的序号消耗光（虽然不影响正确性，但建议号会跳得很难看）。\n\n为什么不复用 ``POST /styles?suggest_style_no=true``：那个端点会**真的建档**\n（建议号是建档时\"额外回一个\"）。表单上的「生成建议号」按钮要的是\"填进去让我改\"，\n复用它等于每点一次按钮就多一个款号。",
+        "operationId": "suggest_style_no_endpoint_api_v1_styles_suggested_no_get",
+        "parameters": [
+          {
+            "description": "归属客户；不给 = 全厂序列",
+            "in": "query",
+            "name": "customer_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "归属客户；不给 = 全厂序列",
+              "title": "Customer Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SuggestedStyleNoOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "取一个建议款号（**只读建议，不建档**；⚠️ 会消耗一个序号）",
+        "tags": [
+          "基础资料",
+          "基础资料"
+        ],
+        "x-permission": "base:create"
       }
     },
     "/api/v1/styles/{style_no}": {

@@ -815,6 +815,18 @@ class StyleService:
             for row in rows
         ]
 
+    async def suggest(self, customer_id: UUID | None) -> str:
+        """取一个建议款号（**不建档**）。
+
+        Q-P0-04：款号由用户自定义，建议号只作参考。表单上的「生成建议号」按钮要的是
+        "填进去让我改"，而 :meth:`create` 里那个建议号是**建档时**额外回一个 ——
+        复用它等于每点一次按钮就多一个款号。
+
+        ⚠️ 取号会消耗一个序号（`next_no + 1`）：这是设计上的取舍，见
+        :class:`~app.modules.base.schemas.SuggestedStyleNoOut` 的注释。
+        """
+        return await self._suggest(customer_id)
+
     async def get_required(self, style_no: str, *, for_update: bool = False) -> Style:
         """取款号；不存在 → ``20001``，越权 → ``12002``。
 

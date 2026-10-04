@@ -298,6 +298,9 @@ async def auth_headers(db_session: AsyncSession) -> AsyncIterator[Any]:
             role_ids=role_ids,
             data_scope=DataScope(user.data_scope).value,
         )
-        return {"Authorization": f"Bearer {token}"}
+        # ⚠️ 把 ``user_id`` 一并返回：有些用例要拿它当外键值用
+        # （如 ``styles.merchandiser_id`` 是真外键 → ``users.id``，传随机 UUID 会撞
+        # FK 违例，而报错出现在 seed 里、与真正的原因隔了三层）。
+        return {"Authorization": f"Bearer {token}", "X-Test-User-Id": str(user.id)}
 
     yield _make

@@ -363,6 +363,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/document-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 变更历史（按 doc_type + doc_no 查审计日志，docs/06 §2.3 的抽屉）
+         * @description 某张单据 / 一条主数据的变更历史。
+         *
+         *     ⚠️ ``doc_type`` 与 ``doc_no`` **都必填**：审计表没有归属列，"查全部日志"这种用法
+         *     在数据范围（Q-P0-05 跟单只看自己的款号）下根本无法表达 —— 强行支持就只能给一个
+         *     全厂都能看的"操作日志大屏"，那是另一个需求、另一个权限点。
+         */
+        get: operations["list_logs_api_v1_document_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events/stream": {
         parameters: {
             query?: never;
@@ -988,6 +1012,34 @@ export interface paths {
          * @description 款号候选。``q`` 为空时按 ``last_used_at DESC NULLS LAST`` 返回前 N 条。
          */
         get: operations["list_style_options_api_v1_styles_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/styles/suggested-no": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 取一个建议款号（**只读建议，不建档**；⚠️ 会消耗一个序号）
+         * @description 取建议款号。
+         *
+         *     ⚠️ **权限点用 `base:create` 而不是 `base:read`**：取号会 `UPDATE
+         *     style_no_sequences.next_no`，是一个**写操作**。给 `base:read` 的话，任何能看款号的
+         *     人都能狂点把某一年的序号消耗光（虽然不影响正确性，但建议号会跳得很难看）。
+         *
+         *     为什么不复用 ``POST /styles?suggest_style_no=true``：那个端点会**真的建档**
+         *     （建议号是建档时"额外回一个"）。表单上的「生成建议号」按钮要的是"填进去让我改"，
+         *     复用它等于每点一次按钮就多一个款号。
+         */
+        get: operations["suggest_style_no_endpoint_api_v1_styles_suggested_no_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2278,6 +2330,35 @@ export interface components {
              */
             request_id?: string | null;
         };
+        /** ApiResponse[PageData[DocumentLogOut]] */
+        ApiResponse_PageData_DocumentLogOut__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["PageData_DocumentLogOut_"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
         /** ApiResponse[PageData[OperationRateOut]] */
         ApiResponse_PageData_OperationRateOut__: {
             /**
@@ -2549,6 +2630,35 @@ export interface components {
             code: number;
             /** @description 业务数据；失败时为 null */
             data?: components["schemas"]["StyleOut"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
+        /** ApiResponse[SuggestedStyleNoOut] */
+        ApiResponse_SuggestedStyleNoOut_: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["SuggestedStyleNoOut"] | null;
             /**
              * Details
              * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
@@ -3279,6 +3389,68 @@ export interface components {
             reason: string;
         };
         /**
+         * DocumentLogOut
+         * @description 一条审计日志（docs/04 §7.9；详情页「变更历史」抽屉的每一行）。
+         *
+         *     ⚠️ **刻意不含 `operator_id`**：界面显示的是冗余的 `operator_name`（用户改名后日志
+         *     仍可读，这是那张列存在的理由），而 UUID 对用户没有意义 —— 把它暴露出去只会诱使
+         *     前端拿它去拼"用户详情"的跳转，而那条路径不存在。
+         */
+        DocumentLogOut: {
+            /**
+             * Action
+             * @description CREATE/UPDATE/SUBMIT/DELETE/RESTORE/...
+             */
+            action: string;
+            /**
+             * Changed Fields
+             * @description 字段级 diff（各单据自定义）
+             */
+            changed_fields?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Doc No
+             * @description 单据号 / 业务编码；单价是 `{款号或ALL}/{工序号}`
+             */
+            doc_no: string;
+            /**
+             * Doc Type
+             * @description 单据 / 主数据类型，如 Style / OperationRate
+             */
+            doc_type: string;
+            /**
+             * From Status
+             * @description 变更前状态
+             */
+            from_status?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Operator Name
+             * @description 操作人姓名（冗余，不随改名变）
+             */
+            operator_name: string;
+            /**
+             * Reason
+             * @description 变更原因
+             */
+            reason?: string | null;
+            /**
+             * To Status
+             * @description 变更后状态
+             */
+            to_status?: string | null;
+        };
+        /**
          * EnableUserRequest
          * @description 启用用户（解除停用）。原因同样必填 —— 启用同样是敏感动作。
          */
@@ -3561,6 +3733,37 @@ export interface components {
             sub?: string | null;
             /** Value */
             value: string;
+        };
+        /**
+         * PageData[DocumentLogOut]
+         * @example {
+         *       "items": [],
+         *       "page": 1,
+         *       "page_size": 20,
+         *       "total": 0
+         *     }
+         */
+        PageData_DocumentLogOut_: {
+            /**
+             * Items
+             * @description 当前页数据
+             */
+            items: components["schemas"]["DocumentLogOut"][];
+            /**
+             * Page
+             * @description 当前页码，从 1 起
+             */
+            page: number;
+            /**
+             * Page Size
+             * @description 每页条数，上限 200
+             */
+            page_size: number;
+            /**
+             * Total
+             * @description 总条数（用于分页器）
+             */
+            total: number;
         };
         /**
          * PageData[OperationRateOut]
@@ -4515,6 +4718,26 @@ export interface components {
              * @description 乐观锁版本号
              */
             version: number;
+        };
+        /**
+         * SuggestedStyleNoOut
+         * @description 建议款号（Q-P0-04：**只作参考，用户输入一律优先**）。
+         *
+         *     ⚠️ 调这个接口会**消耗一个序号**（`style_no_sequences.next_no + 1`），所以它是
+         *     「帮我看看下一个号是多少」，不是「预览」。用户拿了这个号又改掉，序号就空了一格
+         *     —— 空一号不影响唯一性（唯一索引在 `styles` 上），只影响"建议号跳号"。
+         */
+        SuggestedStyleNoOut: {
+            /**
+             * Customer Id
+             * @description 归属客户；null = 走全厂序列（前缀 ST）
+             */
+            customer_id?: string | null;
+            /**
+             * Style No
+             * @description 建议款号，如 HB-2026-0001；**不保证最终被采用**
+             */
+            style_no: string;
         };
         /**
          * TemplateCopyIn
@@ -5524,6 +5747,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_DisableOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_logs_api_v1_document_logs_get: {
+        parameters: {
+            query: {
+                /** @description Style / OperationRate / ... */
+                doc_type: string;
+                /** @description 单据号 / 业务编码 */
+                doc_no: string;
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PageData_DocumentLogOut__"];
                 };
             };
             /** @description Validation Error */
@@ -7003,6 +7262,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_list_OptionOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_style_no_endpoint_api_v1_styles_suggested_no_get: {
+        parameters: {
+            query?: {
+                /** @description 归属客户；不给 = 全厂序列 */
+                customer_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SuggestedStyleNoOut_"];
                 };
             };
             /** @description Validation Error */

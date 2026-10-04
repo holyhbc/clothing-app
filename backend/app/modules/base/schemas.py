@@ -308,6 +308,44 @@ class DeleteOut(BaseModel):
     cascaded: int = Field(default=0, ge=0, description="级联删除的明细行数（如码表成员）")
 
 
+class DocumentLogOut(BaseModel):
+    """一条审计日志（docs/04 §7.9；详情页「变更历史」抽屉的每一行）。
+
+    ⚠️ **刻意不含 `operator_id`**：界面显示的是冗余的 `operator_name`（用户改名后日志
+    仍可读，这是那张列存在的理由），而 UUID 对用户没有意义 —— 把它暴露出去只会诱使
+    前端拿它去拼"用户详情"的跳转，而那条路径不存在。
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    doc_type: str = Field(description="单据 / 主数据类型，如 Style / OperationRate")
+    doc_no: str = Field(description="单据号 / 业务编码；单价是 `{款号或ALL}/{工序号}`")
+    action: str = Field(description="CREATE/UPDATE/SUBMIT/DELETE/RESTORE/...")
+    from_status: str | None = Field(default=None, description="变更前状态")
+    to_status: str | None = Field(default=None, description="变更后状态")
+    operator_name: str = Field(description="操作人姓名（冗余，不随改名变）")
+    reason: str | None = Field(default=None, description="变更原因")
+    changed_fields: dict[str, Any] | None = Field(
+        default=None, description="字段级 diff（各单据自定义）"
+    )
+    created_at: datetime
+
+
+class SuggestedStyleNoOut(BaseModel):
+    """建议款号（Q-P0-04：**只作参考，用户输入一律优先**）。
+
+    ⚠️ 调这个接口会**消耗一个序号**（`style_no_sequences.next_no + 1`），所以它是
+    「帮我看看下一个号是多少」，不是「预览」。用户拿了这个号又改掉，序号就空了一格
+    —— 空一号不影响唯一性（唯一索引在 `styles` 上），只影响"建议号跳号"。
+    """
+
+    style_no: str = Field(description="建议款号，如 HB-2026-0001；**不保证最终被采用**")
+    customer_id: UUID | None = Field(
+        default=None, description="归属客户；null = 走全厂序列（前缀 ST）"
+    )
+
+
 # ==================================================================
 # 组 D：款号 / 色码尺码 / 比例 / 款号工序 / 工序单价（T-BASE-002）
 # ==================================================================
