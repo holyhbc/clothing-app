@@ -460,12 +460,19 @@ async def test_size_hands_constraint_rejects_zero(db_session) -> None:
 
 
 async def test_three_unique_constraints_have_right_columns(db_session) -> None:
-    """TC-C01a-09：三个唯一键的列集正确（层级错位会静默通过）。
+    """TC-C01a-09：三个唯一键的列集正确，**且都是部分唯一索引**（层级错位会静默通过）。
 
     ⚠️ 唯一键是 ADR-0017 三层结构的**数据库层落点**，层级错位不会报错：
     写成 ``UNIQUE (doc_id, color_code)`` 依然能建表，只是「同一匹布上的同一颜色
     只能一行」这条 ADR-0017 的核心语义丢了 —— 而症状是「同一个颜色在两匹布上
     各录一份比例，手数算重」。
+
+    ⚠️ **REV-2026-10：三个都必须是部分索引**（``WHERE deleted_at IS NULL``，
+    迁移 0011）。原因：``modules/02 §6`` 的三条 PUT 是**全量替换**语义，
+    而普通 UNIQUE **不区分软删** —— 于是「软删旧行 + 插新行」必然撞
+    ``duplicate key ... (doc_id, line_no)``（实测过一次）。
+    唯一约束要表达的是「**当前有效的**行之间不重号」；软删行已不在业务上，
+    用它占号没有意义。与 ``styles.uq_styles_no`` 同一口径。
     """
     expected = {
         "cutting_order_lines": {"doc_id", "line_no"},
@@ -473,24 +480,24 @@ async def test_three_unique_constraints_have_right_columns(db_session) -> None:
         "cutting_order_size_lines": {"line_color_id", "size_line_no"},
     }
     for table, columns in expected.items():
-        actual = (
-            (
-                await db_session.execute(
-                    text(
-                        "SELECT a.attname FROM pg_index i "
-                        "JOIN pg_class c ON c.oid = i.indrelid "
-                        "JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey) "
-                        "WHERE c.relname = :t AND i.indisunique AND i.indpred IS NULL "
-                        "AND NOT i.indisprimary"
-                    ),
-                    {"t": table},
-                )
+        rows = (
+            await db_session.execute(
+                text(
+                    "SELECT a.attname, pg_get_expr(i.indpred, i.indrelid) AS predicate "
+                    "FROM pg_index i "
+                    "JOIN pg_class c ON c.oid = i.indrelid "
+                    "JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey) "
+                    "WHERE c.relname = :t AND i.indisunique AND NOT i.indisprimary"
+                ),
+                {"t": table},
             )
-            .scalars()
-            .all()
-        )
-        assert set(actual) == columns, (
-            f"{table} 的唯一键列集是 {sorted(actual)}，应为 {sorted(columns)}"
+        ).all()
+        actual = {row[0] for row in rows}
+        predicates = {row[1] for row in rows}
+        assert actual == columns, f"{table} 的唯一键列集是 {sorted(actual)}，应为 {sorted(columns)}"
+        assert predicates == {"(deleted_at IS NULL)"}, (
+            f"{table} 的唯一键**必须是部分索引**（迁移 0011），当前谓词是 {predicates}。"
+            f"普通 UNIQUE 不区分软删，全量替换时必然撞 duplicate key"
         )
 
 

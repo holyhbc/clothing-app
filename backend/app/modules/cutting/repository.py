@@ -28,6 +28,7 @@ from app.modules.cutting.models import (
     CuttingOrder,
     CuttingOrderLine,
     CuttingOrderLineColor,
+    CuttingOrderSizeLine,
 )
 
 #: 列表行的类型别名。⚠️ **只有列表用它** —— 详情 / 加锁那几条返回的是具体的
@@ -165,6 +166,96 @@ async def get_order_for_update(session: AsyncSession, order_id: UUID) -> Cutting
     """
     stmt = select(CuttingOrder).where(CuttingOrder.id == order_id).with_for_update()
     return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def get_lines_for_update(session: AsyncSession, doc_id: UUID) -> list[CuttingOrderLine]:
+    """取某单全部布批行 + 颜色 + 尺码明细，**并锁住三层**。
+
+    ⚠️ **三层都要 ``with_for_update``**，而 ``selectinload`` 的子查询**不带锁**
+    —— 只锁外层的话，子表照样能被并发改，而重算汇总正是基于子表。
+    这也是 ``docs/02`` 第 7 节反复强调「校验必须用**已加行锁**的数据」的原因。
+
+    ⚠️ **不用 ``selectinload``**：它对子查询发的是独立的 SELECT，无法附加
+    ``FOR UPDATE``。所以这里手写三条带锁查询。
+
+    ⚠️ **三条都带 ``deleted_at IS NULL``**：调用方（service 的 ``_recalc_all``）
+    直接拿这个列表算汇总，而汇总**绝不能**把软删行算进去 ——
+    踩过一次的症状是「替换后表头耗料 = 96 + 100 = 196 而不是 100」，
+    即旧行虽然软删了，却仍然参与求和。
+    """
+    lines = list(
+        (
+            await session.execute(
+                select(CuttingOrderLine)
+                .where(CuttingOrderLine.doc_id == doc_id, CuttingOrderLine.deleted_at.is_(None))
+                .order_by(CuttingOrderLine.line_no)
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not lines:
+        return lines
+    line_ids = [line.id for line in lines]
+    colors = list(
+        (
+            await session.execute(
+                select(CuttingOrderLineColor)
+                .where(
+                    CuttingOrderLineColor.line_id.in_(line_ids),
+                    CuttingOrderLineColor.deleted_at.is_(None),
+                )
+                .order_by(CuttingOrderLineColor.id)
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if colors:
+        size_lines = list(
+            (
+                await session.execute(
+                    select(CuttingOrderSizeLine)
+                    .where(
+                        CuttingOrderSizeLine.line_color_id.in_([c.id for c in colors]),
+                        CuttingOrderSizeLine.deleted_at.is_(None),
+                    )
+                    .order_by(CuttingOrderSizeLine.size_line_no)
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_color: dict[UUID, list[CuttingOrderSizeLine]] = {}
+        for row in size_lines:
+            by_color.setdefault(row.line_color_id, []).append(row)
+        for color in colors:
+            # ⚠️ 直接赋值给 relationship 的集合属性：ORM 会把它当「已加载」处理，
+            #    之后 ``color.size_lines`` 不再发查询。这里是**读路径的重算**用途，
+            #    不涉及写子表，所以不需要 viewonly 之外的任何配置
+            color.size_lines = by_color.get(color.id, [])
+    by_line: dict[UUID, list[CuttingOrderLineColor]] = {}
+    for color in colors:
+        by_line.setdefault(color.line_id, []).append(color)
+    for line in lines:
+        line.colors = by_line.get(line.id, [])
+    return lines
+
+
+async def get_line_color_for_update(
+    session: AsyncSession, line_color_id: UUID
+) -> CuttingOrderLineColor | None:
+    """取一个行内颜色并锁住（切模式 / 替换明细时用，§7 固定锁序的关键一步）。"""
+    return (
+        await session.execute(
+            select(CuttingOrderLineColor)
+            .where(CuttingOrderLineColor.id == line_color_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
 
 
 async def get_lines(session: AsyncSession, doc_id: UUID) -> list[Row]:

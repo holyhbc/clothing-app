@@ -53,142 +53,18 @@ from app.modules.cutting.schemas import (
     SizeLineIn,
 )
 from app.modules.cutting.service import CuttingOrderService, recalc_line
-from tests.factories.user import OPERATOR_ID, WorkshopFactory
-
-#: 固定单据日期。⚠️ **必须显式传入**（docs/10 §10）：取号按天分组，
-#: 用 ``date.today()`` 的话跨零点跑就会挂，而那种失败极难复现。
-DOC_DATE = date(2026, 10, 18)
-
+from tests.factories.cutting import DOC_DATE
+from tests.factories.cutting import ctx as _ctx
+from tests.factories.cutting import payload as _payload
+from tests.factories.cutting import size_line as _size
+from tests.factories.user import OPERATOR_ID
 
 # ------------------------------------------------------------------ 夹具
 
 
-@pytest.fixture
-async def world(db_session):
-    """一套最小可用的世界：一个车间、一个款号、一个布批。
-
-    ⚠️ **不复用别的测试模块的私有 helper**：``tests/modules/test_*`` 里的
-    ``_style()`` / ``_make_line()`` 是给那些用例专用的 —— 改它们会连带弄坏
-    那边，而从这边 import 私有函数则那边一改名字这边就红。
-    需要什么就在这里建什么。
-    """
-    from tests.modules.test_stock_basis import _material
-
-    material = await _material(db_session)
-    workshop = await WorkshopFactory.create(db_session)
-    style = await _make_style(db_session)
-    stock = await _make_stock(db_session, material)
-    await db_session.flush()
-    return {"workshop": workshop, "style": style, "stock": stock, "material": material}
-
-
-async def _make_style(db_session):
-    """建一个款号。
-
-    ⚠️ 分类取 ``ProductCategory``（内置 ``SET``）而不是 ``MaterialCategory`` ——
-    两张表都叫「分类」，而 ``styles.category_id`` 外键指向的是**前者**。
-    传错时报 ``fk_styles_product_categories`` 违规：能看出是外键，
-    但看不出「你把物料类目当成了商品分类」。
-    """
-    from app.modules.base.models import ProductCategory, Style
-
-    category = (
-        await db_session.execute(select(ProductCategory).where(ProductCategory.code == "SET"))
-    ).scalar_one()
-    style = Style(
-        style_no="CT-TEST-1",
-        name="裁剪测试款",
-        category_id=category.id,
-        created_by=OPERATOR_ID,
-        updated_by=OPERATOR_ID,
-    )
-    db_session.add(style)
-    await db_session.flush()
-    return style
-
-
-async def _make_stock(db_session, material):
-    """建一个布批（``material_stocks`` 行）。
-
-    ⚠️ 必须**自己**建：库里没有现成的布批行，而 ``cutting_order_lines.stock_id``
-    是必填外键（ADR-0022 级联选料 —— 不允许自由输入缸号）。
-    """
-    from app.modules.base.models import MaterialStock
-
-    stock = MaterialStock(
-        warehouse_id=(
-            await db_session.execute(text("SELECT id FROM warehouses WHERE code = 'FAB'"))
-        ).scalar_one(),
-        material_id=material.id,
-        supplier_id=None,
-        dye_lot_no="DY-CUT-TEST",
-        bolt_no="B-1",
-        width_cm=Decimal("152.00"),
-        stock_qty=Decimal("500.000"),
-        total_length_m=Decimal("500.000"),
-        locked_qty=Decimal("0.000"),
-        unit_cost=Decimal("12.500000"),
-        in_date=DOC_DATE,
-        created_by=OPERATOR_ID,
-        updated_by=OPERATOR_ID,
-    )
-    db_session.add(stock)
-    await db_session.flush()
-    return stock
-
-
-def _ctx(workshop_id=None, scope: DataScope = DataScope.FACTORY) -> AuthContext:
-    """造一个 AuthContext。默认 ``FACTORY`` —— 它不加任何范围条件。"""
-    return AuthContext(
-        user_id=OPERATOR_ID,
-        name="测试操作人",
-        employee_no="A001",
-        workshop_id=workshop_id,
-        group_no=None,
-        permissions=frozenset(),
-        data_scope=scope,
-        allowed_workshop_ids=frozenset({workshop_id}) if workshop_id else frozenset(),
-    )
-
-
-def _size(no: int, code: str, hands: int, per_hand: int, output: int | None = None):
-    return SizeLineIn(
-        size_line_no=no,
-        size_code=code,
-        hands=hands,
-        qty_per_hand=per_hand,
-        output_qty=output,
-    )
-
-
-def _payload(world, **overrides):
-    """一行一色一尺码的最小 payload（**行可出件数 120 > 明细 60** → 余量 60）。"""
-    base = {
-        "workshop_id": world["workshop"].id,
-        "style_id": world["style"].id,
-        "doc_date": DOC_DATE,
-        "lines": [
-            OrderLineIn(
-                line_no=1,
-                stock_id=world["stock"].id,
-                fabric_qty=Decimal("96.000"),
-                waste_qty=Decimal("3.000"),
-                output_qty=Decimal("120.000"),
-                colors=[
-                    LineColorIn(
-                        color_code="WHT",
-                        size_lines=[_size(1, "L", 1, 60)],
-                    )
-                ],
-            )
-        ],
-    }
-    return CuttingOrderCreateIn(**{**base, **overrides})
-
-
-async def _create(db_session, world, **overrides) -> CuttingOrder:
+async def _create(db_session, cutting_world, **overrides) -> CuttingOrder:
     service = CuttingOrderService(db_session)
-    return await service.create(_payload(world, **overrides), OPERATOR_ID)
+    return await service.create(_payload(cutting_world, **overrides), OPERATOR_ID)
 
 
 async def _reload(db_session, order_id):
@@ -257,7 +133,7 @@ def test_doc_no_sequence_overflow_is_rejected() -> None:
     assert caught.value.code is ErrorCode.PARAM_INVALID
 
 
-async def test_concurrent_doc_no_is_unique(db_session, world) -> None:
+async def test_concurrent_doc_no_is_unique(db_session, cutting_world) -> None:
     """TC-C01b-02：**同日并发取号不重复**（C1「生成即占用、永不复用」）。
 
     ⚠️ 必须用**独立引擎真提交**：同一个连接上的语句会被 PostgreSQL 串行化，
@@ -331,14 +207,14 @@ async def test_doc_no_resets_each_day(db_session) -> None:
 # ------------------------------------------------------------------ TC-C01b-03 / 05 / 06 / 15
 
 
-async def test_three_level_totals(db_session, world) -> None:
+async def test_three_level_totals(db_session, cutting_world) -> None:
     """TC-C01b-03：三级汇总自底向上（行 610 = 360 + 250，modules/02 §5.1 那个例子）。"""
     payload = _payload(
-        world,
+        cutting_world,
         lines=[
             OrderLineIn(
                 line_no=1,
-                stock_id=world["stock"].id,
+                stock_id=cutting_world["stock"].id,
                 fabric_qty=Decimal("96.000"),
                 waste_qty=Decimal("3.000"),
                 output_qty=Decimal("615.000"),  # 铺布估算：比明细多 5
@@ -387,7 +263,7 @@ async def test_three_level_totals(db_session, world) -> None:
     assert len(size_lines) == 6
 
 
-async def test_output_qty_is_exact_integer_product(db_session, world) -> None:
+async def test_output_qty_is_exact_integer_product(db_session, cutting_world) -> None:
     """TC-C01b-05：``output_qty = hands × qty_per_hand``，**精确整数、不取整**。
 
     ⚠️ 挑 ``2 手 × 45 件 = 90`` 这种**乘出来不是 100 的整数倍**的组合：
@@ -396,11 +272,11 @@ async def test_output_qty_is_exact_integer_product(db_session, world) -> None:
     :func:`test_non_integer_hands_is_rejected`。
     """
     payload = _payload(
-        world,
+        cutting_world,
         lines=[
             OrderLineIn(
                 line_no=1,
-                stock_id=world["stock"].id,
+                stock_id=cutting_world["stock"].id,
                 fabric_qty=Decimal("96.000"),
                 # 铺布估算 235 = 明细 225（2×45 + 3×45）+ 余量 10
                 output_qty=Decimal("235.000"),
@@ -421,19 +297,19 @@ async def test_output_qty_is_exact_integer_product(db_session, world) -> None:
     assert all(row.output_qty_manual is False for row in size_lines)
 
 
-async def test_balance_is_line_estimate_minus_size_lines(db_session, world) -> None:
+async def test_balance_is_line_estimate_minus_size_lines(db_session, cutting_world) -> None:
     """TC-C01b-06：**行余量 = 正向录入的行可出件数 - Σ明细**（C34 口径 A）。
 
     ⚠️ 这条是本次修掉的缺陷的正向断言。原来的实现把行 ``output_qty``
     **覆盖**成 Σ明细，于是余量恒为 0。
     """
-    order = await _create(db_session, world)
+    order = await _create(db_session, cutting_world)
     _order, lines, _colors, _sizes = await _reload(db_session, order.id)
     assert lines[0].output_qty == Decimal("120.000"), "行可出件数是用户录入的估算值，不能被覆盖"
     assert lines[0].balance_qty == Decimal("60.000"), "120 - 60 = 60"
 
 
-def test_recalc_line_rejects_negative_balance(db_session, world) -> None:
+def test_recalc_line_rejects_negative_balance(db_session, cutting_world) -> None:
     """TC-C01b-06（负数侧）：行可出件数 < Σ明细 → ``30002``。
 
     ⚠️ 这是整张单**最重要的一道业务校验**：它拦的是「你登记的可出件数
@@ -491,18 +367,18 @@ async def test_header_totals_are_not_client_supplied() -> None:
         )
 
 
-async def test_manual_output_switches_color_to_manual(db_session, world) -> None:
+async def test_manual_output_switches_color_to_manual(db_session, cutting_world) -> None:
     """TC-C01b-07：人工指定出数 → 该颜色**自动转 MANUAL** + 差额进余量（C13/C28）。
 
     ⚠️ C28 的理由：颜色若还留在 ``MASTER``，界面上会显示「按比例带出来的」，
     下一次编辑时比例会覆盖人工的判断 —— 人的一次决定被系统悄悄抹掉。
     """
     payload = _payload(
-        world,
+        cutting_world,
         lines=[
             OrderLineIn(
                 line_no=1,
-                stock_id=world["stock"].id,
+                stock_id=cutting_world["stock"].id,
                 fabric_qty=Decimal("96.000"),
                 output_qty=Decimal("100.000"),
                 colors=[
@@ -527,18 +403,18 @@ async def test_manual_output_switches_color_to_manual(db_session, world) -> None
     assert order.cut_waste_qty == Decimal("45.000")
 
 
-async def test_output_equal_to_computed_is_not_manual(db_session, world) -> None:
+async def test_output_equal_to_computed_is_not_manual(db_session, cutting_world) -> None:
     """人工传的件数**与服务端算的一致**时不算「人工指定」。
 
     ⚠️ 边界：前端按 C25 渲染时会回显算出来的值，那次回传**不该**把颜色打成
     ``MANUAL``。判据是「与服务端算的不一致」，不是「传了就算」。
     """
     payload = _payload(
-        world,
+        cutting_world,
         lines=[
             OrderLineIn(
                 line_no=1,
-                stock_id=world["stock"].id,
+                stock_id=cutting_world["stock"].id,
                 fabric_qty=Decimal("96.000"),
                 output_qty=Decimal("60.000"),
                 colors=[
@@ -557,14 +433,14 @@ async def test_output_equal_to_computed_is_not_manual(db_session, world) -> None
 # ------------------------------------------------------------------ TC-C01b-08 / 09
 
 
-async def test_same_size_multiple_rows_is_allowed(db_session, world) -> None:
+async def test_same_size_multiple_rows_is_allowed(db_session, cutting_world) -> None:
     """TC-C01b-08：同一 ``(颜色, 尺码)`` **可以多行**（C30，ADR-0014 模式 C）。"""
     payload = _payload(
-        world,
+        cutting_world,
         lines=[
             OrderLineIn(
                 line_no=1,
-                stock_id=world["stock"].id,
+                stock_id=cutting_world["stock"].id,
                 fabric_qty=Decimal("96.000"),
                 output_qty=Decimal("150.000"),
                 colors=[
@@ -587,14 +463,14 @@ async def test_same_size_multiple_rows_is_allowed(db_session, world) -> None:
     assert order.output_qty == Decimal("150.000")
 
 
-async def test_multiple_colors_per_line_is_allowed(db_session, world) -> None:
+async def test_multiple_colors_per_line_is_allowed(db_session, cutting_world) -> None:
     """TC-C01b-09：一行**多色**（C32，ADR-0017 的核心：一床可裁多个颜色）。"""
     payload = _payload(
-        world,
+        cutting_world,
         lines=[
             OrderLineIn(
                 line_no=1,
-                stock_id=world["stock"].id,
+                stock_id=cutting_world["stock"].id,
                 fabric_qty=Decimal("96.000"),
                 output_qty=Decimal("610.000"),
                 colors=[
@@ -616,13 +492,13 @@ async def test_multiple_colors_per_line_is_allowed(db_session, world) -> None:
 # ------------------------------------------------------------------ TC-C01b-10 / 11 / 12 / 13 / 14
 
 
-async def test_detail_respects_data_scope(db_session, world) -> None:
+async def test_detail_respects_data_scope(db_session, cutting_world) -> None:
     """TC-C01b-10：**越权按 ID 直查 → ``12002``**（docs/07 §3.2 铁律 2）。
 
     ⚠️ 这是数据范围最重要的一条守卫：漏了它，车间主管就能按 ID 打开
     别的车间的裁剪单 —— 而列表页看起来一切正常（列表有过滤）。
     """
-    order = await _create(db_session, world)
+    order = await _create(db_session, cutting_world)
     service = CuttingOrderService(db_session)
     outsider = AuthContext(
         user_id=OPERATOR_ID,
@@ -639,9 +515,9 @@ async def test_detail_respects_data_scope(db_session, world) -> None:
     assert caught.value.code is ErrorCode.DATA_SCOPE_DENIED
 
 
-async def test_detail_loads_three_levels(db_session, world) -> None:
+async def test_detail_loads_three_levels(db_session, cutting_world) -> None:
     """详情要**一次拿完三层**（``selectinload``），而不是逐层懒加载。"""
-    order = await _create(db_session, world)
+    order = await _create(db_session, cutting_world)
     loaded = await CuttingOrderService(db_session).get(order.id, _ctx())
     assert len(loaded.lines) == 1
     assert len(loaded.lines[0].colors) == 1
@@ -665,26 +541,26 @@ def test_zero_hands_is_rejected() -> None:
         SizeLineIn(size_line_no=1, size_code="L", hands=0, qty_per_hand=60)
 
 
-async def test_disabled_style_is_rejected_at_create(db_session, world) -> None:
+async def test_disabled_style_is_rejected_at_create(db_session, cutting_world) -> None:
     """TC-C01b-12：款号停用 → **建单即拒**，不留到 submit。
 
     ⚠️ 让用户建完一整张单才发现款号被停用，是最难解释的一种失败。
     """
-    world["style"].is_active = False
+    cutting_world["style"].is_active = False
     with pytest.raises(BusinessError) as caught:
-        await _create(db_session, world)
+        await _create(db_session, cutting_world)
     assert caught.value.code is ErrorCode.BASE_DATA_REFERENCED
 
 
-async def test_lot_columns_are_derived_from_stock(db_session, world) -> None:
+async def test_lot_columns_are_derived_from_stock(db_session, cutting_world) -> None:
     """TC-C01b-13：缸号 / 匹号 / 物料 / 供应商**从 stock_id 反查**（ADR-0022）。
 
     ⚠️ 这就是「级联选料」的结构性保证：请求里**只有** ``stock_id``，
     所以「缸号与匹号对不上」「门幅填了别的批次的」这类错误**不可能发生**。
     """
-    order = await _create(db_session, world)
+    order = await _create(db_session, cutting_world)
     _o, lines, _c, _s = await _reload(db_session, order.id)
-    stock = world["stock"]
+    stock = cutting_world["stock"]
     assert lines[0].stock_id == stock.id
     assert lines[0].dye_lot_no == stock.dye_lot_no
     assert lines[0].bolt_no == stock.bolt_no
@@ -706,7 +582,7 @@ def test_lot_columns_are_not_client_supplied() -> None:
         )
 
 
-async def test_create_does_not_touch_ratio_master_data(db_session, world) -> None:
+async def test_create_does_not_touch_ratio_master_data(db_session, cutting_world) -> None:
     """TC-C01b-14：**建单绝不写比例主数据**（C29 零污染，本模块铁律）。
 
     ⚠️ 验证口径就是 modules/02 C29 写的那句「用完模式 C 后检查比例主数据
@@ -717,7 +593,7 @@ async def test_create_does_not_touch_ratio_master_data(db_session, world) -> Non
     before = (
         await db_session.execute(select(func.count()).select_from(StyleColorSizeRatio))
     ).scalar_one()
-    await _create(db_session, world)
+    await _create(db_session, cutting_world)
     after = (
         await db_session.execute(select(func.count()).select_from(StyleColorSizeRatio))
     ).scalar_one()
@@ -727,20 +603,20 @@ async def test_create_does_not_touch_ratio_master_data(db_session, world) -> Non
 # ------------------------------------------------------------------ 列表
 
 
-async def test_list_filters_and_paginates(db_session, world) -> None:
+async def test_list_filters_and_paginates(db_session, cutting_world) -> None:
     """列表：按款号筛 + 分页，且**必须**过数据范围（INV-8）。"""
-    await _create(db_session, world)
-    await _create(db_session, world)
+    await _create(db_session, cutting_world)
+    await _create(db_session, cutting_world)
 
     from app.modules.cutting.repository import OrderListQuery
 
     service = CuttingOrderService(db_session)
     rows, total = await service.list_orders(
-        OrderListQuery(style_no=world["style"].style_no, page=1, size=10), _ctx()
+        OrderListQuery(style_no=cutting_world["style"].style_no, page=1, size=10), _ctx()
     )
     assert total == 2
     assert len(rows) == 2
-    assert all(row.style_no == world["style"].style_no for row in rows)
+    assert all(row.style_no == cutting_world["style"].style_no for row in rows)
 
     _, none_total = await service.list_orders(OrderListQuery(style_no="NOT-EXIST"), _ctx())
     assert none_total == 0
@@ -756,9 +632,9 @@ async def test_list_rejects_deep_paging(db_session) -> None:
     assert caught.value.code is ErrorCode.PARAM_INVALID
 
 
-async def test_soft_deleted_order_is_invisible(db_session, world) -> None:
+async def test_soft_deleted_order_is_invisible(db_session, cutting_world) -> None:
     """软删的单据**详情查不到**（INV-7）。"""
-    order = await _create(db_session, world)
+    order = await _create(db_session, cutting_world)
     await db_session.execute(
         text("UPDATE cutting_orders SET deleted_at = now() WHERE id = :i"), {"i": order.id}
     )

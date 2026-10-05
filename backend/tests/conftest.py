@@ -304,3 +304,55 @@ async def auth_headers(db_session: AsyncSession) -> AsyncIterator[Any]:
         return {"Authorization": f"Bearer {token}", "X-Test-User-Id": str(user.id)}
 
     yield _make
+
+
+# ------------------------------------------------------------------ 裁剪模块的最小世界
+
+
+@pytest_asyncio.fixture
+async def cutting_world(db_session: AsyncSession) -> dict[str, Any]:
+    """裁剪测试用的「一个车间 + 一个款号 + 一个布批 + 它的物料」。
+
+    ⚠️ **为什么放 conftest 而不是工厂模块**：夹具定义在工厂模块里的话，
+    测试文件必须 ``from tests.factories.cutting import world`` 才能拿到它，
+    而那个名字与测试函数签名里的同名参数冲突 —— ruff F811 会**逐个函数**报错，
+    逐个加 ``noqa`` 就是几十处噪声。夹具在 conftest 里，同名参数是 pytest
+    的正常写法，零豁免。建造逻辑在 :func:`tests.factories.cutting.build_world`。
+    """
+    from tests.factories.cutting import build_world
+
+    return await build_world(db_session)
+
+
+@pytest_asyncio.fixture
+async def cutting_world_persisted(app_database_url: str) -> dict[str, Any]:
+    """``cutting_world`` 的**真提交**版本，供并发用例用（docs/10 §2.3 / §5.4）。
+
+    ⚠️ 为什么需要单独一个：并发用例必须用**独立引擎真提交**，否则
+    ``db_session`` 的外层事务没提交、并发任务用自己的连接根本看不见那张单
+    （症状是全部报「裁剪单不存在」）。而真提交不在回滚范围内，所以：
+    ① 款号必须**每次唯一**（否则第二次跑撞 ``uq_styles_no``，报错看不出根因）
+    ② 单据只能**软删**清理（``erp_app`` 对裁剪单无 DELETE 权限）
+    """
+    from tests.factories.cutting import build_world
+    from tests.factories.user import OPERATOR_ID  # noqa: F401 —— 保持导入路径一致
+
+    engine = create_async_engine(app_database_url, pool_pre_ping=True)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            world = await build_world(session, style_no=f"CT-CONC-{uuid4().hex[:10].upper()}")
+            await session.commit()
+        # ⚠️ 返回**纯 id**而不是 ORM 实体：这些实体绑在一个即将 dispose 的 session 上，
+        #    带出夹具会在 GC 时抛 `ResourceWarning: unclosed socket`，而 pytest 会把
+        #    unraisable warning 变成**用例失败** —— 报错完全看不出根因是「夹具泄漏了连接」。
+        #    `tests.factories.cutting.wid` 同时支持实体与纯 id，所以调用方不用改。
+        return {
+            "workshop": world["workshop"].id,
+            "style": world["style"].id,
+            "style_no": world["style"].style_no,
+            "stock": world["stock"].id,
+            "material": world["material"].id,
+        }
+    finally:
+        await engine.dispose()

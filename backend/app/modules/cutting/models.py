@@ -389,7 +389,18 @@ class CuttingOrderLine(BaseModel):
     )
 
     __table_args__ = (
-        UniqueConstraint("doc_id", "line_no", name="uq_cutting_order_lines"),
+        # ⚠️ **部分唯一索引**（迁移 0011，REV-2026-10）：原为普通 UNIQUE 约束，
+        #    而 modules/02 §6 的 PUT /lines 是**全量替换**语义 —— 硬约束下
+        #    「软删旧行 + 插新行」必然撞 `duplicate key ... (doc_id, line_no)`。
+        #    唯一约束要表达的是「**当前有效**的行之间不重号」；软删行已不在业务上，
+        #    用它占号没有意义。与 styles.uq_styles_no / uq_material_stocks_lot 同一口径。
+        Index(
+            "uq_cutting_order_lines",
+            "doc_id",
+            "line_no",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
         CheckConstraint("version > 0", name="ck_cutting_order_lines_version_positive"),
         CheckConstraint("fabric_qty > 0", name="ck_cutting_lines_fabric"),
         Index(
@@ -507,7 +518,14 @@ class CuttingOrderLineColor(BaseModel):
     )
 
     __table_args__ = (
-        UniqueConstraint("line_id", "color_code", name="uq_cutting_line_colors"),
+        # ⚠️ 部分唯一索引，理由同 uq_cutting_order_lines（迁移 0011）
+        Index(
+            "uq_cutting_line_colors",
+            "line_id",
+            "color_code",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
         CheckConstraint("version > 0", name="ck_cutting_order_line_colors_version_positive"),
         {"comment": "裁剪单行内颜色（ADR-0017：一床可多个颜色；04 §7.7.2）"},
     )
@@ -604,7 +622,14 @@ class CuttingOrderSizeLine(BaseModel):
     #    照抄建表报 `DuplicateColumnError`。两处是同一列，所以只留公共字段那份。
 
     __table_args__ = (
-        UniqueConstraint("line_color_id", "size_line_no", name="uq_cutting_size_lines"),
+        # ⚠️ 部分唯一索引，理由同 uq_cutting_order_lines（迁移 0011）
+        Index(
+            "uq_cutting_size_lines",
+            "line_color_id",
+            "size_line_no",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
         CheckConstraint("version > 0", name="ck_cutting_order_size_lines_version_positive"),
         CheckConstraint("hands > 0 AND qty_per_hand > 0", name="ck_cutting_size_hands"),
         CheckConstraint("balance_qty >= 0", name="ck_cutting_size_balance"),

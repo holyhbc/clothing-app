@@ -90,16 +90,30 @@ async def _material(db_session):
     )
     await db_session.flush()
 
-    material = Material(
-        code="F-CT-888801",
-        name="测试全棉布",
-        material_type="FABRIC",
-        category_id=category.id,
-        uom_unit_id=uom.id,
-        created_by=OPERATOR_ID,
-        updated_by=OPERATOR_ID,
+    # ⚠️ REV-2026-10（T-CUT-001b-2）：物料也走 `pick`（先查后建），与上面的
+    #    类目 / 单位 / 仓库同款。**原因**：并发用例必须用独立引擎**真提交**建数据
+    #    （docs/10 §2.3），而真提交不在任何回滚范围内 —— 于是这条物料会留在库里，
+    #    下一个用例再无条件 INSERT 就撞 `uq_materials_code`，而报错指向 materials、
+    #    与「裁剪单建不出来」毫无关系。
+    #    顺带说明：`test_cutting_tables._make_line` 里那段「先查再用」的注释
+    #    同样源于此，现在这里是幂等的，那段也就不再必要了（保留无害）。
+    material = await pick(
+        Material,
+        Material.code,
+        "F-CT-888801",
+        lambda: Material(
+            code="F-CT-888801",
+            name="测试全棉布",
+            material_type="FABRIC",
+            category_id=category.id,
+            uom_unit_id=uom.id,
+            created_by=OPERATOR_ID,
+            updated_by=OPERATOR_ID,
+        ),
     )
-    db_session.add(material)
+    # ⚠️ `pick` 只在**新建**分支 add，不 flush —— 而调用方紧接着就用 `material.id`
+    #    去建 `material_stocks`（NOT NULL 外键）。漏掉这次 flush 时那个 id 是 None，
+    #    报错是 `null value in column "material_id"`，指向库存表而根因在物料上
     await db_session.flush()
     return material
 
