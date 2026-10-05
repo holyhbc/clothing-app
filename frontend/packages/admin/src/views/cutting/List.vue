@@ -4,8 +4,8 @@
  *
  * ## 这一页只做「找到单子 + 打开详情」
  *
- * 三层明细的**增删改与新建在 T-CUT-001c-3**。这里刻意**不放**新建按钮、不放行内编辑、
- * 不放审核按钮、不放导出：
+ * 三层明细的**增删改与审核在 T-CUT-001c-3b**，这里只提供「新建」入口 + 行内编辑、
+ * 审核按钮、导出的**占位说明**（页面还不存在，先给按钮就是「点进去白屏」）：
  *
  * - 行内编辑要处理 `version` 乐观锁与全量替换的语义（一行保存失败时其他行怎么办），
  *   在列表里塞进去等于把详情页的逻辑复制一份，两处迟早不同步。
@@ -197,6 +197,10 @@ function openDetail(orderId: string): void {
   void router.push({ name: 'cutting-orders-detail', params: { orderId } })
 }
 
+function create(): void {
+  void router.push({ name: 'cutting-orders-new' })
+}
+
 function onTableChange(paginationInfo: { current?: number; pageSize?: number }): void {
   const size = paginationInfo.pageSize
   if (size !== undefined && size !== list.query.size) {
@@ -236,6 +240,11 @@ onMounted(() => {
 
 <template>
   <PageLayout title="裁剪单" :description="`共 ${list.total} 张裁剪单`">
+    <template #extra>
+      <!-- 权限点用 `cutting:create`，与新建路由守卫同一个判据 -->
+      <Button v-can="PERM.CUTTING_CREATE" type="primary" @click="create">新建裁剪单</Button>
+    </template>
+
     <template #filter="{ collapsed }">
       <Space direction="vertical" size="small" style="width: 100%">
         <Space wrap>
@@ -286,7 +295,7 @@ onMounted(() => {
       <TableToolbar :selected-count="0" :total="list.total">
         <template #actions="{ enabled }">
           <span v-if="!enabled" class="toolbar-hint">
-            明细编辑、新建、审核与导出在 T-CUT-001c-3 落地；点「详情」看三层结构
+            明细编辑与审核在 T-CUT-001c-3b；点「详情」看三层结构，点「新建」建草稿
           </span>
         </template>
       </TableToolbar>
@@ -359,7 +368,7 @@ onMounted(() => {
           <EmptyState
             v-if="list.isEmpty"
             title="还没有裁剪单"
-            hint="新建裁剪单在 T-CUT-001c-3 落地（表头 + 三层明细一次提交）；在此之前可以先用筛选定位已有的单"
+            hint="点右上角「新建裁剪单」建第一张草稿；表头与三层明细可以一次提交"
             secondary-action-text="清空筛选"
             @secondary-action="onReset"
           />

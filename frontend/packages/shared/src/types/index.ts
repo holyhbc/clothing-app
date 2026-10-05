@@ -311,6 +311,19 @@ export interface ListQuery extends Record<string, string | number | boolean | nu
 
 // ------------------------------------------------------------------ 裁剪单
 
+/**
+ * 布批（缸号/匹号）候选（`GET /api/v1/material-stocks/options`，T-BASE-007b）。
+ *
+ * ⚠️ 继承 `OptionOut` 的形状（多出 `dye_lot_no` / `bolt_no` / `width_cm` /
+ * `available_qty` / `material_id` / `supplier_id` / `purpose`）：前端 `<Combo>` 的
+ * `fetchOptions` 约定返回 `OptionOut[]`，所以这个类型能**直接**喂给 Combo，
+ * 不需要为它开第二个分支。
+ *
+ * ⚠️ `value` 是**批次 UUID**（不是编码）—— 与九个基础资料的候选相反，
+ * 因为裁剪行要的就是 `material_stocks.id`（ADR-0022）。
+ */
+export type StockBatchOptionOut = ApiModel<'StockBatchOptionOut'>
+
 /** 裁剪单列表行（`GET /api/v1/cutting-orders`，三层明细在详情里才有）。 */
 export type CuttingOrderListOut = ApiModel<'CuttingOrderListOut'>
 

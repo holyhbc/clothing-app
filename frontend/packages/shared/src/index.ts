@@ -138,6 +138,7 @@ export type {
   PutSizeLinesIn,
   SizeLineIn,
   SizeLineOut,
+  StockBatchOptionOut,
   SuggestLinesOut,
   OperationRateSetOut,
   RatioItemIn,

@@ -25,6 +25,7 @@
  */
 import type {
   CuttingOrderCreateIn,
+  OptionOut,
   CuttingOrderListOut,
   CuttingOrderOut,
   CuttingOrderPatchIn,
@@ -33,6 +34,7 @@ import type {
   PutColorsIn,
   PutLinesIn,
   PutSizeLinesIn,
+  StockBatchOptionOut,
   SuggestLinesOut,
 } from '@garment/shared'
 import { http } from './http'
@@ -193,4 +195,63 @@ export function switchEntryMode(
   payload: EntryModeSwitchIn,
 ): Promise<{ line_color_id: string; entry_mode: string }> {
   return http.post(`${BASE}/${orderId}/entry-mode`, payload)
+}
+// ------------------------------------------------------------------ 建单要用的候选
+//
+// ⚠️ **这一段与上面的裁剪单端点是两回事**：它们是**选料与选基础资料**用的候选
+// （`05 §9.5.2`），T-BASE-007a/007b 刚补上。放在这里而不是 `api/base.ts` 是因为
+// **它们服务的只有裁剪这条链路**；而「档案 CRUD」属基础资料模块 —— 别把候选与
+// 档案混在一个文件里，后来者会以为物料已经能维护了。
+
+/**
+ * 布批（缸号 / 匹号）候选。
+ *
+ * ⚠️ **只列 `available_qty > 0`**（后端强制，05 §9.5.2 加粗）—— 所以「搜不到布」
+ * 意味着真没布了，而不是布被列表藏起来了。
+ *
+ * ⚠️ 支持按 `dye_lot_no` **精确**筛：这个参数是后端为「按缸号配料」准备的
+ * （BR-ST-17 ①：裁剪最常见的录入方式是人工指定批次），而缸号模糊匹配会把
+ * `H2408` 与 `H24080` 同时列出来 —— 那是两块不同的布。
+ */
+export async function searchStockBatchOptions(params: {
+  q?: string
+  dye_lot_no?: string
+  supplier_id?: string
+  material_id?: string
+}): Promise<StockBatchOptionOut[]> {
+  const result = await http.get<StockBatchOptionOut[]>('/material-stocks/options', {
+    query: { ...params },
+  })
+  return result
+}
+
+/** 供应商候选（`value` = 供应商**编码**）。 */
+export function searchSupplierOptions(keyword: string): Promise<OptionOut[]> {
+  return http.get<OptionOut[]>('/suppliers/options', { query: { q: keyword, size: 20 } })
+}
+
+/** 物料候选（`value` = 物料编码；后端只返面料 / 辅料）。 */
+export function searchMaterialOptions(keyword: string): Promise<OptionOut[]> {
+  return http.get<OptionOut[]>('/materials/options', { query: { q: keyword, size: 20 } })
+}
+
+/**
+ * 款号候选（`value` = 款号 **UUID**）。
+ *
+ * ⚠️ **不能直接用 `searchStyleOptions`**：那个的 `value` 是款号**字符串**，而
+ * `CuttingOrderCreateIn.style_id` 要的是 UUID —— 传错值不报 422（格式合法），
+ * 只会在建单时收 `20001`。这与 `searchCustomerOptionsById` 是同一个坑，
+ * 做法也一样：借 `/styles` 列表端点自己映射。
+ */
+export async function searchStyleOptionsById(keyword = ''): Promise<OptionOut[]> {
+  const result = await http.get<PageData<{ id: string; style_no: string; name: string }>>(
+    '/styles',
+    { query: { q: keyword, size: 20 } },
+  )
+  return result.items.map((row) => ({
+    value: row.id,
+    label: `${row.style_no} ${row.name}`.trim(),
+    sub: null,
+    disabled: false,
+  }))
 }
