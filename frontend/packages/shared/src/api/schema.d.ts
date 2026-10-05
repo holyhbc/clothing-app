@@ -604,6 +604,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/material-stocks/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 布批候选（缸号/匹号；**只列 available_qty > 0**；按入库日 FIFO 升序；不过滤 purpose）
+         * @description 布批候选（05 §9.5.2 末行；C38「不允许自由输入缸号」；BR-ST-17 ③ FIFO）。
+         *
+         *     ⚠️ ``q`` 模糊匹配**缸号与匹号**；``dye_lot_no`` 是**精确**匹配缸号 ——
+         *         缸号模糊会把 ``H2408`` 与 ``H24080`` 同时列出来，而它们是不同的布。
+         *     ⚠️ 与九个基础资料的 ``/options`` 不同，这里**不返回** ``unit_cost``（批次成本
+         *         不进选择器），而**返回** ``purpose``（BR-ST-25：返修布可正常领用但成本走
+         *         5403 单独口径，录入员该在选批时就看见）。
+         *     ⚠️ **不过滤 ``purpose``**：BR-ST-25 要求 ``REWORK_RECEIPT`` 也能被裁剪单选到；
+         *         「RETURN / SAMPLE 能不能被裁」规范未写，登记在 docs/12 待决问题里。
+         */
+        get: operations["list_material_stock_options_api_v1_material_stocks_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/materials/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 物料候选（只返面料/辅料，size ≤ 20）
+         * @description 物料候选。⚠️ 只返 ``FABRIC`` / ``TRIMMING``（成衣不该出现在「选布料」里）。
+         */
+        get: operations["list_material_options_api_v1_materials_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/operation-rates": {
         parameters: {
             query?: never;
@@ -1408,6 +1456,26 @@ export interface paths {
          * @description 新增尺码。``size_group_name`` 与 ``size_code`` **二选一**（Schema 层就拒）。
          */
         post: operations["create_style_size_api_v1_styles__style_no__sizes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/suppliers/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 供应商候选（size ≤ 20）
+         * @description 供应商候选（05 §9.5.2：``code`` / ``name`` / ``contact``）。
+         */
+        get: operations["list_supplier_options_api_v1_suppliers_options_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3285,6 +3353,38 @@ export interface components {
              * @description 业务数据；失败时为 null
              */
             data?: components["schemas"]["RoleOut"][] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
+        /** ApiResponse[list[StockBatchOptionOut]] */
+        ApiResponse_list_StockBatchOptionOut__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /**
+             * Data
+             * @description 业务数据；失败时为 null
+             */
+            data?: components["schemas"]["StockBatchOptionOut"][] | null;
             /**
              * Details
              * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
@@ -5240,6 +5340,55 @@ export interface components {
             size_code: string;
             /** Size Line No */
             size_line_no: number;
+        };
+        /**
+         * StockBatchOptionOut
+         * @description 布批（缸号 / 匹号）候选（``docs/05 §9.5.2`` 末行，T-BASE-007）。
+         *
+         *     ⚠️ **继承 :class:`OptionOut`** 而不是另立一个形状：前端 ``<Combo>`` 的
+         *     ``fetchOptions`` 约定返回 ``OptionOut``（``{value,label,sub?,disabled?}``），
+         *     另立形状就要在前端开第二个分支去适配同一个组件 —— 而 Combo 是**通用组件**，
+         *     为一个业务改它的契约就是让所有使用者都得跟着看两处。
+         *
+         *     :param value: **批次 UUID**（不是编码）。⚠️ 与九个基础资料的候选相反 ——
+         *         布批没有业务编码可提交，唯一键是 ``(warehouse_id, material_id,
+         *         dye_lot_no, bolt_no)``（``04 §7.9``），而裁剪行要的就是
+         *         ``material_stocks.id``（ADR-0022「不允许自由输入缸号」）。
+         *     :param dye_lot_no: 缸号
+         *     :param bolt_no: 匹号（同缸多匹 → 多行）
+         *     :param width_cm: 门幅（**该批实测值**；C24 门幅校验的输入，不能取档案层）
+         *     :param available_qty: 可用量 = ``stock_qty - locked_qty``（C16）。
+         *         ⚠️ **不是列**，是运行时计算值（``material_stocks`` 上没有这一列）。
+         */
+        StockBatchOptionOut: {
+            /** Available Qty */
+            available_qty: string;
+            /** Bolt No */
+            bolt_no: string;
+            /**
+             * Disabled
+             * @default false
+             */
+            disabled: boolean;
+            /** Dye Lot No */
+            dye_lot_no: string;
+            /** Label */
+            label: string;
+            /**
+             * Material Id
+             * Format: uuid
+             */
+            material_id: string;
+            /** Purpose */
+            purpose: string;
+            /** Sub */
+            sub?: string | null;
+            /** Supplier Id */
+            supplier_id?: string | null;
+            /** Value */
+            value: string;
+            /** Width Cm */
+            width_cm: string;
         };
         /** StyleColorCreate */
         StyleColorCreate: {
@@ -7273,6 +7422,75 @@ export interface operations {
             };
         };
     };
+    list_material_stock_options_api_v1_material_stocks_options_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                supplier_id?: string | null;
+                material_id?: string | null;
+                dye_lot_no?: string | null;
+                size?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_StockBatchOptionOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_material_options_api_v1_materials_options_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                size?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_OptionOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_operation_rates_api_v1_operation_rates_get: {
         parameters: {
             query?: {
@@ -9065,6 +9283,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_list_StyleSizeOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_supplier_options_api_v1_suppliers_options_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                size?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_OptionOut__"];
                 };
             };
             /** @description Validation Error */

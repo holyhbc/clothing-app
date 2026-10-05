@@ -47,6 +47,7 @@ from app.modules.base.schemas import (
     RateResolveOut,
     RatioListOut,
     RatioReplaceIn,
+    StockBatchOptionOut,
     StyleColorCreate,
     StyleColorOut,
     StyleCreate,
@@ -675,6 +676,10 @@ def _material_options_service(session: AsyncSession, ctx: AuthContext) -> Materi
 #    本来 ``/materials/options`` 与九个资源的路径前缀不冲突，但把「手写端点写在前、
 #    注册表在最后」这条约定固定下来，就不必每次都重新推一遍路由匹配顺序。
 
+#: 布批候选的 OpenAPI 标签。⚠️ 与其余基础资料端点**分开**：布批是库存数据，
+#: 它的权限点是 ``stock:read`` 而不是 ``base:read``（05 §9.5.2 + C38）。
+STOCK_TAGS: list[str | Enum] = ["库存"]
+
 
 @router.get(
     "/materials/options",
@@ -713,6 +718,45 @@ async def list_supplier_options(
     """供应商候选（05 §9.5.2：``code`` / ``name`` / ``contact``）。"""
     _require_base(ctx, "base:read", "查看供应商")
     options = await _material_options_service(session, ctx).list_supplier_options(q, size, offset)
+    return ok([item.model_dump(mode="json") for item in options])
+
+
+@router.get(
+    "/material-stocks/options",
+    response_model=ApiResponse[list[StockBatchOptionOut]],
+    summary="布批候选（缸号/匹号；**只列 available_qty > 0**；按入库日 FIFO 升序；不过滤 purpose）",
+    openapi_extra={"x-permission": "stock:read"},
+    tags=STOCK_TAGS,
+)
+async def list_material_stock_options(
+    ctx: ContextDep,
+    session: SessionDep,
+    q: Annotated[str | None, Query(max_length=64)] = None,
+    supplier_id: UUID | None = None,
+    material_id: UUID | None = None,
+    dye_lot_no: Annotated[str | None, Query(max_length=64)] = None,
+    size: Annotated[int, Query(ge=1, le=20)] = 20,
+    offset: Annotated[int, Query(ge=0, le=10000)] = 0,
+) -> dict[str, object]:
+    """布批候选（05 §9.5.2 末行；C38「不允许自由输入缸号」；BR-ST-17 ③ FIFO）。
+
+    ⚠️ ``q`` 模糊匹配**缸号与匹号**；``dye_lot_no`` 是**精确**匹配缸号 ——
+        缸号模糊会把 ``H2408`` 与 ``H24080`` 同时列出来，而它们是不同的布。
+    ⚠️ 与九个基础资料的 ``/options`` 不同，这里**不返回** ``unit_cost``（批次成本
+        不进选择器），而**返回** ``purpose``（BR-ST-25：返修布可正常领用但成本走
+        5403 单独口径，录入员该在选批时就看见）。
+    ⚠️ **不过滤 ``purpose``**：BR-ST-25 要求 ``REWORK_RECEIPT`` 也能被裁剪单选到；
+        「RETURN / SAMPLE 能不能被裁」规范未写，登记在 docs/12 待决问题里。
+    """
+    _require_base(ctx, "stock:read", "查看布批")
+    options = await _material_options_service(session, ctx).list_stock_batch_options(
+        keyword=q,
+        supplier_id=supplier_id,
+        material_id=material_id,
+        dye_lot_no=dye_lot_no,
+        size=size,
+        offset=offset,
+    )
     return ok([item.model_dump(mode="json") for item in options])
 
 

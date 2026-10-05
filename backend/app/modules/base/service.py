@@ -76,6 +76,7 @@ from app.modules.auth.models import User
 from app.modules.base.models import (
     Customer,
     Material,
+    MaterialStock,
     Operation,
     OperationRate,
     ProductCategory,
@@ -102,6 +103,7 @@ from app.modules.base.schemas import (
     RatioListOut,
     RatioOut,
     RatioReplaceIn,
+    StockBatchOptionOut,
     StyleColorCreate,
     StyleColorOut,
     StyleCreate,
@@ -2553,7 +2555,7 @@ SUPPLIER_TRGM_QUALIFIED = (
 
 
 class MaterialOptionsService:
-    """物料 / 供应商候选（T-BASE-007a）。
+    """物料 / 供应商 / **布批候选**（T-BASE-007）。
 
     ## 为什么只有候选，没有列表 / 新建 / 停用
 
@@ -2649,6 +2651,88 @@ class MaterialOptionsService:
         rows = (await self.session.execute(stmt.offset(offset).limit(size))).scalars().all()
         return [
             OptionOut(value=row.code, label=f"{row.code} {row.name}", sub=row.short_name)
+            for row in rows
+        ]
+
+    async def list_stock_batch_options(
+        self,
+        *,
+        keyword: str | None = None,
+        supplier_id: UUID | None = None,
+        material_id: UUID | None = None,
+        dye_lot_no: str | None = None,
+        size: int = MAX_OPTION_SIZE,
+        offset: int = 0,
+    ) -> list[StockBatchOptionOut]:
+        """布批候选（05 §9.5.2 末行 + C38 + BR-ST-17）。
+
+        ⚠️ **三处口径都是规范强制的，不是这里的选择**：
+
+        1. **必须 ``available_qty > 0``**（05 §9.5.2 加粗、ADR-0022）。写成本地表达式
+           ``stock_qty - locked_qty > 0`` 而不是取出来在 Python 里比 ——
+           那样会把「只剩 0.001 米的批次」也列出来，用户填完耗料才收 `40006`。
+           这个表达式与部分索引 ``idx_material_stocks_pick`` 的谓词**逐字一致**，
+           改一边不改另一边就会从「索引扫描」退化成「全表扫 + 过滤」。
+        2. **默认排序 = FIFO**（BR-ST-17 ③：默认按入库日升序）。**不是**入库日倒序 ——
+           先入库的先用，倒序等于让最陈旧的布永远排最后。
+        3. **只返缸号 / 匹号 / 门幅 / 可用量**，**不返 ``unit_cost``**（05 §9.5.2、
+           C38）。批次成本属财务口径，出现在一个选批下拉里就会被截图发到群里。
+        """
+        self._check_window(size, offset)
+        available = MaterialStock.stock_qty - MaterialStock.locked_qty
+        # ⚠️ **刻意不过滤 ``purpose``**：BR-ST-25 明写「``purpose='REWORK_RECEIPT'``
+        #    的批次与正常布料一样**可被裁剪单选批领用**」（TC-35 ① 要求两批都能选到），
+        #    而「RETURN / SAMPLE 能不能被裁」规范里**没写**。加一个 `purpose='NORMAL'`
+        #    的过滤会把返修布挡在门外 —— 那是一个看起来很合理的判断，却与 BR-ST-25
+        #    直接冲突且没有任何报错。所以这里只按 05 §9.5.2 强制的那一条过滤
+        #    （``available_qty > 0``），把 ``purpose`` 作为**副标识返回**让录入员自己看。
+        #    RETURN / SAMPLE 的取舍登记在 docs/12 待决问题里。
+        stmt = apply_data_scope(select(MaterialStock), MaterialStock, self.ctx).where(available > 0)
+        if supplier_id is not None:
+            stmt = stmt.where(MaterialStock.supplier_id == supplier_id)
+        if material_id is not None:
+            stmt = stmt.where(MaterialStock.material_id == material_id)
+        if dye_lot_no:
+            # ⚠️ **精确匹配缸号**而不是模糊：缸号是编号，模糊匹配会把
+            #    「H2408」和「H24080」同时列出来，而它们是**不同的布**。
+            #    想要模糊的是用户手里的单号片段，那走 ``keyword``（匹号 / 物料名）。
+            stmt = stmt.where(MaterialStock.dye_lot_no == dye_lot_no)
+        if keyword:
+            # ⚠️ 用 ``or_(...)``（SQLAlchemy 2.0 的函数式写法）而不是 ``stmt.or_(...)``：
+            #    后者是 SQLAlchemy 1.4 的 API，2.0 已移除 —— 而**它要到真的传了
+            #    ``q`` 才会炸**（`AttributeError: 'Select' object has no attribute 'or_'`），
+            #    也就是「只按 material_id / 缸号筛」的用例全绿、用户手输关键字就 500。
+            #    被 mypy 抓到，不是被测试抓到。
+            stmt = stmt.where(
+                or_(
+                    MaterialStock.dye_lot_no.ilike(f"%{keyword}%"),
+                    MaterialStock.bolt_no.ilike(f"%{keyword}%"),
+                )
+            )
+        stmt = stmt.order_by(
+            MaterialStock.in_date.asc(),
+            MaterialStock.dye_lot_no.asc(),
+            MaterialStock.bolt_no.asc(),
+        )
+        rows = (await self.session.execute(stmt.offset(offset).limit(size))).scalars().all()
+        return [
+            StockBatchOptionOut(
+                value=str(row.id),
+                # ⚠️ label 里带可用量与门幅：选批是「看着布挑」的活，
+                #    只有一个匹号的话用户得逐个点开才知道门幅够不够（C24）。
+                label=f"{row.dye_lot_no}/{row.bolt_no}",
+                # ⚠️ ``purpose`` 进 ``sub``：返修布（REWORK_RECEIPT）能正常领用但成本
+                #    走 5403 单独口径（BR-ST-25），录入员该在选批时就看见。
+                sub=str(row.purpose),
+                disabled=False,
+                dye_lot_no=row.dye_lot_no,
+                bolt_no=row.bolt_no,
+                width_cm=row.width_cm,
+                purpose=str(row.purpose),
+                available_qty=(row.stock_qty or Decimal("0")) - (row.locked_qty or Decimal("0")),
+                material_id=row.material_id,
+                supplier_id=row.supplier_id,
+            )
             for row in rows
         ]
 

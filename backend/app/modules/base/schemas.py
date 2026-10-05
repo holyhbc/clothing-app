@@ -21,6 +21,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.common.enums import ConflictPolicy, RateSource, SizeClass, TemplateCopyMode
+from app.core.pydantic_types import Str
 
 # ------------------------------------------------------------------ 公共片段
 
@@ -94,6 +95,37 @@ class OptionOut(BaseModel):
     label: str
     sub: str | None = None
     disabled: bool = False
+
+
+class StockBatchOptionOut(OptionOut):
+    """布批（缸号 / 匹号）候选（``docs/05 §9.5.2`` 末行，T-BASE-007）。
+
+    ⚠️ **继承 :class:`OptionOut`** 而不是另立一个形状：前端 ``<Combo>`` 的
+    ``fetchOptions`` 约定返回 ``OptionOut``（``{value,label,sub?,disabled?}``），
+    另立形状就要在前端开第二个分支去适配同一个组件 —— 而 Combo 是**通用组件**，
+    为一个业务改它的契约就是让所有使用者都得跟着看两处。
+
+    :param value: **批次 UUID**（不是编码）。⚠️ 与九个基础资料的候选相反 ——
+        布批没有业务编码可提交，唯一键是 ``(warehouse_id, material_id,
+        dye_lot_no, bolt_no)``（``04 §7.9``），而裁剪行要的就是
+        ``material_stocks.id``（ADR-0022「不允许自由输入缸号」）。
+    :param dye_lot_no: 缸号
+    :param bolt_no: 匹号（同缸多匹 → 多行）
+    :param width_cm: 门幅（**该批实测值**；C24 门幅校验的输入，不能取档案层）
+    :param available_qty: 可用量 = ``stock_qty - locked_qty``（C16）。
+        ⚠️ **不是列**，是运行时计算值（``material_stocks`` 上没有这一列）。
+    """
+
+    dye_lot_no: str
+    bolt_no: str
+    width_cm: Str
+    available_qty: Str
+    material_id: UUID
+    supplier_id: UUID | None = None
+    #: 采购用途（``NORMAL`` / ``REWORK_RECEIPT`` / ``RETURN`` / ``SAMPLE``，ADR-0012）。
+    #: ⚠️ **不作为过滤条件**：BR-ST-25 明确返修布（``REWORK_RECEIPT``）可被裁剪单
+    #: 正常选批领用，所以这里「不过滤、只展示」—— 过滤会与 BR-ST-25 冲突且不报错。
+    purpose: str
 
 
 class DisableIn(BaseModel):

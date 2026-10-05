@@ -39,8 +39,9 @@ from decimal import Decimal
 from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.pydantic_types import Str
 from app.modules.cutting.models import CuttingEntryMode
 
 # ------------------------------------------------------------------ 入参片段
@@ -188,18 +189,12 @@ class CuttingOrderCreateIn(BaseModel):
 
 # ------------------------------------------------------------------ 出参片段
 
-#: 响应里的数量 / 金额：**字符串**，且**接受 ORM 的 Decimal**。
-#:
-#: ⚠️ ``docs/05 §3`` 要求「金额 / 数量在响应里一律 ``str``」—— JS 的 ``number``
-#: 表示不了 ``0.378000``，而本模块的耗料是 ``numeric(14,3)``。
-#:
-#: ⚠️ **为什么需要 BeforeValidator 而不是直接标 ``str``**：pydantic v2 的 ``str``
-#: 类型**不接受** ``Decimal``（也不接受 ``int``）—— 那条 ``str`` 标注只对
-#: 「请求里传来的 JSON 字符串」有效，而响应是从 ORM 对象 ``model_validate`` 出来的，
-#: 属性是 ``Decimal``。踩过一次：报 ``Input should be a valid string
-#: [input_value=Decimal('96.000')]``，而报错完全看不出根因是「出参类型不能直接
-#: 从 ORM 构造」。
-Str = Annotated[str, BeforeValidator(lambda v: str(v) if isinstance(v, (Decimal, int)) else v)]
+#: ⚠️ ``Str`` 原本定义在本文件里，T-BASE-007 抽成了共享片段
+#: :mod:`app.core.pydantic_types`：布批候选的 ``width_cm`` / ``available_qty``
+#: 需要同一种「标 ``str`` 但接受 ORM 的 ``Decimal``」的出参类型，而两份拷贝意味着
+#: 下一个模块会**再踩一次**「pydantic v2 的 ``str`` 不接受 ``Decimal``」这个坑
+#: （报错 ``Input should be a valid string [input_value=Decimal('96.000')]``，
+#: 完全看不出根因是「出参类型不能直接从 ORM 构造」）。
 
 
 class SizeLineOut(BaseModel):
