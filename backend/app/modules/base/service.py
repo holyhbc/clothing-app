@@ -75,6 +75,7 @@ from app.core.scope import apply_data_scope, assert_in_scope
 from app.modules.auth.models import User
 from app.modules.base.models import (
     Customer,
+    Material,
     Operation,
     OperationRate,
     ProductCategory,
@@ -86,6 +87,7 @@ from app.modules.base.models import (
     StyleColorSizeRatio,
     StyleOperation,
     StyleSize,
+    Supplier,
 )
 from app.modules.base.repository import DictRepository, ListQuery, Row
 from app.modules.base.resources import DictResource, ref_count_expression
@@ -2533,11 +2535,130 @@ class RateService:
         return None
 
 
+# ------------------------------------------------------------------ 物料 / 供应商 / 布批候选
+
+
+#: 物料候选的模糊搜索表达式：``code + name + 规格/类型``（05 §9.5.2「对编码 + 名称 +
+#: 副标识做模糊匹配」）。
+#:
+#: ⚠️ **用 ``||`` 拼表达式而不是三个 ``ILIKE``**：三个 ``ILIKE`` 的 OR 里，只要有一项
+#: 没有索引就会让 PG 扫全表；而拼接表达式能用上已有的表达式 GIN 索引
+#: （与 :data:`STYLE_TRGM_QUALIFIED` 同一手法）。
+MATERIAL_TRGM_QUALIFIED = (
+    "(materials.code || ' ' || materials.name || ' ' || materials.material_type)"
+)
+SUPPLIER_TRGM_QUALIFIED = (
+    "(suppliers.code || ' ' || suppliers.name || ' ' || coalesce(suppliers.short_name, ''))"
+)
+
+
+class MaterialOptionsService:
+    """物料 / 供应商候选（T-BASE-007a）。
+
+    ## 为什么只有候选，没有列表 / 新建 / 停用
+
+    ``docs/05 §9.5.2`` 只登记了这三个 ``/options``；物料与供应商的**档案维护**
+    属 ``modules/01`` 的后续卡，而布批的增删改由**到货登记 / 采购单审核**产生
+    （ADR-0012：无独立入库单）。刻意不给它们凑一套 CRUD —— 那会让「谁能改批次
+    结存」这件事变成一个没经过业务拍板的默认值。
+
+    ## 数据范围
+
+    ⚠️ **这三个资源都不做车间过滤**，且这是有意的、不是漏登记：
+
+    - ``materials`` / ``suppliers`` 是**全厂共享主数据**，与 ``colors`` / ``sizes``
+      同性质（``SCOPE_SPECS`` 里它们是 ``ScopeSpec()``，即不加任何范围条件）。
+    - ``material_stocks`` 按**仓库**隔离（``warehouse_id``），而仓库不是车间 ——
+      ``app/core/scope.py`` 里已写明「库存的数据范围走仓库维度，见 modules/06」。
+      登记成车间过滤会把「工厂级仓库」的库存凭空过滤掉。
+
+    第一行仍然调 ``apply_data_scope``：它至少统一附加了 ``deleted_at IS NULL``
+    （软删过滤，INV-7），并且表名将来登记进 ``SCOPE_SPECS`` 之后这里**自动**生效 ——
+    靠「记得回来改这里」来保证的过滤迟早会漏。
+    """
+
+    def __init__(self, session: AsyncSession, ctx: AuthContext) -> None:
+        self.session = session
+        self.ctx = ctx
+
+    def _check_window(self, size: int, offset: int) -> None:
+        """候选的 ``size`` / ``offset`` 边界（05 §9.5.2 与 ``OptionOut`` 家族一致）。
+
+        ⚠️ **显式查而不是靠 FastAPI 的 ``Query(ge=1, le=20)``**：那个约束只在
+        HTTP 层生效，而这三个方法将来也会被别的 service / 脚本调用 ——
+        service 层的边界是这里唯一的那道。
+        """
+        if not 1 <= size <= MAX_OPTION_SIZE:
+            raise BusinessError(
+                ErrorCode.PARAM_INVALID, f"候选接口 size 必须在 1~{MAX_OPTION_SIZE} 之间"
+            )
+        if offset > MAX_OFFSET:
+            raise BusinessError(ErrorCode.PARAM_INVALID, "offset 过大，请改用关键字搜索")
+
+    async def list_material_options(
+        self, keyword: str | None, size: int = MAX_OPTION_SIZE, offset: int = 0
+    ) -> list[OptionOut]:
+        """物料候选（05 §9.5.2）。
+
+        ⚠️ **只返面料与辅料**：``material_type`` 是 ``FABRIC`` / ``TRIMMING`` /
+        ``LABEL`` / ``FINISHED_GOODS``，而**成衣**不该出现在「裁剪要用的布料」
+        选择器里 —— 让用户在一堆成衣里挑布料是最典型的「筛选没做」的表现。
+        成衣库存另有候选入口。
+        """
+        self._check_window(size, offset)
+        stmt = apply_data_scope(select(Material), Material, self.ctx).where(
+            Material.material_type.in_(("FABRIC", "TRIMMING"))
+        )
+        if keyword:
+            stmt = stmt.where(literal_column(MATERIAL_TRGM_QUALIFIED).ilike(f"%{keyword}%"))
+        # ⚠️ 默认排序按 **编码升序**：物料没有「最近使用」字段（款号有
+        #    ``last_used_at``，所以款号候选能按常用优先）。给一个不存在的字段排序
+        #    会让候选顺序随机 —— 用户每次打开看到的次序不一样。
+        stmt = stmt.order_by(Material.code.asc())
+        rows = (await self.session.execute(stmt.offset(offset).limit(size))).scalars().all()
+        return [
+            OptionOut(
+                value=row.code,
+                # ⚠️ label 里**不要**再拼 material_type：Combo 的回显直接显示 label，
+                #    而 sub 已经承担了副标识的位置（06 §10「label 含编码，不重复拼」）。
+                label=f"{row.code} {row.name}",
+                # ⚠️ **停用时 sub 让位给「已停用」**，与款号候选
+                #    （``list_options`` 里 ``sub=None if row.is_active else '已停用'``）
+                #    同一口径：Combo 只显示一个副文本位，而「这个不能选」比
+                #    「它是面料」更需要被看见 —— 否则用户选完才收 20003。
+                sub=row.material_type if row.is_active else "已停用",
+                disabled=not row.is_active,
+            )
+            for row in rows
+        ]
+
+    async def list_supplier_options(
+        self, keyword: str | None, size: int = MAX_OPTION_SIZE, offset: int = 0
+    ) -> list[OptionOut]:
+        """供应商候选（05 §9.5.2：``code`` / ``name`` / ``contact``）。
+
+        ⚠️ 供应商**没有** ``is_active`` 列（停用语义在 modules/01 的后续卡里），
+        所以 ``disabled`` 恒为 ``False``；别在这里 ``getattr(row, "is_active", True)``
+        造一个「以为它有」的分支 —— 那会让「列真的加上之后要记得回来改」变成隐形的。
+        """
+        self._check_window(size, offset)
+        stmt = apply_data_scope(select(Supplier), Supplier, self.ctx)
+        if keyword:
+            stmt = stmt.where(literal_column(SUPPLIER_TRGM_QUALIFIED).ilike(f"%{keyword}%"))
+        stmt = stmt.order_by(Supplier.code.asc())
+        rows = (await self.session.execute(stmt.offset(offset).limit(size))).scalars().all()
+        return [
+            OptionOut(value=row.code, label=f"{row.code} {row.name}", sub=row.short_name)
+            for row in rows
+        ]
+
+
 __all__ = [
     "ACTION_CREATE",
     "ACTION_DELETE",
     "ACTION_UPDATE",
     "DictService",
+    "MaterialOptionsService",
     "RateQuery",
     "RateService",
     "StyleQuery",

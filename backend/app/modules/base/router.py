@@ -66,6 +66,7 @@ from app.modules.base.schemas import (
 )
 from app.modules.base.service import (
     DictService,
+    MaterialOptionsService,
     RateQuery,
     RateService,
     StyleQuery,
@@ -661,6 +662,58 @@ def _style_service(session: AsyncSession, ctx: AuthContext) -> StyleService:
 
 def _rate_service(session: AsyncSession, ctx: AuthContext) -> RateService:
     return RateService(session, ctx)
+
+
+def _material_options_service(session: AsyncSession, ctx: AuthContext) -> MaterialOptionsService:
+    return MaterialOptionsService(session, ctx)
+
+
+# ------------------------------------------------------------------ 物料 / 供应商 / 布批候选
+#
+# ⚠️ **必须声明在 ``register_resource_routes(router)`` 之前**（那行在文件末尾）：
+#    注册表给每个资源注册了 ``/{key}/{code}`` 形态的路径，而这三个是**手写**端点。
+#    本来 ``/materials/options`` 与九个资源的路径前缀不冲突，但把「手写端点写在前、
+#    注册表在最后」这条约定固定下来，就不必每次都重新推一遍路由匹配顺序。
+
+
+@router.get(
+    "/materials/options",
+    response_model=ApiResponse[list[OptionOut]],
+    summary="物料候选（只返面料/辅料，size ≤ 20）",
+    openapi_extra={"x-permission": "base:read"},
+    tags=STYLE_TAGS,
+)
+async def list_material_options(
+    ctx: ContextDep,
+    session: SessionDep,
+    q: Annotated[str | None, Query(max_length=64)] = None,
+    size: Annotated[int, Query(ge=1, le=20)] = 20,
+    offset: Annotated[int, Query(ge=0, le=10000)] = 0,
+) -> dict[str, object]:
+    """物料候选。⚠️ 只返 ``FABRIC`` / ``TRIMMING``（成衣不该出现在「选布料」里）。"""
+    _require_base(ctx, "base:read", "查看物料")
+    options = await _material_options_service(session, ctx).list_material_options(q, size, offset)
+    return ok([item.model_dump(mode="json") for item in options])
+
+
+@router.get(
+    "/suppliers/options",
+    response_model=ApiResponse[list[OptionOut]],
+    summary="供应商候选（size ≤ 20）",
+    openapi_extra={"x-permission": "base:read"},
+    tags=STYLE_TAGS,
+)
+async def list_supplier_options(
+    ctx: ContextDep,
+    session: SessionDep,
+    q: Annotated[str | None, Query(max_length=64)] = None,
+    size: Annotated[int, Query(ge=1, le=20)] = 20,
+    offset: Annotated[int, Query(ge=0, le=10000)] = 0,
+) -> dict[str, object]:
+    """供应商候选（05 §9.5.2：``code`` / ``name`` / ``contact``）。"""
+    _require_base(ctx, "base:read", "查看供应商")
+    options = await _material_options_service(session, ctx).list_supplier_options(q, size, offset)
+    return ok([item.model_dump(mode="json") for item in options])
 
 
 @router.get(
