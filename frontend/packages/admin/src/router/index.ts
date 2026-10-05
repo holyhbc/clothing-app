@@ -126,6 +126,15 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '裁剪单详情', permission: PERM.CUTTING_READ },
       },
       {
+        // ⚠️ 相对顺序有讲究：`new` 必须在 `:orderId` **之前**（否则 `/cutting/orders/new`
+        //    被当成「ID 是 new 的那一行」），而本条在它**之后**（`:orderId/edit` 多一段，
+        //    匹配上是精确的，不需要抢在前面）。
+        path: 'cutting/orders/:orderId/edit',
+        name: 'cutting-orders-edit',
+        component: () => import('@/views/cutting/Edit.vue'),
+        meta: { title: '编辑裁剪单', permission: PERM.CUTTING_UPDATE },
+      },
+      {
         path: 'system/users',
         name: 'system-users',
         component: () => import('@/views/system/users/List.vue'),

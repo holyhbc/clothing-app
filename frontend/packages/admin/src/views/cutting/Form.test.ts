@@ -234,11 +234,14 @@ describe('裁剪单新建页（TC-CUT-001c-3a）', () => {
   it('TC-CUT-F6 ★ 提交体只含**后端入参里的字段**（extra=forbid，传多一个键就是 10001）', async () => {
     const { wrapper, create } = await mountForm(filledTree())
     // 表头必填：车间与款号（后端 `workshop_id` / `style_id` 要 UUID）
+    // ⚠️ 变量名是 `header`（T-CUT-001c-3c 把表头抽成了 `HeaderFields.vue`）——
+    //   写 `vm.form` 会在 strict 下报「form 不存在」，而 vitest 不跑类型检查，
+    //   于是断言「payload 里有 workshop_id」会以「undefined」失败，看不出是变量名改了。
     const vm = wrapper.vm as unknown as {
-      form: { workshop_id: string | null; style_id: string | null }
+      header: { workshop_id: string | null; style_id: string | null }
     }
-    vm.form.workshop_id = '44444444-4444-4444-4444-444444444444'
-    vm.form.style_id = '55555555-5555-5555-5555-555555555555'
+    vm.header.workshop_id = '44444444-4444-4444-4444-444444444444'
+    vm.header.style_id = '55555555-5555-5555-5555-555555555555'
     await settle()
     const save = saveButton()
     expect(save?.disabled).toBe(false)

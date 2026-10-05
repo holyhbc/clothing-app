@@ -165,7 +165,13 @@ watch(orderId, () => {
         ⚠️ 审核 / 作废 / 删除按钮**刻意不放在这一版**：那是状态迁移
         （`docs/08`），要校验前置状态与记录原因，与只读详情不是同一件事。
       -->
-      <Button v-can="PERM.CUTTING_UPDATE" type="primary" disabled>编辑（T-CUT-001c-3）</Button>
+      <Button
+        v-can="PERM.CUTTING_UPDATE"
+        type="primary"
+        @click="router.push({ name: 'cutting-orders-edit', params: { orderId } })"
+      >
+        编辑
+      </Button>
     </template>
 
     <Alert

@@ -277,6 +277,28 @@ describe('基础资料路由', () => {
     expect(detail.currentRoute.value.name).toBe('cutting-orders-detail')
   })
 
+  it('TC-W42 新建 / 编辑路由的权限点分别是 `cutting:create` / `cutting:update`', async () => {
+    // ⚠️ 只读权限的人能看列表与详情，但**不能**进新建与编辑页 ——
+    //    这两条路由的权限点给错的话，一个只读用户就能改裁剪单，而按钮上的 `v-can`
+    //    只是「不显示」，安全由后端兜着（此时页面已经打开了）。
+    stubMe({ permissions: [PERM.CUTTING_READ] })
+    http.setAccessToken('token-cutting-read')
+    expect((await navigate('/cutting/orders/new')).currentRoute.value.name).toBe('forbidden')
+    const edit = await navigate('/cutting/orders/33333333-3333-3333-3333-333333333333/edit')
+    expect(edit.currentRoute.value.name).toBe('forbidden')
+
+  })
+
+  // ⚠️ 必须**另起一条用例**：auth store 缓存 `/auth/me` 的结果，同一条用例里换权限
+  //   不会重新拉 —— 症状是「有权也进不去」，而真因（缓存）与守卫毫无关系。
+  it('TC-W43 有写权限时新建与编辑路由都放行', async () => {
+    stubMe({ permissions: [PERM.CUTTING_CREATE, PERM.CUTTING_UPDATE] })
+    http.setAccessToken('token-cutting-write')
+    expect((await navigate('/cutting/orders/new')).currentRoute.value.name).toBe('cutting-orders-new')
+    const writable = await navigate('/cutting/orders/33333333-3333-3333-3333-333333333333/edit')
+    expect(writable.currentRoute.value.name).toBe('cutting-orders-edit')
+  })
+
   it('菜单里的九个入口都有对应路由（点菜单不 404）', async () => {
     const { MENU_GROUPS } = await import('@/layouts/menu')
     const names = new Set(flatRoutes().map((route) => route.name))
