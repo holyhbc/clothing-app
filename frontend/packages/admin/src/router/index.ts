@@ -104,6 +104,24 @@ const routes: RouteRecordRaw[] = [
       },
       ...baseDictRoutes(),
       {
+        // 裁剪单列表（T-CUT-001c-2）。⚠️ 只登记**真的存在**的页面：详情与新建页
+        //    要等 T-CUT-001c-3 落地才加 —— 先登记再补页面，用户点进去就是 404，
+        //    而 404 页会让人以为是权限问题，反复重登去找管理员。
+        path: 'cutting/orders',
+        name: 'cutting-orders',
+        component: () => import('@/views/cutting/List.vue'),
+        meta: { title: '裁剪单', permission: PERM.CUTTING_READ },
+      },
+      {
+        // ⚠️ `new` 必须排在 `:orderId` 前面 —— 反了的话 `/cutting/orders/new`
+        //    会被当成「ID 是 new 的那一行」，后端收到非 UUID 直接 422。
+        //    新建页与编辑能力在 T-CUT-001c-3 落地，那时才加这条。
+        path: 'cutting/orders/:orderId',
+        name: 'cutting-orders-detail',
+        component: () => import('@/views/cutting/Detail.vue'),
+        meta: { title: '裁剪单详情', permission: PERM.CUTTING_READ },
+      },
+      {
         path: 'system/users',
         name: 'system-users',
         component: () => import('@/views/system/users/List.vue'),

@@ -255,6 +255,28 @@ describe('基础资料路由', () => {
     }
   })
 
+  it('TC-W40 裁剪单列表/详情按 `cutting:read` 判权限（不是 base:read）', async () => {
+    // ⚠️ 裁剪是**生产**数据，不是基础资料：给 `base:read` 判据的话，懂基础资料的人
+    //    就能看到全厂的裁剪单 —— 那是一次真实的越权，而守卫不报错、页面正常显示。
+    stubMe({ permissions: [PERM.BASE_READ] })
+    http.setAccessToken('token-base-read-only')
+    const router = await navigate('/cutting/orders')
+    expect(router.currentRoute.value.name).toBe('forbidden')
+  })
+
+  // ⚠️ 必须**另起一条用例**而不是接着上一条换权限：auth store 会缓存 `/auth/me` 的结果，
+  //   同一条用例里第二次导航根本不会重新拉 —— 于是「有权也能进」这条断言会假失败，
+  //   而真因（缓存）与被测的守卫毫无关系。
+  it('TC-W41 有 `cutting:read` 时裁剪单列表与详情都能进', async () => {
+    stubMe({ permissions: [PERM.CUTTING_READ] })
+    http.setAccessToken('token-cutting-read')
+    const allowed = await navigate('/cutting/orders')
+    expect(allowed.currentRoute.value.name).toBe('cutting-orders')
+
+    const detail = await navigate('/cutting/orders/33333333-3333-3333-3333-333333333333')
+    expect(detail.currentRoute.value.name).toBe('cutting-orders-detail')
+  })
+
   it('菜单里的九个入口都有对应路由（点菜单不 404）', async () => {
     const { MENU_GROUPS } = await import('@/layouts/menu')
     const names = new Set(flatRoutes().map((route) => route.name))
