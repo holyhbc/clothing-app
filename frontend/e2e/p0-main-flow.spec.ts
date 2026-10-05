@@ -119,8 +119,20 @@ test.describe('E2E-00 款号与工序单价主流程', () => {
     //    （下一行的 URL 断言），点标签不需要等稳定。
     await page.getByRole('button', { name: /展开菜单/ }).click()
     await expect(page.getByRole('button', { name: /收起菜单/ })).toBeVisible()
-    await page.getByText('基础资料', { exact: true }).click({ force: true })
-    await page.getByText('款号', { exact: true }).click({ force: true })
+    // ⚠️ **不要无条件点分组标题**（这是原写法）：分组可能**已经展开**（antd 的 Menu
+    //   会记住展开状态，且折叠→展开侧栏时可能把首个分组一并展开），再点一次就是
+    //   **收起**它 —— 于是下一步点「款号」时那个菜单项已经不在 DOM 里，
+    //   `force: true` 点在了空位上（点到 logo 就回了 `/`）。
+    //   症状是「菜单点不进款号页」，而真因是上一步多点了一次。
+    //    用 `isVisible()` 而不是 `count()`：**count 会把「已在 DOM 里但还没显示」
+    //    也算成 1** —— 分组刚展开时菜单项已渲染但还在宽度过渡中，于是「不再点分组标题」
+    //    而菜单项又点不到 → 整条用例偶发失败（连跑两轮：一轮过一轮挂）。
+    const styleMenuItem = page.getByRole('menuitem', { name: '款号' })
+    if (!(await styleMenuItem.isVisible().catch(() => false))) {
+      await page.getByText('基础资料', { exact: true }).click({ force: true })
+      await expect(styleMenuItem).toBeVisible({ timeout: 5_000 })
+    }
+    await styleMenuItem.click({ force: true })
 
     await expect(page).toHaveURL(/\/base\/styles$/)
     await expect(page.getByRole('columnheader', { name: '款号' })).toBeVisible()

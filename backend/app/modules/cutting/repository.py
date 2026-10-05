@@ -18,7 +18,7 @@ from uuid import UUID
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, with_loader_criteria
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.errors import BusinessError, ErrorCode
@@ -160,6 +160,29 @@ async def get_order_three_levels(session: AsyncSession, order_id: UUID) -> Cutti
                     selectinload(CuttingOrderLineColor.size_lines)
                 )
             )
+        )
+        # ⚠️ ★ **三层各自都要过滤 `deleted_at IS NULL`**（T-CUT-001c-4 的 E2E 抓到）：
+        #   `selectinload` 的关系**不继承**主查询上的 `where`，而全量替换
+        #   （`PUT /lines` / `/colors` / `/size-lines`）是「软删旧行 + 插新行」。
+        #   于是响应里会**同时**出现旧行（已软删）与新行 —— 实测 `PUT /lines` 提交 1 行、
+        #   响应回来 2 行。
+        #
+        #   为什么一直没人发现：① 汇总列由 `recalc_*` 只按存活行算，**数字是对的**；
+        #   ② service 单测断言的是汇总与 `_live_counts`（自己过滤软删）；
+        #   ③ 前端把响应整棵树灌进编辑器 —— 用户看到「保存一次，凭空多一行」。
+        #   而 `delete()` 的 docstring 早就写着「子表若不软删，详情页仍会显示已删单据的
+        #   尺码明细」—— 只是**软删了还不够，读的时候也必须滤**。
+        #
+        #   ⚠️ 用 `with_loader_criteria` 而不是 `selectinload(...).where(...)`：
+        #   `Load` **没有** `where` 方法（2.1 实测 `AttributeError: 'Load' object has no
+        #   attribute 'where'`），而 `with_loader_criteria` 对该实体的**所有**加载生效
+        #   —— 包括别人将来新加的第三层，不会又漏一处。
+        .options(with_loader_criteria(CuttingOrderLine, CuttingOrderLine.deleted_at.is_(None)))
+        .options(
+            with_loader_criteria(CuttingOrderLineColor, CuttingOrderLineColor.deleted_at.is_(None))
+        )
+        .options(
+            with_loader_criteria(CuttingOrderSizeLine, CuttingOrderSizeLine.deleted_at.is_(None))
         )
     )
     return (await session.execute(stmt)).unique().scalar_one_or_none()

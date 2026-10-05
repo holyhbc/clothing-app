@@ -30,6 +30,7 @@ import {
   Card,
   Descriptions,
   DescriptionsItem,
+  Modal,
   Space,
   Spin,
   Tag,
@@ -268,25 +269,43 @@ async function save(): Promise<void> {
   }
 }
 
-/** 删草稿：只有草稿能删，且要二次确认（不可恢复的整单删除，`docs/06 §5`）。 */
-async function remove(): Promise<void> {
+/**
+ * 删草稿：只有草稿能删，且要二次确认。
+ *
+ * ⚠️ 用 `Modal.confirm` 而不是原生 `confirm()`：`docs/06 §5` 明令禁止原生弹窗
+ *    （它们不认统一措辞、也不在 1366×768 下居中，第一版写成原生弹窗）。
+ *
+ * ⚠️ 确认框里**必须写明会连带作废什么**（「三层明细会一并作废」）：删一张单据是
+ *    不可恢复的，而「确定删除吗」这种问法会让用户以为只是删一个壳。
+ */
+function remove(): void {
   if (saving.value) return
   if (order.value?.status !== 'DRAFT') {
     message.warning('只有草稿可以删除；已提交的单请走「撤回」')
     return
   }
-  const confirmed = window.confirm(`确定删除草稿 ${order.value.doc_no}？三层明细会一并作废。`)
-  if (!confirmed) return
-  saving.value = true
-  try {
-    await deleteCuttingOrder(orderId.value, version.value)
-    message.success('已删除')
-    await router.push({ name: 'cutting-orders' })
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '删除失败')
-  } finally {
-    saving.value = false
-  }
+  Modal.confirm({
+    title: '确定删除这张草稿？',
+    // ⚠️ 文案里**不要写 `**加粗**`**：antd 的 `Modal.confirm` 不解析 markdown，
+    //    星号会原样出现在确认框里 —— 而「用户看到 `**一并作废**`」既像坏了又像
+    //    在暗示某种语法。要强调就用「」。
+    content: `裁剪单 ${order.value.doc_no} 及其三层明细会「一并作废」（软删，不物理删除）。`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '再想想',
+    onOk: async () => {
+      saving.value = true
+      try {
+        await deleteCuttingOrder(orderId.value, version.value)
+        message.success('已删除')
+        await router.push({ name: 'cutting-orders' })
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '删除失败')
+      } finally {
+        saving.value = false
+      }
+    },
+  })
 }
 
 function fetchStockOptions(keyword: string): Promise<StockBatchOptionOut[]> {

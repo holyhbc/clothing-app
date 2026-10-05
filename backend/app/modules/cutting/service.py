@@ -287,6 +287,18 @@ class CuttingOrderService:
             await self._insert_lines(order, payload.items, operator_id)
             await self._recalc_all(order)
             await self._bump_header(order_id, payload.version, operator_id)
+            # ⚠️ ★ **必须重读**（T-CUT-001c-4 的 E2E 抓到的 500）：
+            #   `_bump_header` 是 Core `UPDATE`，它会把 identity map 里那一行
+            #   **expire** —— 于是返回的 `order` 对象上 `updated_at` / `version`
+            #   一被访问就触发惰性刷新。而 **Router 里的 Pydantic 序列化是同步上下文**
+            #   （FastAPI 在 greenlet 之外跑它），惰性刷新在那里直接抛
+            #   `MissingGreenlet: greenlet_spawn has not been called` → 整个接口 500。
+            #
+            #   为什么 service 单测全绿：那里属性访问发生在 **async** 函数里，
+            #   greenlet 还在，惰性刷新**能**成功 —— 于是「重读没生效」这件事
+            #   在 service 层完全测不出来，只有走 HTTP 才暴露。
+            #   同一段代码在 `patch()` 里早就有了（那里返回的就是重读结果）。
+            order = await self._reloaded(order_id)
         return order
 
     async def put_colors(
@@ -316,6 +328,18 @@ class CuttingOrderService:
                 await self._insert_color(line, color_in, operator_id)
             await self._recalc_all(order)
             await self._bump_header(order_id, payload.version, operator_id)
+            # ⚠️ ★ **必须重读**（T-CUT-001c-4 的 E2E 抓到的 500）：
+            #   `_bump_header` 是 Core `UPDATE`，它会把 identity map 里那一行
+            #   **expire** —— 于是返回的 `order` 对象上 `updated_at` / `version`
+            #   一被访问就触发惰性刷新。而 **Router 里的 Pydantic 序列化是同步上下文**
+            #   （FastAPI 在 greenlet 之外跑它），惰性刷新在那里直接抛
+            #   `MissingGreenlet: greenlet_spawn has not been called` → 整个接口 500。
+            #
+            #   为什么 service 单测全绿：那里属性访问发生在 **async** 函数里，
+            #   greenlet 还在，惰性刷新**能**成功 —— 于是「重读没生效」这件事
+            #   在 service 层完全测不出来，只有走 HTTP 才暴露。
+            #   同一段代码在 `patch()` 里早就有了（那里返回的就是重读结果）。
+            order = await self._reloaded(order_id)
         return order
 
     async def put_size_lines(
@@ -343,6 +367,18 @@ class CuttingOrderService:
             recalc_color(color, created)
             await self._recalc_all(order)
             await self._bump_header(order_id, payload.version, operator_id)
+            # ⚠️ ★ **必须重读**（T-CUT-001c-4 的 E2E 抓到的 500）：
+            #   `_bump_header` 是 Core `UPDATE`，它会把 identity map 里那一行
+            #   **expire** —— 于是返回的 `order` 对象上 `updated_at` / `version`
+            #   一被访问就触发惰性刷新。而 **Router 里的 Pydantic 序列化是同步上下文**
+            #   （FastAPI 在 greenlet 之外跑它），惰性刷新在那里直接抛
+            #   `MissingGreenlet: greenlet_spawn has not been called` → 整个接口 500。
+            #
+            #   为什么 service 单测全绿：那里属性访问发生在 **async** 函数里，
+            #   greenlet 还在，惰性刷新**能**成功 —— 于是「重读没生效」这件事
+            #   在 service 层完全测不出来，只有走 HTTP 才暴露。
+            #   同一段代码在 `patch()` 里早就有了（那里返回的就是重读结果）。
+            order = await self._reloaded(order_id)
         return order
 
     # ---------------------------------------------------------------- 写：比例与模式
@@ -443,7 +479,19 @@ class CuttingOrderService:
             await self._bump_header(order_id, payload.version, operator_id)
         return color
 
-    # ---------------------------------------------------------------- 私有
+    async def _reloaded(self, order_id: UUID) -> CuttingOrder:
+        """重读整棵三层树（``populate_existing`` 由 repository 负责）。
+
+        ⚠️ **每一次写之后都要走这里**，理由见 :meth:`put_lines` 里那段注释：
+        Core ``UPDATE`` 会 ``expire`` identity map 里的行，而 Router 的 Pydantic
+        序列化在同步上下文里，访问被 expire 的列就是 ``MissingGreenlet`` 500。
+        """
+        order = await get_order_three_levels(self.session, order_id)
+        if order is None:  # pragma: no cover —— 刚写过，行必然还在
+            raise BusinessError(ErrorCode.CUTTING_STATUS_NOT_ALLOWED, "裁剪单不存在或已删除")
+        return order
+
+    # ------------------------------------------------------------------ 私有
 
     async def _bump_header(
         self,
@@ -596,11 +644,30 @@ class CuttingOrderService:
                     [r for r in color.size_lines if r.deleted_at is None],
                 )
             recalc_line(line, live_colors)
-        order.version = order.version + 1
+        # ⚠️ **不要在这里动 ``order.version``**（T-CUT-001c-4 的 E2E 抓到）：
+        #   版本号的**唯一归属**是 `_bump_header` 的条件 UPDATE
+        #   （`WHERE version = :expected` + `version = version + 1`）—— 它是乐观锁的实现，
+        #   也是“并发只能有一个成功”的唯一保证。
+        #   在这里再 +1 会形成**一次写推两次版本**：
+        #     ·我们新增的 flush 把内存里的 2 写进库，
+        #     ·无条件的 UPDATE 再加 1 变 3，而下一个请求拿着旧版本来就收 `10003`。
+        #   之前不觡这个问题，是因为 Core UPDATE 把行 expire 了 —— 内存里那个 +1
+        #   根本没被写进库（它被当成了需要重新加载），而整体的汇总也一起丢了。
         colors_by_line = {
             line.id: [c for c in line.colors if c.deleted_at is None] for line in lines
         }
         recalc_order(order, lines, lambda line: colors_by_line.get(line.id, []))
+        # ⚠️ ★ **必须在这里 flush**（T-CUT-001c-4 的 E2E 抓到的「汇总只算在内存里」）：
+        #   调用方紧接着会调 `_bump_header`，而它是一条 **Core `UPDATE`** ——
+        #   Core UPDATE 对 identity map 里的行是 `synchronize_session='fetch'`，
+        #   会把这一行 **expire**。被 expire 的行在提交时**不会**把上面刚算出的
+        #   耗料 / 出数 / 裁损 / 尾数 / 手数写回库（它已被标记成「要重新加载」），
+        #   于是库里留着**旧值**，而内存对象是对的。
+        #
+        #   为什么一直没发现：service 单测断言的是**返回对象**（内存，正确），
+        #   集成测试断言三层**行数**，HTTP 层的响应又是重读来的 —— 只有直接查库
+        #   才看得见（`test_put_lines_persists_header_aggregates`）。
+        await self.session.flush()
 
     async def _insert_size_line(
         self,
@@ -867,7 +934,20 @@ class CuttingOrderService:
             row = CuttingOrderSizeLine(
                 line_color_id=color.id,
                 line_id=line.id,
-                size_line_no=size_in.size_line_no,
+                # ⚠️ ★ **省略时按「该颜色已建的最大行号 + 1」分配**（T-CUT-001c-4 抓到）：
+                #   `SizeLineIn.size_line_no` 的契约是「省略则服务端分配」，而这一条
+                #   路径**没有分配** —— 直接把 `None` 交给 ORM 就是
+                #   `NotNullViolationError` → 500。`PUT /size-lines` 那条路径一直有
+                #   分配（`_next_size_line_no`），于是「同一个字段在两个端点上语义不同」，
+                #   而**契约只写了一次**。
+                #   而前端整树提交时正是「省略号」最自然的选择 —— 不写号就不用管重排。
+                #   ⚠️ 这里**不能**调 `_next_size_line_no(color, ...)`：它会遍历
+                #   `color.size_lines`，而这条路径上的 color 是**刚 flush 的新行**、
+                #   那个集合**没有加载** → 惰性加载在 async 里就是 `MissingGreenlet`。
+                #   本路径的颜色是新建的、没有任何既有行，所以「已建最大值 + 1」
+                #   等价于「本次已建条数 + 1」。
+                size_line_no=size_in.size_line_no
+                or max((row.size_line_no for row in created_size_lines), default=0) + 1,
                 size_code=size_in.size_code,
                 hands=size_in.hands,
                 qty_per_hand=size_in.qty_per_hand,

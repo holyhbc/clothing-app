@@ -15,6 +15,7 @@
 import { computed } from 'vue'
 import { DatePicker, Input, InputNumber, Radio } from 'ant-design-vue'
 import dayjs from 'dayjs'
+import type { OptionOut } from '@garment/shared'
 import { baseApi } from '@/api/base'
 import { searchStyleOptionsById } from '@/api/cutting'
 import Combo from '@/components/Combo.vue'
@@ -55,6 +56,18 @@ const emit = defineEmits<{ 'update:modelValue': [value: HeaderFields] }>()
 const isDisabled = computed(() => props.disabled)
 const isLocked = computed(() => props.disabled || props.lockIdentity)
 
+/**
+ * ⚠️ ★ **必须包一层箭头函数**：模板里写 `:fetch-options="fetchWorkshopOptions"`
+ *    传过去的是**未绑定的方法**，`Combo` 内部 `props.fetchOptions(kw)` 调用时 `this`
+ *    是 `undefined` → `this.list(...)` 抛 `TypeError` → 界面显示「搜索失败，点此重试」。
+ *
+ *    这个坑**单测抓不到**：`vi.spyOn(baseApi.workshops, 'optionsById').mockResolvedValue(...)`
+ *    返回的桩不需要 `this`，于是 195 个前端用例全绿，而浏览器里下拉是坏的。
+ *    是 T-CUT-001c-4 的 E2E 抓出来的（`docs/10 §4`：E2E 验的就是跨层一致性）。
+ */
+const fetchWorkshopOptions = (keyword: string): Promise<OptionOut[]> =>
+  baseApi.workshops.optionsById(keyword)
+
 function patch(fields: Partial<HeaderFields>): void {
   emit('update:modelValue', { ...props.modelValue, ...fields })
 }
@@ -79,7 +92,7 @@ const ENTRY_MODE_HINT = '取第一个颜色的模式；「按比例带出」要�
       <label>车间<span class="req">*</span></label>
       <Combo
         :model-value="modelValue.workshop_id"
-        :fetch-options="baseApi.workshops.optionsById"
+        :fetch-options="fetchWorkshopOptions"
         :disabled="isLocked"
         placeholder="选车间"
         @update:model-value="(value: string | null) => patch({ workshop_id: value })"
@@ -130,7 +143,8 @@ const ENTRY_MODE_HINT = '取第一个颜色的模式；「按比例带出」要�
         style="width: 100%"
         @change="(value: string | number | null) => patch({ ply_count: Math.trunc(num(value) ?? 1) })"
       />
-      <small class="hint">&gt; 1 时出数是**多层合计后的总件数**（C4）</small>
+      <!-- ⚠️ 用户可见文案里不写 `**加粗**`：模板是纯文本，星号会原样显示 -->
+      <small class="hint">&gt; 1 时出数是「多层合计后的总件数」（C4）</small>
     </div>
 
     <div class="field">

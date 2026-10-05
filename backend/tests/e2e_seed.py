@@ -49,11 +49,18 @@ from app.core.errors import BusinessError
 from app.core.permissions import AuthContext
 from app.core.security import hash_password
 from app.modules.base.models import (
+    Material,
+    MaterialCategory,
+    MaterialStock,
     Operation,
     OperationRate,
     ProductCategory,
     Style,
     StyleOperation,
+    Supplier,
+    UomUnit,
+    Warehouse,
+    Workshop,
 )
 from app.modules.base.schemas import (
     OperationRateCreate,
@@ -61,6 +68,12 @@ from app.modules.base.schemas import (
     StyleOperationsReplaceIn,
 )
 from app.modules.base.service import RateService, StyleService
+from app.modules.cutting.models import (
+    CuttingOrder,
+    CuttingOrderLine,
+    CuttingOrderLineColor,
+    CuttingOrderSizeLine,
+)
 
 #: E2E 专用款号前缀。⚠️ 用固定前缀而不是随机数：失败后能一眼看出库里残留了什么，
 #: 而随机款号在 trace 与截图里是一串没法检索的十六进制。
@@ -72,6 +85,44 @@ E2E_PRIOR_DATES = (date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1))
 E2E_OPERATIONS = ("01", "02", "90")
 #: 内置分类 code（`seed_dicts.py::BUILTIN_PRODUCT_CATEGORIES`，不是自定义码）
 E2E_CATEGORY_CODE = "SET"
+
+# ------------------------------------------------------------------ 裁剪单的选料数据（T-CUT-001c-4）
+#
+# ⚠️ 为什么裁剪 E2E 需要**物料 + 布批**：新建页的布批行只接受 `stock_id`
+#   （必填 UUID，ADR-0022「不允许自由输入缸号」），而 E2E 库是空的 ——
+#   没有布批就一行都建不出来，测试只能停在「页面打开了」。
+MATERIAL_CODE = "E2E-FAB-0001"
+DYE_LOT_NO = "E2E-LOT-0001"
+BOLT_NO = "01"
+#: E2E 面料仓库（基线 seed 不建仓库，见 :func:`_seed_fabric` 里的说明）
+WAREHOUSE_CODE = "E2E-FAB-WH"
+#: E2E 裁剪车间。⚠️ **同样要自己建**：基线 seed 只建字典与权限点，车间/组别/仓库都是
+#:   ``base`` 模块的基础资料（`RESOURCES` 里的九个）。没有车间的话新建页的「车间」
+#:   候选是空的，而 ``workshop_id`` 是**必填**（C2）—— 测试会卡在「填不完表头」。
+WORKSHOP_CODE = "E2E-CUT"
+
+
+async def _clear_login_lock() -> None:
+    """清掉 E2E 账号的登录失败计数（Redis）。
+
+    ⚠️ **必须有这一步**：登录连续 5 次失败会把账号锁 15 分钟
+    （`auth:login_fail:<工号>`，`10004`）。一次失败的 E2E 之后，**后面每一轮**
+    都会在登录那一步失败，而报错是「账号已锁定」—— 与「上一轮是我的口令错了」
+    这个真因隔了三层。所以「准备数据」要顺带把账号解锁，否则一次手滑要等 15 分钟。
+    """
+    url = os.environ.get("REDIS_URL", "")
+    if url == "":
+        return
+    try:
+        import redis.asyncio as redis_asyncio
+
+        client = redis_asyncio.from_url(url)
+        try:
+            await client.delete(f"auth:login_fail:{E2E_EMPLOYEE_NO}")
+        finally:
+            await client.aclose()
+    except Exception as exc:  # noqa: BLE001 —— 解锁失败不该让整个 seed 失败
+        print(f"WARN: 清登录锁失败（不影响 E2E 本身）：{exc}", file=sys.stderr)
 
 
 async def _e2e_admin_id(conn: AsyncConnection) -> UUID:
@@ -90,16 +141,29 @@ async def _ensure_admin(conn: AsyncConnection) -> AuthContext | None:
       而 token 又要先有账号 —— 鸡生蛋。E2E 种子是「数据库的准备」，
       这一步必须能独立完成（docs/10 §4 的精神：造数据不经过业务界面）。
     """
+    password = os.environ.get("E2E_ADMIN_PASSWORD", "")
+    if not password:
+        print("FATAL: 未设置 E2E_ADMIN_PASSWORD", file=sys.stderr)
+        return None
     existing = (
         await conn.execute(
             text("SELECT id FROM users WHERE employee_no = :no"), {"no": E2E_EMPLOYEE_NO}
         )
     ).scalar_one_or_none()
-    if existing is None:
-        password = os.environ.get("E2E_ADMIN_PASSWORD", "")
-        if not password:
-            print("FATAL: 未设置 E2E_ADMIN_PASSWORD", file=sys.stderr)
-            return None
+    if existing is not None:
+        # ⚠️ ★ **每次都重置口令**（不只是「没有才建」）：这是 E2E **专用**账号，
+        #   而上一轮的 E2E_ADMIN_PASSWORD 与这一轮不同是常事（临时试一个口令、
+        #   或者 CI 上换了 secret）。不重置的表现是「昨天能跑今天全挂在登录」，
+        #   而失败信息是 `11003 工号或口令错误` —— 看不出是自己上一轮改的。
+        await conn.execute(
+            text(
+                "UPDATE users SET password_hash = :hash, must_change_password = false, "
+                "is_active = true, updated_at = now() WHERE id = :id"
+            ),
+            {"id": existing, "hash": hash_password(password)},
+        )
+        await _clear_login_lock()
+    else:
         await conn.execute(
             text(
                 "INSERT INTO users (employee_no, name, password_hash, data_scope, "
@@ -146,7 +210,43 @@ async def _clean(conn: AsyncConnection) -> None:
        而报错完全看不出「是你的账号权限不够，不是 SQL 写错了」。
        顺带说：这个报错本身就是 ADR-0029 生效的证据（应用账号真的删不掉单价历史）。
     """
+    # ⚠️ ★ 顺序即外键依赖，**而且必须先清裁剪单**：上一轮 E2E 真的建过裁剪单，
+    #   它的 `cutting_order_lines.stock_id` 指向那批布 —— 直接删布批会撞
+    #   `ForeignKeyViolationError: ... violates foreign key constraint
+    #   "fk_cutting_order_lines_stock"`，而 seed 是 E2E 的**第一步**，于是这一轮
+    #   全挂在 globalSetup 上，报错完全看不出是「上一轮我建的那张单还没删」。
+    #   （踩过一次：E2E-01 跑完之后 seed 就再也跑不动了。）
+    #   ⚠️ 用**物理删**而不是软删：这是测试数据复位，而且应用账号对这几张表**没有**
+    #   DELETE 权限（ADR-0029），跑 seed 用的本来就是迁移账号。
+    order_ids = [
+        UUID(str(row))
+        for row in (
+            await conn.execute(text("SELECT id FROM cutting_orders WHERE doc_no LIKE 'CT-%'"))
+        ).scalars()
+    ]
     for statement in (
+        delete(CuttingOrderSizeLine).where(
+            CuttingOrderSizeLine.line_color_id.in_(
+                select(CuttingOrderLineColor.id).where(
+                    CuttingOrderLineColor.line_id.in_(
+                        select(CuttingOrderLine.id).where(
+                            CuttingOrderLine.doc_id.in_(order_ids or [UUID(int=0)])
+                        )
+                    )
+                )
+            )
+        ),
+        delete(CuttingOrderLineColor).where(
+            CuttingOrderLineColor.line_id.in_(
+                select(CuttingOrderLine.id).where(
+                    CuttingOrderLine.doc_id.in_(order_ids or [UUID(int=0)])
+                )
+            )
+        ),
+        delete(CuttingOrderLine).where(CuttingOrderLine.doc_id.in_(order_ids or [UUID(int=0)])),
+        delete(CuttingOrder).where(CuttingOrder.id.in_(order_ids or [UUID(int=0)])),
+        delete(MaterialStock).where(MaterialStock.dye_lot_no == DYE_LOT_NO),
+        delete(Material).where(Material.code == MATERIAL_CODE),
         delete(OperationRate).where(OperationRate.style_no == STYLE_NO),
         delete(StyleOperation).where(StyleOperation.style_no == STYLE_NO),
         delete(Style).where(Style.style_no == STYLE_NO),
@@ -279,6 +379,9 @@ async def _seed_business(session: AsyncSession, ctx: AuthContext) -> None:
             ],
         ),
     )
+    await _seed_workshop(session, ctx)
+    await _seed_fabric(session, ctx)
+
     rates = RateService(session, ctx)
     for index, price in enumerate(("0.350000", "0.400000", "0.450000")):
         await rates.set_rate(
@@ -290,6 +393,114 @@ async def _seed_business(session: AsyncSession, ctx: AuthContext) -> None:
                 reason="E2E 种子：历史区间",
             )
         )
+
+
+async def _seed_workshop(session: AsyncSession, ctx: AuthContext) -> None:
+    """裁剪车间（新建页的「车间」是必填，C2）。
+
+    ⚠️ 幂等：`workshops.code` 是唯一键，而 E2E 库里上一轮建的行真的存在。
+    """
+    existing = (
+        await session.execute(select(Workshop).where(Workshop.code == WORKSHOP_CODE))
+    ).scalar_one_or_none()
+    if existing is not None:
+        return
+    session.add(
+        Workshop(
+            code=WORKSHOP_CODE,
+            name="E2E 裁剪车间",
+            created_by=ctx.user_id,
+            updated_by=ctx.user_id,
+        )
+    )
+    await session.flush()
+
+
+async def _seed_fabric(session: AsyncSession, ctx: AuthContext) -> None:
+    """物料 + 供应商 + **布批**（裁剪单新建页的级联选料三层，ADR-0022）。
+
+    ⚠️ 布批必须**幂等**：`uq_material_stocks_lot` 是 `(仓库, 物料, 缸号, 匹号, 色)`
+    上的部分唯一索引，而 E2E 库里上一轮建的行**真的存在**（页面上的「删除草稿」删的是
+    裁剪单，不是布批）。非幂等的话第二次跑就撞 duplicate key，而报错指向布批表，
+    与「谁提交过它」毫无关系。
+
+    ⚠️ ``stock_qty`` 要留够：新建页的耗料输入会触发 C38 的 `40006`
+    （``fabric_qty > available_qty``），布不够的话测试会失败在「后端收 40006」
+    这种看起来像业务 bug 的地方。
+    """
+    existing = (
+        await session.execute(select(MaterialStock).where(MaterialStock.dye_lot_no == DYE_LOT_NO))
+    ).scalar_one_or_none()
+    if existing is not None:
+        return
+
+    # ⚠️ 物料类目**不是** `E2E_CATEGORY_CODE`（那是**商品**分类的 code）：两张表都叫
+    #    「分类」而 code 完全不同。写成商品分类的 code 会拿到 `NoResultFound` ——
+    #    而报错只说「没找到一行」，不会说「你要找的分类不存在」。
+    category = (
+        await session.execute(select(MaterialCategory).where(MaterialCategory.code == "CT"))
+    ).scalar_one()
+    uom = (await session.execute(select(UomUnit).where(UomUnit.code == "M"))).scalar_one()
+    # ⚠️ **仓库要自己建**：基线 seed（`seed_baseline`）只建字典与权限点，**不建仓库** ——
+    #   仓库属 `base` 模块的基础资料（`RESOURCES` 里的九个），要人工维护。
+    #   凭直觉写「基线里应该有面料库」会拿到 `NoResultFound`，而报错只说「没找到一行」。
+    warehouse = (
+        await session.execute(select(Warehouse).where(Warehouse.code == WAREHOUSE_CODE))
+    ).scalar_one_or_none()
+    if warehouse is None:
+        warehouse = Warehouse(
+            code=WAREHOUSE_CODE,
+            name="面料库",
+            warehouse_type="FABRIC",
+            created_by=ctx.user_id,
+            updated_by=ctx.user_id,
+        )
+        session.add(warehouse)
+        await session.flush()
+    supplier = (
+        await session.execute(select(Supplier).where(Supplier.code == "E2E-SUP"))
+    ).scalar_one_or_none()
+    if supplier is None:
+        supplier = Supplier(
+            code="E2E-SUP",
+            name="E2E 面料供应商",
+            short_name="E2E 供应商",
+            created_by=ctx.user_id,
+            updated_by=ctx.user_id,
+        )
+        session.add(supplier)
+        await session.flush()
+
+    material = Material(
+        code=MATERIAL_CODE,
+        name="E2E 32支全棉府绸",
+        material_type="FABRIC",
+        category_id=category.id,
+        uom_unit_id=uom.id,
+        created_by=ctx.user_id,
+        updated_by=ctx.user_id,
+    )
+    session.add(material)
+    await session.flush()
+    session.add(
+        MaterialStock(
+            warehouse_id=warehouse.id,
+            material_id=material.id,
+            supplier_id=supplier.id,
+            color_code="-",
+            dye_lot_no=DYE_LOT_NO,
+            bolt_no=BOLT_NO,
+            width_cm=Decimal("152.00"),
+            stock_qty=Decimal("500.000"),
+            total_length_m=Decimal("500.000"),
+            locked_qty=Decimal("0.000"),
+            unit_cost=Decimal("12.500000"),
+            in_date=date(2026, 9, 1),
+            created_by=ctx.user_id,
+            updated_by=ctx.user_id,
+        )
+    )
+    await session.flush()
 
 
 def main() -> None:

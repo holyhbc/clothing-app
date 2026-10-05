@@ -25,7 +25,7 @@ import { computed } from 'vue'
 import { Button, Input, InputNumber, Modal, Select, Space, Table, Tag, Tooltip } from 'ant-design-vue'
 import { message } from 'ant-design-vue'
 import type { ColumnsType } from 'ant-design-vue/es/table'
-import type { SizeLineIn } from '@garment/shared'
+import type { OptionOut, SizeLineIn } from '@garment/shared'
 import { baseApi } from '@/api/base'
 import Combo from '@/components/Combo.vue'
 import { asColor, asSize, colorOutputOf, num, sizeOutputOf } from './slotTypes'
@@ -95,7 +95,8 @@ function onModeChange(colorIndex: number, raw: unknown): void {
   }
   Modal.confirm({
     title: '切换录入模式会清空已录入的手数',
-    content: `该颜色已有 ${affected} 行尺码明细，切换后**手数与件数全部清空**（只影响该行该颜色）。`,
+    // ⚠️ 同上：`Modal.confirm` 不解析 markdown，`**` 会原样显示给用户
+    content: `该颜色已有 ${affected} 行尺码明细，切换后「手数与件数全部清空」（只影响该行该颜色）。`,
     okText: '清空并切换',
     cancelText: '再想想',
     onOk: apply,
@@ -138,6 +139,20 @@ function patchSizeLine(
 }
 
 // ------------------------------------------------------------------ 合计
+
+/**
+ * ⚠️ **包一层箭头函数**：`baseApi['colors'].options` 是对象上的方法，直接传给
+ * `:fetch-options` 就是**未绑定**的 —— `Combo` 调用时 `this` 为 `undefined`
+ * → `this.list` 抛 TypeError → 界面显示「搜索失败，点此重试」。
+ * 单测抓不到（mock 不需要 `this`），是 E2E 抓出来的。
+ */
+function fetchColors(keyword: string): Promise<OptionOut[]> {
+  return baseApi['colors'].options(keyword)
+}
+
+function fetchSizes(keyword: string): Promise<OptionOut[]> {
+  return baseApi['sizes'].options(keyword)
+}
 
 function colorCodeText(raw: unknown): string | null {
   const code = asColor(raw).color_code
@@ -218,7 +233,7 @@ const sizeColumns: ColumnsType<SizeLineIn> = [
         <template v-if="column.key === 'color_code'">
           <Combo
             :model-value="colorCodeText(rawColor)"
-            :fetch-options="baseApi['colors'].options"
+            :fetch-options="fetchColors"
             placeholder="选色码"
             @update:model-value="(value: string | null) => patchColor(index, { color_code: value ?? '' })"
           />
@@ -269,7 +284,7 @@ const sizeColumns: ColumnsType<SizeLineIn> = [
                 <template v-if="leaf.key === 'size_code'">
                   <Combo
                     :model-value="sizeCodeText(rawSize)"
-                    :fetch-options="baseApi['sizes'].options"
+                    :fetch-options="fetchSizes"
                     placeholder="选尺码"
                     @update:model-value="
                       (value: string | null) =>
@@ -279,10 +294,16 @@ const sizeColumns: ColumnsType<SizeLineIn> = [
                 </template>
 
                 <template v-else-if="leaf.key === 'hands'">
+                  <!--
+                    ⚠️ 这几个数字输入框的 placeholder 是**给用户看的单位提示**，
+                    同时也是 E2E 唯一定位它们的抓手（同一页有 6 个 spinbutton，
+                    用下标 `nth(0)` 定位会在加一行颜色之后全部错位）。
+                  -->
                   <InputNumber
                     :value="asSize(rawSize).hands"
                     :min="1"
                     :precision="0"
+                    placeholder="手数"
                     style="width: 100%"
                     @change="
                       (value: string | number | null) =>
@@ -296,6 +317,7 @@ const sizeColumns: ColumnsType<SizeLineIn> = [
                     :value="asSize(rawSize).qty_per_hand"
                     :min="1"
                     :precision="0"
+                    placeholder="每手件数"
                     style="width: 100%"
                     @change="
                       (value: string | number | null) =>

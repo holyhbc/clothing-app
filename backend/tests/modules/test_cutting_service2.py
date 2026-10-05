@@ -304,6 +304,44 @@ async def test_put_lines_recalcs_whole_order(db_session, cutting_world):
     assert await _live_counts(db_session, order.id) == {"lines": 2, "colors": 2, "size_lines": 3}
 
 
+async def test_header_aggregates_are_persisted_not_only_in_memory(db_session, cutting_world):
+    """★ TC-C01b2-14：**表头汇总必须真的落库**（T-CUT-001c-4 的 E2E 抓到的缺陷）。
+
+    ⚠️ 这个缺陷的形状很特别：**内存里是对的，库里是错的**。
+      - `_recalc_all` 用 `recalc_order` 在**内存对象**上算汇总；
+      - 紧接着 `_bump_header` 发一条 Core ``UPDATE``（只改 version / updated_by），
+        而 Core UPDATE 对 identity map 里的行是 ``synchronize_session='fetch'``
+        → **那一行被 expire**；
+      - 被 expire 的行在 flush 时**不会**把内存里算出的值写回 —— 它已经被标记成
+        「需要重新加载」，于是刚算出来的耗料 / 出数 / 裁损 / 尾数 / 手数**全部丢失**。
+
+    ⚠️ 为什么一直没被发现：service 单测断言的是**返回对象**（内存，正确），
+      集成测试断言的是三层**行数**（`_live_counts` 自己过滤软删），而 HTTP 层的
+      响应又来自重读 —— 只有「直接查库」才看得见。
+
+    ⚠️ 症状在生产上是什么：列表页的「出数 / 耗料 / 尾数」全是建单当时的值（或 0），
+      而详情页三层加起来对不上表头 —— 用户会以为是自己录错了。
+    """
+    order = await _create(db_session, cutting_world)
+    await db_session.flush()
+    in_memory = (order.fabric_qty, order.output_qty, order.hands_total)
+
+    row = (
+        await db_session.execute(
+            text(
+                "SELECT fabric_qty, output_qty, cut_waste_qty, balance_qty, hands_total "
+                "FROM cutting_orders WHERE id = :id"
+            ),
+            {"id": order.id},
+        )
+    ).one()
+    db_values = (row[0], row[1], row[4])
+    assert in_memory != (Decimal("0"), Decimal("0"), 0), "夹具本身没算出汇总，断言会假绿"
+    assert db_values == in_memory, (
+        f"表头汇总只算在内存里没落库：内存 {in_memory} / 库里 {db_values}"
+    )
+
+
 async def test_put_lines_rejects_negative_balance(db_session, cutting_world):
     """TC-C01b2-06（负数侧）：行可出件数 < Σ明细 → ``30002``。"""
     order = await _create(db_session, cutting_world)

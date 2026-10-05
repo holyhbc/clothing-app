@@ -373,6 +373,111 @@ async def test_entry_mode_switch_requires_confirm(
     assert "二次确认" in response.json()["message"]
 
 
+async def test_put_lines_success_returns_fresh_header(
+    client: AsyncClient, auth_headers: Any, cutting_world: dict[str, Any]
+) -> None:
+    """★ TC-C01c-13：三条 PUT 的**成功路径**必须经 HTTP 验（T-CUT-001c-4 的 E2E 抓到的 500）。
+
+    ⚠️ 为什么这条用例以前不存在、而 500 却漏到了 E2E：
+      - service 单测里属性访问发生在 **async** 函数中，greenlet 在，Core ``UPDATE``
+        ``expire`` 掉的那一列**惰性刷新能成功** —— 于是「返回的是过期对象」在
+        service 层完全测不出来；
+      - router 层当时唯一的 PUT 用例是「``hands=1.5`` → 422」，那条**在校验期就返回**，
+        根本走不到 service 与响应序列化。
+      两条合起来 = 「三个 PUT 的成功路径从未被 HTTP 走过」，而真实调用会 500
+      （``MissingGreenlet``：Pydantic 序列化在 greenlet 之外）。
+
+    ⚠️ 断言 ``updated_at`` 与 ``version``：它们是**唯一**会暴露问题的两个字段
+      （``fabric_qty`` 等由 ``_recalc_all`` 在 Python 里算过，是已加载的）。
+    """
+    headers = await auth_headers(role="custom", permissions=("cutting:create", "cutting:update"))
+    created = await _create(client, headers, cutting_world)
+    color = created["lines"][0]["colors"][0]
+    # ⚠️ 合计必须 ≤ 建单时给的行可出件数（120）：C5/C34 规定行 `output_qty >= Σ明细`，
+    #    不够会收 `30002` —— 而这条用例要验的是「写成功之后返回的表头是新的」，
+    #    不该被业务校验挡在门外（那是 `test_put_lines_rejects_negative_balance` 的事）。
+    size_lines = [
+        {"size_code": "L", "hands": 2, "qty_per_hand": 30},
+        {"size_code": "XL", "hands": 1, "qty_per_hand": 30},
+    ]
+    response = await client.put(
+        f"{API}/{created['id']}/size-lines",
+        json={
+            "version": created["version"],
+            "line_color_id": color["id"],
+            "items": size_lines,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()["data"]
+    # ★ 版本 + 时间戳都要是**这次写之后**的值：不是它们就说明返回的是过期对象
+    assert body["version"] == created["version"] + 1
+    assert body["updated_at"], "响应里必须有 updated_at（前端要显示「第 N 版」）"
+
+    # 行可出件数要够放这两条明细（C5），否则上面那次 PUT 会 30002
+    lines_response = await client.put(
+        f"{API}/{created['id']}/lines",
+        json={
+            "version": body["version"],
+            "items": [
+                {
+                    "line_no": 1,
+                    "stock_id": str(cutting_world["stock"].id),
+                    "fabric_qty": "60.000",
+                    "output_qty": "200.000",
+                    "colors": [
+                        {
+                            "color_code": "WHT",
+                            "size_lines": [
+                                {"size_code": "L", "hands": 4, "qty_per_hand": 30},
+                                {"size_code": "XL", "hands": 2, "qty_per_hand": 30},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        },
+        headers=headers,
+    )
+    assert lines_response.status_code == 200, lines_response.text
+    lines_body = lines_response.json()["data"]
+    assert lines_body["version"] == body["version"] + 1
+    # 表头出数 = Σ(行可出件数)，行可出件数是**正向录入的估算**（C34 口径 A），
+    # 而尺码明细合计是 180、行余量 20 → 表头出数 200、尾数 20
+    assert lines_body["output_qty"] == "200.000"
+    # ⚠️ 尾数是「字符串」（`05 §3` 数量一律 str），比的是 "20.000" 而不是 "20"
+    assert lines_body["balance_qty"] == "20.000"
+    # ★ 响应里**只有请求提交的那一行**（T-CUT-001c-4 抓到的第二个 500 级缺陷）：
+    #   全量替换是「软删旧行 + 插新行」，而 `selectinload` 的关系不继承主查询的
+    #   `where` —— 于是软删的旧行会跟着回来，前端把响应灌进编辑器就成了
+    #   「保存一次，凭空多一行」。汇总列看着是对的，所以只断言汇总会漏掉它。
+    assert len(lines_body["lines"]) == 1, "响应里混进了软删的旧行"
+    assert len(lines_body["lines"][0]["colors"]) == 1
+    assert [row["size_code"] for row in lines_body["lines"][0]["colors"][0]["size_lines"]] == [
+        "L",
+        "XL",
+    ]
+
+    # 行内颜色全量替换（第三个 PUT）
+    line_id = lines_body["lines"][0]["id"]
+    colors_response = await client.put(
+        f"{API}/{created['id']}/lines/{line_id}/colors",
+        json={
+            "version": lines_body["version"],
+            "items": [
+                {
+                    "color_code": "WHT",
+                    "size_lines": [{"size_code": "L", "hands": 3, "qty_per_hand": 30}],
+                }
+            ],
+        },
+        headers=headers,
+    )
+    assert colors_response.status_code == 200, colors_response.text
+    assert colors_response.json()["data"]["version"] == lines_body["version"] + 1
+
+
 async def test_size_line_input_rejects_fractional_hands(
     client: AsyncClient, auth_headers: Any, cutting_world: dict[str, Any]
 ) -> None:

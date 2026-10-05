@@ -230,7 +230,6 @@ const lineColumns: ColumnsType<LineTree[number]> = [
         :row-key="(row: LineTree[number], index?: number) => row.stock_id || `new-${index}`"
         size="small"
         :pagination="false"
-        :scroll="{ x: 1180 }"
       >
         <!--
           ⚠️ antd 的 `record` 是 `Record<string, any>`。**读**它不报错（那是 `any` 的
@@ -274,6 +273,7 @@ const lineColumns: ColumnsType<LineTree[number]> = [
                 :min="0.001"
                 :precision="3"
                 :step="0.5"
+                placeholder="耗料米数"
                 style="width: 100%"
                 @change="
                   (value: string | number | null) =>
@@ -291,6 +291,7 @@ const lineColumns: ColumnsType<LineTree[number]> = [
               :value="Number(lineOf(record).waste_qty ?? 0)"
               :min="0"
               :precision="3"
+              placeholder="布头布损"
               style="width: 100%"
               @change="
                 (value: string | number | null) => setWaste(index, num(value))
@@ -303,6 +304,7 @@ const lineColumns: ColumnsType<LineTree[number]> = [
               :value="Number(lineOf(record).output_qty ?? 0)"
               :min="0"
               :precision="0"
+              placeholder="行可出件数"
               style="width: 100%"
               @change="
                 (value: string | number | null) => setOutput(index, num(value))
