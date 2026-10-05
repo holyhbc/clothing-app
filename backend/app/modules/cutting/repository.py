@@ -141,10 +141,19 @@ async def get_order_three_levels(session: AsyncSession, order_id: UUID) -> Cutti
     :func:`assert_in_scope` —— 详情按 ID 直查是越权的经典入口（07 §3.2 铁律 2）。
     这里若顺手把过滤加上，就多了一份「过滤规则」而它只在一处被更新。
     """
+    # ⚠️ **`populate_existing=True` 不是可选的**。它有两个理由，缺一个都会出事：
+    #   1. service 的 ``_bump_header`` 用 Core ``UPDATE`` 改表头，而 Core UPDATE 对
+    #      identity map 里的对象是 ``synchronize_session='fetch'`` —— 会把那一行
+    #      **expire**。此后访问任何列都触发惰性刷新，而在 Router 的**同步**
+    #      Pydantic 上下文里就是 ``MissingGreenlet: greenlet_spawn has not been called``。
+    #   2. 即使不 expire，SQLAlchemy 默认也**不覆盖**已加载对象的属性值
+    #      （``populate_existing`` 默认关闭）—— 于是重读拿到的还是**旧值**。
+    #   两个症状都指向「重读没生效」，而报错完全看不出根因在这一层。
     stmt = (
         select(CuttingOrder)
         .where(CuttingOrder.id == order_id)
         .where(CuttingOrder.deleted_at.is_(None))
+        .execution_options(populate_existing=True)
         .options(
             selectinload(CuttingOrder.lines).options(
                 selectinload(CuttingOrderLine.colors).options(

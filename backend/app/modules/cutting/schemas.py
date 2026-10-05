@@ -39,7 +39,7 @@ from decimal import Decimal
 from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 from app.modules.cutting.models import CuttingEntryMode
 
@@ -188,6 +188,19 @@ class CuttingOrderCreateIn(BaseModel):
 
 # ------------------------------------------------------------------ 出参片段
 
+#: 响应里的数量 / 金额：**字符串**，且**接受 ORM 的 Decimal**。
+#:
+#: ⚠️ ``docs/05 §3`` 要求「金额 / 数量在响应里一律 ``str``」—— JS 的 ``number``
+#: 表示不了 ``0.378000``，而本模块的耗料是 ``numeric(14,3)``。
+#:
+#: ⚠️ **为什么需要 BeforeValidator 而不是直接标 ``str``**：pydantic v2 的 ``str``
+#: 类型**不接受** ``Decimal``（也不接受 ``int``）—— 那条 ``str`` 标注只对
+#: 「请求里传来的 JSON 字符串」有效，而响应是从 ORM 对象 ``model_validate`` 出来的，
+#: 属性是 ``Decimal``。踩过一次：报 ``Input should be a valid string
+#: [input_value=Decimal('96.000')]``，而报错完全看不出根因是「出参类型不能直接
+#: 从 ORM 构造」。
+Str = Annotated[str, BeforeValidator(lambda v: str(v) if isinstance(v, (Decimal, int)) else v)]
+
 
 class SizeLineOut(BaseModel):
     """尺码明细出参。``output_qty`` / ``balance_qty`` 是 ``str``（docs/05 §3）。"""
@@ -199,9 +212,9 @@ class SizeLineOut(BaseModel):
     size_code: str
     hands: int
     qty_per_hand: int
-    output_qty: str = Field(description="= hands × qty_per_hand（精确整数，不取整）")
+    output_qty: Str = Field(description="= hands × qty_per_hand（精确整数，不取整）")
     output_qty_manual: bool = Field(description="是否人工指定过件数（C28）")
-    balance_qty: str = Field(description="仅人工指定时 > 0 的差额")
+    balance_qty: Str = Field(description="仅人工指定时 > 0 的差额")
     hands_seq: int | None = None
     remark: str | None = None
 
@@ -215,14 +228,14 @@ class LineColorOut(BaseModel):
     line_id: UUID
     color_code: str
     entry_mode: CuttingEntryMode
-    qty_per_hand: str | None = None
-    uniform_qty: str | None = None
+    qty_per_hand: Str | None = None
+    uniform_qty: Str | None = None
     ratio_snapshot: dict[str, Any] | None = Field(
         default=None, description="下单时的比例快照；**不接受前端传入**（C29 零污染）"
     )
-    hands_total: str = Field(description="Σ(尺码 hands)，service 重算")
-    output_qty_total: str = Field(description="Σ(尺码 output_qty)，service 重算")
-    balance_qty_total: str = Field(description="Σ(尺码 balance_qty)；仅人工指定出数时 > 0")
+    hands_total: Str = Field(description="Σ(尺码 hands)，service 重算")
+    output_qty_total: Str = Field(description="Σ(尺码 output_qty)，service 重算")
+    balance_qty_total: Str = Field(description="Σ(尺码 balance_qty)；仅人工指定出数时 > 0")
     entry_mode_changed_at: datetime | None = None
     entry_mode_changed_by: UUID | None = None
     size_lines: list[SizeLineOut] = Field(default_factory=list)
@@ -248,13 +261,13 @@ class OrderLineOut(BaseModel):
     dye_lot_no: str
     bolt_no: str
     color_plan: str | None = None
-    width_cm: str | None = None
-    fabric_qty: str
-    fabric_weight_kg: str | None = None
-    waste_qty: str
-    output_qty: str = Field(description="★ 正向录入的可出件数估算")
-    size_line_sum_qty: str = Field(default="0", description="Σ(颜色 Σ尺码 output_qty)")
-    balance_qty: str = Field(description="= output_qty - size_line_sum_qty（行余量，C34）")
+    width_cm: Str | None = None
+    fabric_qty: Str
+    fabric_weight_kg: Str | None = None
+    waste_qty: Str
+    output_qty: Str = Field(description="★ 正向录入的可出件数估算")
+    size_line_sum_qty: Str = Field(default="0", description="Σ(颜色 Σ尺码 output_qty)")
+    balance_qty: Str = Field(description="= output_qty - size_line_sum_qty（行余量，C34）")
     colors: list[LineColorOut] = Field(default_factory=list)
 
 
@@ -273,10 +286,10 @@ class CuttingOrderOut(BaseModel):
     delivery_date: date | None = None
     ply_count: int
     entry_mode_default: CuttingEntryMode
-    fabric_qty: str = Field(description="= Σ行 fabric_qty（C6）")
-    output_qty: str = Field(description="= Σ行 output_qty（C6）")
-    cut_waste_qty: str = Field(description="裁损合计，**含 balance_qty**（C13）")
-    balance_qty: str = Field(description="尾数（不足件，不入库 / 不出码 / 不计件）")
+    fabric_qty: Str = Field(description="= Σ行 fabric_qty（C6）")
+    output_qty: Str = Field(description="= Σ行 output_qty（C6）")
+    cut_waste_qty: Str = Field(description="裁损合计，**含 balance_qty**（C13）")
+    balance_qty: Str = Field(description="尾数（不足件，不入库 / 不出码 / 不计件）")
     hands_total: int = Field(description="= Σ尺码 hands")
     status: str = Field(description="DRAFT / SUBMITTED / APPROVED / REJECTED / CANCELLED")
     remark_source: str | None = None
@@ -302,9 +315,9 @@ class CuttingOrderListOut(BaseModel):
     style_no: str
     doc_date: date
     ply_count: int
-    fabric_qty: str
-    output_qty: str
-    balance_qty: str
+    fabric_qty: Str
+    output_qty: Str
+    balance_qty: Str
     hands_total: int
     status: str
     version: int
@@ -399,7 +412,7 @@ class SuggestSizeLineOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     size_code: str
-    ratio: str = Field(description="建议手数（可小数，如 1.5 手）")
+    ratio: Str = Field(description="建议手数（可小数，如 1.5 手）")
 
 
 class SuggestLinesOut(BaseModel):
@@ -414,7 +427,7 @@ class SuggestLinesOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     items: list[SuggestSizeLineOut]
-    hands_total: str = Field(description="Σratio 建议手数合计；字符串（docs/05 §3）")
+    hands_total: Str = Field(description="Σratio 建议手数合计；字符串（docs/05 §3）")
     missing_size_codes: list[str] = Field(default_factory=list)
     #: ⚠️ `ratio_snapshot` 已在带出时**写入** ``cutting_order_line_colors``
     #: （同一事务内，§7「带出建议时读到的比例在同一事务内写入」）。

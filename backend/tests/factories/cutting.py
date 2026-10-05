@@ -70,6 +70,15 @@ async def make_style(db_session: AsyncSession, style_no: str = "CT-TEST-1") -> S
     category = (
         await db_session.execute(select(ProductCategory).where(ProductCategory.code == "SET"))
     ).scalar_one()
+    # ⚠️ **幂等**（先查后建），与 `_material()` 同款。踩过一次的坑：调试脚本里调了
+    #    `create()`，而它内部走 `unit_of_work` → `session.commit()` —— 于是这个夹具
+    #    真的提交了一行 `CT-TEST-1`，之后每个用例都撞 `uq_styles_no`，
+    #    报错指向款号表，与「谁提交了它」毫无关系。
+    existing = (
+        await db_session.execute(select(Style).where(Style.style_no == style_no))
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
     style = Style(
         style_no=style_no,
         name="裁剪测试款",
@@ -95,6 +104,16 @@ async def make_stock(
         **部分**唯一索引，真提交的行会一直占着号，下一个用例同号就撞。
         和款号同一个道理：真提交不在回滚范围内。
     """
+    # ⚠️ **幂等**，理由同 `make_style`：缸号在部分唯一索引上，真提交过一次就长期占号
+    existing = (
+        await db_session.execute(
+            select(MaterialStock).where(
+                MaterialStock.dye_lot_no == lot, MaterialStock.bolt_no == "B-1"
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
     stock = MaterialStock(
         warehouse_id=(
             await db_session.execute(text("SELECT id FROM warehouses WHERE code = 'FAB'"))

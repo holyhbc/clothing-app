@@ -189,7 +189,19 @@ class CuttingOrderService:
                 [line for line, _ in built],
                 lambda line: colors_by_line[line.id],
             )
-        return order
+            # ⚠️ 同 _recalc_all：算完立刻落库，后面的重载才是「刷新」而不是「回滚」
+            await self.session.flush()
+            # ⚠️ **重载三层再返回**。create 建的三层是 `session.add` 进去的，
+            #   从未挂到 `order.lines` 上；而 `lines` 是 `lazy="selectin"`，
+            #   所以调用方（Router 的 `model_validate`）一访问就触发**惰性加载** ——
+            #   那在 Pydantic 的**同步**上下文里会抛
+            #   `MissingGreenlet: greenlet_spawn has not been called`，
+            #   报错完全看不出根因是「service 返回的对象没加载完」。
+            #   重载还有一个好处：响应里的数字是**库里真实落下的**那些
+            fresh = await get_order_three_levels(self.session, order.id)
+            if fresh is None:  # pragma: no cover —— 刚建出来，行必然还在
+                raise BusinessError(ErrorCode.CUTTING_STATUS_NOT_ALLOWED, "裁剪单不存在或已删除")
+        return fresh
 
     # ---------------------------------------------------------------- 写：表头 / 软删
 
