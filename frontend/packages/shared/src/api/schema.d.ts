@@ -363,6 +363,206 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cutting-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 裁剪单列表（省掉三层明细）
+         * @description 单据列表。
+         *
+         *     ⚠️ ``workshop_id`` 传了也只是**再过滤一次**，**不能放大范围** —— 车间主管传一个
+         *     别的车间 id 依然查不到（``docs/07 §3.2`` 铁律 1）。这由 service 里的
+         *     ``apply_data_scope`` 保证，不在本层。
+         *
+         *     ⚠️ **默认排序**是「单据日期倒序」（modules/02 §6 指定的 ``-doc_date,doc_no``）。
+         */
+        get: operations["list_cutting_orders_api_v1_cutting_orders_get"];
+        put?: never;
+        /**
+         * 新建裁剪单（草稿态，表头 + 三层明细一次提交）
+         * @description 建单。响应含**三层结构**（`lines[].colors[].size_lines[]`）。
+         *
+         *     ⚠️ **表头汇总不接受传入**（C6）：``fabric_qty`` / ``output_qty`` / ``cut_waste_qty`` /
+         *     ``balance_qty`` / ``hands_total`` 在入参里**连字段都没有**，传了会得到 ``10001`` ——
+         *     而不是「悄悄被忽略」。**能被忽略的入参是最坏的一种**：前端以为设的值生效了。
+         */
+        post: operations["create_cutting_order_api_v1_cutting_orders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cutting-orders/{order_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 裁剪单详情（三层结构）
+         * @description 详情。数据范围在 service 的 ``assert_in_scope`` 里强制（``07 §3.2`` 铁律 2）。
+         */
+        get: operations["get_cutting_order_api_v1_cutting_orders__order_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * 软删裁剪单（三层级联软删）
+         * @description 软删，**三层级联**（modules/02 §6 DELETE 行）。
+         *
+         *     ⚠️ **只有 ``DRAFT`` 能删**。``SUBMITTED`` 及以后是只读的（``08 §1.1``），
+         *     已审核的必须走 ``reverse`` / ``cancel``（T-CUT-001b-3）。
+         *
+         *     ⚠️ 应用账号对四张裁剪表**无 DELETE 权限**（``04 §6.2.1``），所以只能软删；
+         *     而只软删表头是不够的 —— 子表若不软删，详情页仍会显示已删单据的尺码明细。
+         */
+        delete: operations["delete_cutting_order_api_v1_cutting_orders__order_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * 改表头（仅 DRAFT / REJECTED）
+         * @description 只改表头。三层明细要走三条 PUT（各自带锁、各自重算）。
+         *
+         *     ⚠️ ``version`` **必传**（``docs/05 §4``）：缺失 → ``10001``，不匹配 → ``10003``。
+         *     前端必须把读到的版本号带回来，否则两个人同时改会互相覆盖。
+         */
+        patch: operations["patch_cutting_order_api_v1_cutting_orders__order_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/cutting-orders/{order_id}/entry-mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 切换颜色级录入模式（C26 / C27）
+         * @description 切换**颜色级**录入模式。
+         *
+         *     ⚠️ 从 ``MASTER`` 切走会**清掉该颜色现有的尺码明细** —— 所以 ``confirm`` 必须为
+         *     ``true``，前端必须弹二次确认并明示「已有 N 行手数将被清空」。服务端不接受
+         *     ``false``：那个「用户可能没看见弹窗」的场景，代价是精心填的 N 行手数被静默清空。
+         */
+        post: operations["switch_entry_mode_api_v1_cutting_orders__order_id__entry_mode_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cutting-orders/{order_id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 布批行全量替换（行 = 布批，★ 耗料记在行）
+         * @description 布批行**全量替换**（≤ 200 行）。
+         *
+         *     ⚠️ 全量替换 = 软删不在 ``items`` 里的旧行（连同其颜色与尺码明细）。
+         *     「删掉某一行」与「改某一行」因此走同一个接口 —— 前端只需把页面上现有的行
+         *     原样带上再改要改的那几个。
+         *
+         *     ⚠️ 缸号 / 匹号 / 物料 / 供应商**不接受传入**，一律从 ``stock_id`` 反查
+         *     （ADR-0022 级联选料）—— 所以「缸号与匹号对不上」这类错误**结构上不可能发生**。
+         */
+        put: operations["put_cutting_order_lines_api_v1_cutting_orders__order_id__lines_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cutting-orders/{order_id}/lines/{line_id}/colors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 行内颜色全量替换（一床可多个颜色，ADR-0017）
+         * @description 行内颜色**全量替换**（≤ 10 色）。
+         *
+         *     ⚠️ ``UNIQUE (line_id, color_code)``（部分唯一索引）—— 同一匹布上同一颜色只能一行，
+         *     但**一行可以 N 个颜色**（C32，一床多色省布 5~10%）。
+         */
+        put: operations["put_line_colors_api_v1_cutting_orders__order_id__lines__line_id__colors_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cutting-orders/{order_id}/size-lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 尺码明细全量保存（出数的权威来源）
+         * @description 尺码明细**全量替换**（≤ 50 行 / 颜色）。
+         *
+         *     ⚠️ 定位靠 ``line_color_id``（不是 ``line_id + color_code``）：颜色是**全量替换**的，
+         *     本次请求里的颜色行是**新建**的，用 ``color_code`` 定位会指向刚被软删的旧行。
+         *
+         *     ⚠️ ``size_line_no`` **省略时由服务端分配**（该颜色现存最大行号 + 1）——
+         *     「先 select 后插」在并发下会发两次号（modules/02 §7）。
+         */
+        put: operations["put_size_lines_api_v1_cutting_orders__order_id__size_lines_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cutting-orders/{order_id}/suggest-lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 按尺码比例带出手数建议（并写比例快照）
+         * @description 按 ``style_color_size_ratios`` 带出手数建议（模式 A / C18）。
+         *
+         *     C19 三条口径：
+         *     - 该 ``(style_no, color_code)`` **完全没有**比例 → ``20006``
+         *     - **部分**尺码缺配 → **不拦**，返回 ``missing_size_codes`` 仅提示
+         *     - 比例里出现款号**未定义**的尺码 → ``20007``（主数据脏数据）
+         *
+         *     ⚠️ 比例快照在**同一事务内**落库（``modules/02 §7``）：主数据随时可能被改，
+         *     隔一个请求再快照，拍下来的就可能是**另一份**比例 —— 而快照的全部意义就是
+         *     「事后能回答当时为什么这么裁」（C29）。
+         */
+        get: operations["suggest_size_lines_api_v1_cutting_orders__order_id__suggest_lines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/document-logs": {
         parameters: {
             query?: never;
@@ -2146,6 +2346,35 @@ export interface components {
              */
             request_id?: string | null;
         };
+        /** ApiResponse[CuttingOrderOut] */
+        ApiResponse_CuttingOrderOut_: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["CuttingOrderOut"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
         /** ApiResponse[DeleteOut] */
         ApiResponse_DeleteOut_: {
             /**
@@ -2362,6 +2591,35 @@ export interface components {
             code: number;
             /** @description 业务数据；失败时为 null */
             data?: components["schemas"]["OperationRateSetOut"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
+        /** ApiResponse[PageData[CuttingOrderListOut]] */
+        ApiResponse_PageData_CuttingOrderListOut__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["PageData_CuttingOrderListOut_"] | null;
             /**
              * Details
              * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
@@ -2700,6 +2958,35 @@ export interface components {
              */
             request_id?: string | null;
         };
+        /** ApiResponse[SuggestLinesOut] */
+        ApiResponse_SuggestLinesOut_: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["SuggestLinesOut"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
         /** ApiResponse[SuggestedStyleNoOut] */
         ApiResponse_SuggestedStyleNoOut_: {
             /**
@@ -2789,6 +3076,40 @@ export interface components {
         };
         /** ApiResponse[dict[str, Any]] */
         ApiResponse_dict_str__Any__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /**
+             * Data
+             * @description 业务数据；失败时为 null
+             */
+            data?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
+        /** ApiResponse[dict[str, object]] */
+        ApiResponse_dict_str__object__: {
             /**
              * Code
              * @description 0 表示成功；非 0 为业务错误码
@@ -3239,6 +3560,242 @@ export interface components {
             target_unit_price: string;
         };
         /**
+         * CuttingEntryMode
+         * @description 裁剪明细的录入模式（``docs/04 §7.7.2`` 的 ``CREATE TYPE``，ADR-0014）。
+         *
+         *     ⚠️ **挂在行内颜色级**（``cutting_order_line_colors.entry_mode``），不是单据级 ——
+         *     「这个颜色用哪种模式」是**这匹布上这个颜色**的属性，换一匹布就可能换模式
+         *     （ADR-0017 修订了 ADR-0014 的单据级挂载）。
+         *
+         *     ==================  ==================================  ==================
+         *     值                  场景                                界面上填什么
+         *     ==================  ==================================  ==================
+         *     ``MASTER``         常规，尺码比例固定                  点「按比例带出」生成行
+         *     ``UNIFORM``        所有尺码件数一样                    点「统一件数」填一个数
+         *     ``MANUAL``         裁床个别尺码数量不一致              任意增 / 删 / 改
+         *     ==================  ==================================  ==================
+         *
+         *     ⚠️ 三种模式**可以在同一张单里混用**（行1 红色走 A、行2 黑色走 C）
+         *     —— 模式是「行 × 颜色」级属性。
+         * @enum {string}
+         */
+        CuttingEntryMode: "MASTER" | "UNIFORM" | "MANUAL";
+        /**
+         * CuttingOrderCreateIn
+         * @description 建裁剪单入参（表头 + 三层明细一次提交）。
+         *
+         *     ⚠️ **表头汇总不接受传入**（``fabric_qty`` / ``output_qty`` / ``cut_waste_qty`` /
+         *     ``balance_qty`` / ``hands_total``）：C6 明确「差异由 service 重算并覆盖入参，
+         *     不信任前端」。所以这五列连字段都没有 —— 传了会被 ``extra="forbid"`` 挡下，
+         *     报 ``10001`` 而不是「悄悄被忽略」。**能被忽略的入参是最坏的一种**：
+         *     前端以为自己设的值生效了。
+         */
+        CuttingOrderCreateIn: {
+            /** Delivery Date */
+            delivery_date?: string | null;
+            /**
+             * Doc Date
+             * Format: date
+             * @description 单据日期，决定所属期间
+             */
+            doc_date: string;
+            /** @default MASTER */
+            entry_mode_default: components["schemas"]["CuttingEntryMode"];
+            /**
+             * Lines
+             * @description 布批行
+             */
+            lines?: components["schemas"]["OrderLineIn"][];
+            /**
+             * Ply Count
+             * @description 铺布层数（C4）
+             * @default 1
+             */
+            ply_count: number;
+            /** Remark */
+            remark?: string | null;
+            /** Remark Source */
+            remark_source?: string | null;
+            /**
+             * Style Id
+             * Format: uuid
+             */
+            style_id: string;
+            /**
+             * Workshop Id
+             * Format: uuid
+             * @description 车间（C2 必填；数据范围过滤依据 INV-8）
+             */
+            workshop_id: string;
+        };
+        /**
+         * CuttingOrderListOut
+         * @description 列表行（省掉三层明细 —— 列表页不需要它们）。
+         */
+        CuttingOrderListOut: {
+            /** Balance Qty */
+            balance_qty: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Doc Date
+             * Format: date
+             */
+            doc_date: string;
+            /** Doc No */
+            doc_no: string;
+            /** Fabric Qty */
+            fabric_qty: string;
+            /** Hands Total */
+            hands_total: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Output Qty */
+            output_qty: string;
+            /** Ply Count */
+            ply_count: number;
+            /** Status */
+            status: string;
+            /** Style No */
+            style_no: string;
+            /** Version */
+            version: number;
+            /**
+             * Workshop Id
+             * Format: uuid
+             */
+            workshop_id: string;
+        };
+        /**
+         * CuttingOrderOut
+         * @description 裁剪单出参（详情 = 三层结构；列表 = 三层为空）。
+         */
+        CuttingOrderOut: {
+            /** Approved At */
+            approved_at?: string | null;
+            /** Approved By */
+            approved_by?: string | null;
+            /**
+             * Balance Qty
+             * @description 尾数（不足件，不入库 / 不出码 / 不计件）
+             */
+            balance_qty: string;
+            /** Cancelled Reason */
+            cancelled_reason?: string | null;
+            /**
+             * Color Codes
+             * @description 逗号分隔的色码汇总，仅列表/筛选用
+             */
+            color_codes: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Cut Waste Qty
+             * @description 裁损合计，**含 balance_qty**（C13）
+             */
+            cut_waste_qty: string;
+            /** Delivery Date */
+            delivery_date?: string | null;
+            /**
+             * Doc Date
+             * Format: date
+             */
+            doc_date: string;
+            /**
+             * Doc No
+             * @description CT-YYYYMMDD-6 位（C1）
+             */
+            doc_no: string;
+            entry_mode_default: components["schemas"]["CuttingEntryMode"];
+            /**
+             * Fabric Qty
+             * @description = Σ行 fabric_qty（C6）
+             */
+            fabric_qty: string;
+            /**
+             * Hands Total
+             * @description = Σ尺码 hands
+             */
+            hands_total: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lines */
+            lines?: components["schemas"]["OrderLineOut"][];
+            /**
+             * Output Qty
+             * @description = Σ行 output_qty（C6）
+             */
+            output_qty: string;
+            /** Ply Count */
+            ply_count: number;
+            /** Rejected Reason */
+            rejected_reason?: string | null;
+            /** Remark */
+            remark?: string | null;
+            /** Remark Source */
+            remark_source?: string | null;
+            /**
+             * Status
+             * @description DRAFT / SUBMITTED / APPROVED / REJECTED / CANCELLED
+             */
+            status: string;
+            /**
+             * Style Id
+             * Format: uuid
+             */
+            style_id: string;
+            /** Style No */
+            style_no: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+            /**
+             * Workshop Id
+             * Format: uuid
+             */
+            workshop_id: string;
+        };
+        /**
+         * CuttingOrderPatchIn
+         * @description 改表头（``PATCH /cutting-orders/{id}``，modules/02 §6）。
+         *
+         *     ⚠️ **三层明细不在这里**：改明细必须走三条 PUT（各自带锁 + 各自重算），
+         *     混进 PATCH 会让「改表头」这个轻操作去锁住整张单的行。
+         */
+        CuttingOrderPatchIn: {
+            /** Delivery Date */
+            delivery_date?: string | null;
+            /** Doc Date */
+            doc_date?: string | null;
+            /** Ply Count */
+            ply_count?: number | null;
+            /** Remark */
+            remark?: string | null;
+            /** Remark Source */
+            remark_source?: string | null;
+            /**
+             * Version
+             * @description 裁剪单表头 version（聚合行乐观锁，不匹配 → 10003）
+             */
+            version: number;
+        };
+        /**
          * DataScope
          * @description 数据范围（docs/07-认证与权限规范.md §2.1）。
          *
@@ -3509,10 +4066,121 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /**
+         * EntryModeSwitchIn
+         * @description 切换颜色级录入模式（``POST /entry-mode``，C26/C27）。
+         *
+         *     ⚠️ ``confirm`` **必传且必须为 ``True``**：从 ``MASTER`` 切走会清掉该颜色
+         *     现有的尺码明细 ``hands``，前端必须弹二次确认并明示「已有 N 行手数将被清空」。
+         *     服务端不接受 ``False`` —— 那个「用户可能没看见弹窗」的场景代价太大。
+         */
+        EntryModeSwitchIn: {
+            /**
+             * Confirm
+             * @description 二次确认；切走 MASTER 时必须为 true
+             */
+            confirm: boolean;
+            /**
+             * Line Color Id
+             * Format: uuid
+             */
+            line_color_id: string;
+            mode: components["schemas"]["CuttingEntryMode"];
+            /**
+             * Version
+             * @description 裁剪单表头 version（聚合行乐观锁，不匹配 → 10003）
+             */
+            version: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * LineColorIn
+         * @description 行内颜色入参（第 2 层，ADR-0017）。
+         *
+         *     ⚠️ ``UNIQUE (line_id, color_code)`` —— 同一匹布上同一颜色只能一行，
+         *     但**一行可以 N 个颜色**（C32）。
+         */
+        LineColorIn: {
+            /**
+             * Color Code
+             * @example WHT
+             */
+            color_code: string;
+            /**
+             * @description 录入模式（颜色级，C26）
+             * @default MASTER
+             */
+            entry_mode: components["schemas"]["CuttingEntryMode"];
+            /**
+             * Qty Per Hand
+             * @description 模式 A/B 的默认每手件数（尺码明细行的才是权威值）
+             */
+            qty_per_hand?: number | string | null;
+            /**
+             * Size Lines
+             * @description 尺码明细，最多 50 行
+             */
+            size_lines?: components["schemas"]["SizeLineIn"][];
+            /**
+             * Uniform Qty
+             * @description 模式 B 的统一件数
+             */
+            uniform_qty?: number | string | null;
+        };
+        /**
+         * LineColorOut
+         * @description 行内颜色出参。
+         */
+        LineColorOut: {
+            /**
+             * Balance Qty Total
+             * @description Σ(尺码 balance_qty)；仅人工指定出数时 > 0
+             */
+            balance_qty_total: string;
+            /** Color Code */
+            color_code: string;
+            entry_mode: components["schemas"]["CuttingEntryMode"];
+            /** Entry Mode Changed At */
+            entry_mode_changed_at?: string | null;
+            /** Entry Mode Changed By */
+            entry_mode_changed_by?: string | null;
+            /**
+             * Hands Total
+             * @description Σ(尺码 hands)，service 重算
+             */
+            hands_total: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Line Id
+             * Format: uuid
+             */
+            line_id: string;
+            /**
+             * Output Qty Total
+             * @description Σ(尺码 output_qty)，service 重算
+             */
+            output_qty_total: string;
+            /** Qty Per Hand */
+            qty_per_hand?: string | null;
+            /**
+             * Ratio Snapshot
+             * @description 下单时的比例快照；**不接受前端传入**（C29 零污染）
+             */
+            ratio_snapshot?: {
+                [key: string]: unknown;
+            } | null;
+            /** Size Lines */
+            size_lines?: components["schemas"]["SizeLineOut"][];
+            /** Uniform Qty */
+            uniform_qty?: string | null;
         };
         /**
          * LoginRequest
@@ -3786,6 +4454,154 @@ export interface components {
             value: string;
         };
         /**
+         * OrderLineIn
+         * @description 布批行入参（第 1 层，**★ 耗料记在行**）。
+         *
+         *     ⚠️ ``stock_id`` **必填**（ADR-0022 / C38）：不允许自由输入缸号，必须从
+         *     ``material_stocks`` 里选一个已存在的布批行。而 ``dye_lot_no`` / ``bolt_no`` /
+         *     ``material_id`` / ``supplier_id`` 是**服务端从 stock_id 反查**的快照 ——
+         *     请求里**不接受**（传了就是给客户端两个可能互相矛盾的身份来源，
+         *     同 ``base/schemas.py`` 的约定 1）。
+         */
+        OrderLineIn: {
+            /** Color Plan */
+            color_plan?: string | null;
+            /**
+             * Colors
+             * @description 行内颜色
+             */
+            colors?: components["schemas"]["LineColorIn"][];
+            /**
+             * Fabric Qty
+             * @description ★ 行耗料（米），由铺布实耗正向录入，不由出数反推（C35）
+             */
+            fabric_qty: number | string;
+            /**
+             * Line No
+             * @description 1 起；UNIQUE (doc_id, line_no)
+             */
+            line_no: number;
+            /**
+             * Output Qty
+             * @description 行可出件数估算（正向录入）
+             * @default 0
+             */
+            output_qty: number | string;
+            /** Remark */
+            remark?: string | null;
+            /**
+             * Stock Id
+             * Format: uuid
+             */
+            stock_id: string;
+            /**
+             * Waste Qty
+             * @description 布头（可再裁，入库）+ 布损（C11）
+             * @default 0
+             */
+            waste_qty: number | string;
+            /**
+             * Width Cm
+             * @description 铺布用门幅；不传取批次实测值（04 §7.7.2）
+             */
+            width_cm?: number | string | null;
+        };
+        /**
+         * OrderLineOut
+         * @description 布批行出参。
+         *
+         *     ⚠️ ``output_qty`` 是**正向录入的估算值**，而 ``size_line_sum_qty`` 是
+         *     **Σ(颜色 Σ尺码 output_qty)** —— 两者是**不同的数**，前者 ``>=`` 后者，
+         *     差值就是 ``balance_qty``（C34 口径 A）。把两个数合成一个字段正是
+         *     「行余量恒为 0」那个缺陷的来源，所以这里**两个都给**。
+         */
+        OrderLineOut: {
+            /**
+             * Balance Qty
+             * @description = output_qty - size_line_sum_qty（行余量，C34）
+             */
+            balance_qty: string;
+            /** Bolt No */
+            bolt_no: string;
+            /** Color Plan */
+            color_plan?: string | null;
+            /** Colors */
+            colors?: components["schemas"]["LineColorOut"][];
+            /** Dye Lot No */
+            dye_lot_no: string;
+            /** Fabric Qty */
+            fabric_qty: string;
+            /** Fabric Weight Kg */
+            fabric_weight_kg?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Line No */
+            line_no: number;
+            /**
+             * Material Id
+             * Format: uuid
+             */
+            material_id: string;
+            /**
+             * Output Qty
+             * @description ★ 正向录入的可出件数估算
+             */
+            output_qty: string;
+            /**
+             * Size Line Sum Qty
+             * @description Σ(颜色 Σ尺码 output_qty)
+             * @default 0
+             */
+            size_line_sum_qty: string;
+            /**
+             * Stock Id
+             * Format: uuid
+             */
+            stock_id: string;
+            /** Style No */
+            style_no: string;
+            /** Supplier Id */
+            supplier_id?: string | null;
+            /** Waste Qty */
+            waste_qty: string;
+            /** Width Cm */
+            width_cm?: string | null;
+        };
+        /**
+         * PageData[CuttingOrderListOut]
+         * @example {
+         *       "items": [],
+         *       "page": 1,
+         *       "page_size": 20,
+         *       "total": 0
+         *     }
+         */
+        PageData_CuttingOrderListOut_: {
+            /**
+             * Items
+             * @description 当前页数据
+             */
+            items: components["schemas"]["CuttingOrderListOut"][];
+            /**
+             * Page
+             * @description 当前页码，从 1 起
+             */
+            page: number;
+            /**
+             * Page Size
+             * @description 每页条数，上限 200
+             */
+            page_size: number;
+            /**
+             * Total
+             * @description 总条数（用于分页器）
+             */
+            total: number;
+        };
+        /**
          * PageData[DocumentLogOut]
          * @example {
          *       "items": [],
@@ -3954,6 +4770,72 @@ export interface components {
             code: string;
             /** Name */
             name: string;
+        };
+        /**
+         * PutColorsIn
+         * @description 行内颜色全量替换（``PUT /lines/{line_id}/colors``）。
+         *
+         *     ⚠️ **全量替换语义**：不在 ``items`` 里的旧颜色被**软删**。这是刻意的 ——
+         *     「按比例带出」需要能整组替换掉，而增删改混合的语义每次都要重新推导
+         *     「哪些是新增、哪些是删除」，出错时静默留下一半旧数据。
+         */
+        PutColorsIn: {
+            /**
+             * Items
+             * @description 行内颜色（全量）
+             */
+            items: components["schemas"]["LineColorIn"][];
+            /**
+             * Version
+             * @description 裁剪单表头 version（聚合行乐观锁，不匹配 → 10003）
+             */
+            version: number;
+        };
+        /**
+         * PutLinesIn
+         * @description 布批行**全量替换**（``PUT /cutting-orders/{id}/lines``）。
+         *
+         *     ⚠️ 全量替换意味着不在 ``items`` 里的旧行被**软删**（连同其颜色与尺码明细）。
+         *     「删掉某一行」与「改某一行」因此走同一个接口 —— 前端只需把页面上现有的行
+         *     原样带上再改要改的那几个。
+         */
+        PutLinesIn: {
+            /**
+             * Items
+             * @description 布批行（全量）
+             */
+            items: components["schemas"]["OrderLineIn"][];
+            /**
+             * Version
+             * @description 裁剪单表头 version（聚合行乐观锁，不匹配 → 10003）
+             */
+            version: number;
+        };
+        /**
+         * PutSizeLinesIn
+         * @description 尺码明细全量替换（``PUT /size-lines``）。
+         *
+         *     ⚠️ 定位靠 ``line_color_id``（不是 ``line_id + color_code``）：颜色是
+         *     **全量替换**的，本次请求里的颜色行是**新建**的，用 ``color_code`` 定位
+         *     会指向刚被软删的旧行。
+         */
+        PutSizeLinesIn: {
+            /**
+             * Items
+             * @description 尺码明细（全量；size_line_no 由服务端分配，前端传了会被拒）
+             */
+            items: components["schemas"]["SizeLineIn"][];
+            /**
+             * Line Color Id
+             * Format: uuid
+             * @description 所属行内颜色
+             */
+            line_color_id: string;
+            /**
+             * Version
+             * @description 裁剪单表头 version（聚合行乐观锁，不匹配 → 10003）
+             */
+            version: number;
         };
         /**
          * RateResolveOut
@@ -4280,6 +5162,85 @@ export interface components {
          * @enum {string}
          */
         SizeClass: "MENS" | "WOMENS" | "KIDS";
+        /**
+         * SizeLineIn
+         * @description 尺码明细入参（第 3 层，**出数的权威来源**）。
+         *
+         *     ⚠️ ``size_line_no`` 在**同颜色内**唯一即可，**允许** ``(line_color_id, size_code)``
+         *     重复 —— 同尺码多行、各行手数不同是 ADR-0014 模式 C 的正常形态（C30）。
+         */
+        SizeLineIn: {
+            /**
+             * Hands
+             * @description ★ 本行裁几手（整数，用户直接输入；ADR-0020）
+             */
+            hands: number;
+            /**
+             * Hands Seq
+             * @description 手序号（打菲按手拆分用，ADR-0016）
+             */
+            hands_seq?: number | null;
+            /**
+             * Output Qty
+             * @description 人工指定件数；不传 = 服务端算 hands × qty_per_hand
+             */
+            output_qty?: number | null;
+            /**
+             * Qty Per Hand
+             * @description ★ 本行每手几件（整数）；同尺码多行可不同
+             */
+            qty_per_hand: number;
+            /** Remark */
+            remark?: string | null;
+            /**
+             * Size Code
+             * @example XL
+             */
+            size_code: string;
+            /**
+             * Size Line No
+             * @description 明细行号；省略则服务端分配
+             */
+            size_line_no?: number | null;
+        };
+        /**
+         * SizeLineOut
+         * @description 尺码明细出参。``output_qty`` / ``balance_qty`` 是 ``str``（docs/05 §3）。
+         */
+        SizeLineOut: {
+            /**
+             * Balance Qty
+             * @description 仅人工指定时 > 0 的差额
+             */
+            balance_qty: string;
+            /** Hands */
+            hands: number;
+            /** Hands Seq */
+            hands_seq?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Output Qty
+             * @description = hands × qty_per_hand（精确整数，不取整）
+             */
+            output_qty: string;
+            /**
+             * Output Qty Manual
+             * @description 是否人工指定过件数（C28）
+             */
+            output_qty_manual: boolean;
+            /** Qty Per Hand */
+            qty_per_hand: number;
+            /** Remark */
+            remark?: string | null;
+            /** Size Code */
+            size_code: string;
+            /** Size Line No */
+            size_line_no: number;
+        };
         /** StyleColorCreate */
         StyleColorCreate: {
             /**
@@ -4813,6 +5774,46 @@ export interface components {
              * @description 乐观锁版本号
              */
             version: number;
+        };
+        /**
+         * SuggestLinesOut
+         * @description 按比例带出的建议（``GET /suggest-lines``，C18/C19）。
+         *
+         *     :param hands_total: ``Σratio`` = 建议手数合计，**不要求整数**（比例可小数，ADR-0013）
+         *     :param missing_size_codes: 该款尺码集合里**还没配比例**的尺码。
+         *         ⚠️ **部分缺配不拦**（C19②），这是「提示用户去补」的数据来源，
+         *         而拦住它是 `20006` 的**另一种**触发条件（完全无配）
+         */
+        SuggestLinesOut: {
+            /**
+             * Hands Total
+             * @description Σratio 建议手数合计；字符串（docs/05 §3）
+             */
+            hands_total: string;
+            /** Items */
+            items: components["schemas"]["SuggestSizeLineOut"][];
+            /** Missing Size Codes */
+            missing_size_codes?: string[];
+            /**
+             * Ratio Snapshot
+             * @description {size_code: ratio} 快照，已落库
+             */
+            ratio_snapshot: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * SuggestSizeLineOut
+         * @description 比例建议的一行（``{size_code: ratio}`` 的一条）。
+         */
+        SuggestSizeLineOut: {
+            /**
+             * Ratio
+             * @description 建议手数（可小数，如 1.5 手）
+             */
+            ratio: string;
+            /** Size Code */
+            size_code: string;
         };
         /**
          * SuggestedStyleNoOut
@@ -5842,6 +6843,367 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_DisableOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cutting_orders_api_v1_cutting_orders_get: {
+        parameters: {
+            query?: {
+                /** @description DRAFT/SUBMITTED/… */
+                status?: string | null;
+                style_no?: string | null;
+                workshop_id?: string | null;
+                /** @description 起始日期（含） */
+                doc_date_from?: string | null;
+                /** @description 结束日期（含） */
+                doc_date_to?: string | null;
+                page?: number;
+                size?: number;
+                sort_by?: string | null;
+                sort_order?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PageData_CuttingOrderListOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_cutting_order_api_v1_cutting_orders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CuttingOrderCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_CuttingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cutting_order_api_v1_cutting_orders__order_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 裁剪单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_CuttingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_cutting_order_api_v1_cutting_orders__order_id__delete: {
+        parameters: {
+            query: {
+                /** @description 表头 version（乐观锁） */
+                version: number;
+            };
+            header?: never;
+            path: {
+                /** @description 裁剪单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_dict_str__str__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_cutting_order_api_v1_cutting_orders__order_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 裁剪单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CuttingOrderPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_CuttingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    switch_entry_mode_api_v1_cutting_orders__order_id__entry_mode_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 裁剪单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntryModeSwitchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_dict_str__object__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_cutting_order_lines_api_v1_cutting_orders__order_id__lines_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 裁剪单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutLinesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_CuttingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_line_colors_api_v1_cutting_orders__order_id__lines__line_id__colors_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 裁剪单 id */
+                order_id: string;
+                /** @description 布批行 id */
+                line_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutColorsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_CuttingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_size_lines_api_v1_cutting_orders__order_id__size_lines_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 裁剪单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutSizeLinesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_CuttingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_size_lines_api_v1_cutting_orders__order_id__suggest_lines_get: {
+        parameters: {
+            query: {
+                /** @description 款号（必填） */
+                style_no: string;
+                /** @description 色码（必填） */
+                color_code: string;
+            };
+            header?: never;
+            path: {
+                /** @description 裁剪单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SuggestLinesOut_"];
                 };
             };
             /** @description Validation Error */

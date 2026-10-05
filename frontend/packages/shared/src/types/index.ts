@@ -309,5 +309,61 @@ export interface ListQuery extends Record<string, string | number | boolean | nu
   is_active?: boolean
 }
 
+// ------------------------------------------------------------------ 裁剪单
+
+/** 裁剪单列表行（`GET /api/v1/cutting-orders`，三层明细在详情里才有）。 */
+export type CuttingOrderListOut = ApiModel<'CuttingOrderListOut'>
+
+/**
+ * 裁剪单详情 = **三层结构**（`GET /api/v1/cutting-orders/{id}`）。
+ *
+ * ⚠️ `lines[]`（布批行，★ 耗料记在行）→ `colors[]`（行内颜色，一床可多色）
+ * → `size_lines[]`（尺码明细，★ 出数权威来源）—— ADR-0017 的三层结构，
+ * 页面的展开层级与它**一一对应**，不要在中间加自己的层级。
+ */
+export type CuttingOrderOut = ApiModel<'CuttingOrderOut'>
+
+/** 布批行（`CuttingOrderOut.lines[]` 的元素）。 */
+export type OrderLineOut = ApiModel<'OrderLineOut'>
+
+/** 行内颜色（`OrderLineOut.colors[]` 的元素）。 */
+export type LineColorOut = ApiModel<'LineColorOut'>
+
+/** 尺码明细（`LineColorOut.size_lines[]` 的元素）。 */
+export type SizeLineOut = ApiModel<'SizeLineOut'>
+
+/** 建裁剪单（`POST /api/v1/cutting-orders`，表头 + 三层一次提交）。 */
+export type CuttingOrderCreateIn = ApiModel<'CuttingOrderCreateIn'>
+
+/** 布批行入参（`CuttingOrderCreateIn.lines[]` 的元素）。 */
+export type OrderLineIn = ApiModel<'OrderLineIn'>
+
+/** 行内颜色入参（`OrderLineIn.colors[]` 的元素）。 */
+export type LineColorIn = ApiModel<'LineColorIn'>
+
+/** 尺码明细入参（`LineColorIn.size_lines[]` 的元素）。 */
+export type SizeLineIn = ApiModel<'SizeLineIn'>
+
+/** 改表头（`PATCH /api/v1/cutting-orders/{id}`，仅草稿 / 已驳回）。 */
+export type CuttingOrderPatchIn = ApiModel<'CuttingOrderPatchIn'>
+
+/** 布批行全量替换（`PUT /api/v1/cutting-orders/{id}/lines`）。 */
+export type PutLinesIn = ApiModel<'PutLinesIn'>
+
+/** 行内颜色全量替换（`PUT /api/v1/cutting-orders/{id}/lines/{line_id}/colors`）。 */
+export type PutColorsIn = ApiModel<'PutColorsIn'>
+
+/** 尺码明细全量保存（`PUT /api/v1/cutting-orders/{id}/size-lines`）。 */
+export type PutSizeLinesIn = ApiModel<'PutSizeLinesIn'>
+
+/** 切录入模式（`POST /api/v1/cutting-orders/{id}/entry-mode`）。 */
+export type EntryModeSwitchIn = ApiModel<'EntryModeSwitchIn'>
+
+/** 按比例带出的建议（`GET /api/v1/cutting-orders/{id}/suggest-lines`）。 */
+export type SuggestLinesOut = ApiModel<'SuggestLinesOut'>
+
+/** 录入模式（A 按比例带出 / B 统一件数 / C 自定义明细，ADR-0014）。 */
+export type CuttingEntryMode = CuttingOrderCreateIn['entry_mode_default']
+
 export type { components } from '../api/schema.d.ts'
 export type { paths, operations } from '../api/schema.d.ts'
