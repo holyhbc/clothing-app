@@ -56,6 +56,25 @@ class ErrorCode(IntEnum):
     SIZE_RATIO_INCOMPLETE = 20006
     SIZE_RATIO_SIZE_MISMATCH = 20007
 
+    # ---- 30xxx 裁剪 / 打菲单 ----
+    CUTTING_STATUS_NOT_ALLOWED = 30001
+    #: 数量冲突。⚠️ ``05 §4`` 原文写「裁剪数量 < 已打菲数量 + 损耗」，
+    #: 但 T-CUT-001b 业务确认「行 output_qty 正向录入」（modules/02 C34）后，
+    #: **草稿阶段**用它报的是「行 ``output_qty`` < Σ(颜色尺码 output_qty)」
+    #: —— 即行余量算出来是负数（C34 的「负数 → 30002」）。两个场景同一个码：
+    #: 都是「上层声称的数量装不下下层明细」。
+    CUTTING_QTY_CONFLICT = 30002
+    CUTTING_QTY_MUST_BE_INTEGER = 30003
+    CUTTING_ALREADY_COUNTED = 30004
+    CUTTING_REAPPROVAL_REQUIRED = 30005
+    #: 手数必须为正整数（ADR-0020：件数 = 手数 × 每手件数，精确值不取整）
+    CUTTING_HANDS_MUST_BE_POSITIVE_INT = 30006
+
+    # ---- 40xxx 库存 ----
+    STOCK_INSUFFICIENT = 40001
+    #: 布批可用库存不足（ADR-0022：裁剪领料 > 可用量）
+    BATCH_STOCK_INSUFFICIENT = 40006
+
     # ---- 99xxx ----
     INTERNAL = 99999
 
@@ -89,6 +108,14 @@ HTTP_STATUS_BY_CODE: dict[ErrorCode, int] = {
     ErrorCode.RATE_RANGE_OVERLAP: HTTPStatus.UNPROCESSABLE_ENTITY,
     ErrorCode.SIZE_RATIO_INCOMPLETE: HTTPStatus.UNPROCESSABLE_ENTITY,
     ErrorCode.SIZE_RATIO_SIZE_MISMATCH: HTTPStatus.UNPROCESSABLE_ENTITY,
+    ErrorCode.CUTTING_STATUS_NOT_ALLOWED: HTTPStatus.CONFLICT,
+    ErrorCode.CUTTING_QTY_CONFLICT: HTTPStatus.CONFLICT,
+    ErrorCode.CUTTING_QTY_MUST_BE_INTEGER: HTTPStatus.UNPROCESSABLE_ENTITY,
+    ErrorCode.CUTTING_ALREADY_COUNTED: HTTPStatus.CONFLICT,
+    ErrorCode.CUTTING_REAPPROVAL_REQUIRED: HTTPStatus.CONFLICT,
+    ErrorCode.CUTTING_HANDS_MUST_BE_POSITIVE_INT: HTTPStatus.UNPROCESSABLE_ENTITY,
+    ErrorCode.STOCK_INSUFFICIENT: HTTPStatus.CONFLICT,
+    ErrorCode.BATCH_STOCK_INSUFFICIENT: HTTPStatus.CONFLICT,
     ErrorCode.INTERNAL: HTTPStatus.INTERNAL_SERVER_ERROR,
 }
 

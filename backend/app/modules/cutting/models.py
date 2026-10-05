@@ -67,10 +67,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID  # noqa: N811 —— 别名照抄 docs/04 §2
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.common.enums import DocumentStatus
-from app.common.models import BaseModel
+from app.common.models import Base, BaseModel, IdMixin
 
 
 class CuttingEntryMode(StrEnum):
@@ -276,6 +276,24 @@ class CuttingOrder(BaseModel):
         {"comment": "裁剪单表头（04 §7.7.2；ADR-0017 三层结构第 1 层）"},
     )
 
+    #: 三层导航。⚠️ **``viewonly=True`` 是刻意的**：子行的增删改一律由 service
+    #: **显式**写（``CuttingOrderLine(doc_id=...)``），不走 relationship。
+    #:
+    #: 理由不是「不信任 ORM」，而是 **cascade 的语义会与应用账号无 DELETE 权限打架**：
+    #: 子表的 ``ON DELETE RESTRICT`` 是数据库层的删除保护，而一旦给 relationship
+    #: 配上 ``cascade="all, delete-orphan"``，ORM 就会在删父行时先删子行 ——
+    #: 那等于让「软删单据」变成「级联硬删三层明细」，而 ``04 §6.2.1`` 明确禁止。
+    #:
+    #: ``lazy="selectin"`` 让详情查询一次拿完三层（2 条语句而不是逐层懒加载的 4 条），
+    #: 而写入路径**不依赖**它 —— 那里传的是显式构造好的列表（见 service 的 recalc_*）。
+    lines: Mapped[list[CuttingOrderLine]] = relationship(
+        "CuttingOrderLine",
+        back_populates="order",
+        lazy="selectin",
+        viewonly=True,
+        order_by="CuttingOrderLine.line_no",
+    )
+
 
 class CuttingOrderLine(BaseModel):
     """裁剪单布批行（★ **耗料记在行**，ADR-0017 三层结构的第 2 层的父）。
@@ -389,6 +407,23 @@ class CuttingOrderLine(BaseModel):
         {"comment": "裁剪单布批行（★ 耗料记在行；04 §7.7.2 / ADR-0017）"},
     )
 
+    #: 反向导航。⚠️ ``lazy="raise_on_sql"``：写入路径不需要读父单，
+    #: 而「不需要」不该等于「静默返回 None」—— 那会让 ``order.lines`` 拼错时
+    #: 变成一个 ``None`` 而不是报错。（SQLAlchemy 2.1 起 ``noload`` 已废弃，
+    #: 它正是那个「静默返回 None」的策略。）
+    order: Mapped[CuttingOrder] = relationship(
+        "CuttingOrder", back_populates="lines", lazy="raise_on_sql", viewonly=True
+    )
+    #: 行内颜色。⚠️ **不按 ``color_code`` 排序** —— 业务上「这个颜色先录」没有意义，
+    #: 而排序会让「返回顺序」依赖字典序，页面上颜色块会跳来跳去。
+    colors: Mapped[list[CuttingOrderLineColor]] = relationship(
+        "CuttingOrderLineColor",
+        back_populates="line",
+        lazy="selectin",
+        viewonly=True,
+        order_by="CuttingOrderLineColor.id",
+    )
+
 
 class CuttingOrderLineColor(BaseModel):
     """裁剪单行内颜色（ADR-0017 第 2 层：一床可多个颜色）。
@@ -475,6 +510,19 @@ class CuttingOrderLineColor(BaseModel):
         UniqueConstraint("line_id", "color_code", name="uq_cutting_line_colors"),
         CheckConstraint("version > 0", name="ck_cutting_order_line_colors_version_positive"),
         {"comment": "裁剪单行内颜色（ADR-0017：一床可多个颜色；04 §7.7.2）"},
+    )
+
+    line: Mapped[CuttingOrderLine] = relationship(
+        "CuttingOrderLine", back_populates="colors", lazy="raise_on_sql", viewonly=True
+    )
+    #: 尺码明细。按 ``size_line_no`` 升序 —— 那是**录入顺序**，
+    #: 也是唯一键 ``(line_color_id, size_line_no)`` 的那一半，排序后与用户所见一致。
+    size_lines: Mapped[list[CuttingOrderSizeLine]] = relationship(
+        "CuttingOrderSizeLine",
+        back_populates="line_color",
+        lazy="selectin",
+        viewonly=True,
+        order_by="CuttingOrderSizeLine.size_line_no",
     )
 
 
@@ -566,4 +614,58 @@ class CuttingOrderSizeLine(BaseModel):
             postgresql_where=text("deleted_at IS NULL"),
         ),
         {"comment": "裁剪单尺码明细（出数权威来源；04 §7.7.2 / ADR-0017 / ADR-0020）"},
+    )
+
+    line_color: Mapped[CuttingOrderLineColor] = relationship(
+        "CuttingOrderLineColor",
+        back_populates="size_lines",
+        lazy="raise_on_sql",
+        viewonly=True,
+    )
+
+
+class CuttingDocNoSequence(IdMixin, Base):
+    """裁剪单号按天计数器（**纯计数表**，C1）。
+
+    ⚠️ **豁免 ``04 §2`` 公共字段**，理由与 ``style_no_sequences`` 完全一样：
+    纯计数表没有「谁改的」的概念 —— 它由取号逻辑在事务内
+    ``UPDATE ... SET next_no = next_no + 1 RETURNING next_no - 1`` 递增，
+    而 ``created_by`` / ``updated_by`` 是 ``NOT NULL`` 的**操作人**字段；
+    计数行的「创建者」只能是系统，那才是谎话。
+
+    ⚠️ **为什么不用 PG ``SEQUENCE``**：C1 的单号**按天重置**，而 ``setval`` 做不了
+    「新的一天自动从头来」（要么在应用里判断日期、要么跑 DDL）。``(doc_date, prefix)``
+    作唯一键的话，新的一天自然就是新的一行。
+
+    ⚠️ **回滚会不会导致重号**：会 —— 事务回滚时 ``next_no`` 一起退回。但那个号
+    **从未出现在任何响应里**（单据没建成），业务上不可观测；真正保证「发出即唯一」
+    的是 ``uq_cutting_orders_doc_no``。
+    """
+
+    __tablename__ = "cutting_doc_no_sequences"
+
+    doc_date: Mapped[date] = mapped_column(
+        Date,
+        nullable=False,
+        comment="按天分组：单据号 CT-{YYYYMMDD}-{6 位} 的 YYYYMMDD 部分",
+    )
+    prefix: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="CT",
+        server_default=text("'CT'"),
+        comment="单据前缀（09 §2.1：裁剪 = CT）；写成一列是为了将来分单据类型时不必改表",
+    )
+    next_no: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default=text("1"),
+        comment="下一个可用序号，从 1 开始（09 §2.1：6 位）",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("doc_date", "prefix", name="uq_cutting_doc_no_sequences_date_prefix"),
+        CheckConstraint("next_no >= 1", name="ck_cutting_doc_no_sequences_next_no"),
+        {"comment": "裁剪单号按天计数器（纯计数表，豁免 04 §2 公共字段，同 style_no_sequences）"},
     )

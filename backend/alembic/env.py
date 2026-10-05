@@ -17,31 +17,16 @@ from sqlalchemy import Connection, pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-from app.common.models import Base
+from app.common.models import Base, register_all_models
 
 config = context.config
 
-
-def _register_models() -> None:
-    """导入全部业务模块的 models，让 autogenerate 能看到所有表。
-
-    用 pkgutil 自动遍历而不是手写 import 列表：新增模块时无需改这里，
-    也不会因为漏写 import 而让 autogenerate 悄悄漏表（docs/04 §6.2）。
-    """
-    import importlib
-    import pkgutil
-
-    import app.modules
-
-    for module_info in pkgutil.iter_modules(app.modules.__path__):
-        try:
-            importlib.import_module(f"app.modules.{module_info.name}.models")
-        except ModuleNotFoundError:
-            # 该模块还没建 models（P0 阶段逐个模块落地），跳过即可
-            continue
-
-
-_register_models()
+# ⚠️ 注册入口是**共享的**（app/common/models.py::register_all_models），
+#    守卫 tests/modules/test_docs_ddl_sync.py 用的是同一个 —— 两边各写一份
+#    的后果是 T-CUT-001b-1 真的踩到了：「env.py 按 pkgutil 遍历注册全了，
+#    而测试靠 import app.main 碰运气」，于是裁剪模块在还没有 router 时
+#    注册不上，守卫报「表没建」，症状却依赖用例执行顺序。
+register_all_models()
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

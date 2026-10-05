@@ -17,6 +17,7 @@
 先例见 04 §7.9 的 ``document_logs``。这类表直接用 ``Base``，不要混入 Mixin。
 """
 
+from collections.abc import Sequence  # noqa: F401 —— 仅供下方 register_all_models 的类型推导
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -157,3 +158,37 @@ class DocumentLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), nullable=False
     )
+
+
+def register_all_models() -> None:
+    """导入**全部**业务模块的 ``models``，让它们注册进 :attr:`Base.metadata`。
+
+    ⚠️ **唯一的模型注册入口**。原来这件事有两个实现：``alembic/env.py`` 里的
+    ``_register_models`` 和 ``tests/modules/test_docs_ddl_sync.py`` 里的
+    ``import app.main`` —— 后者只在**恰好有别的 import 链碰过那些模块**时
+    才注册全。T-CUT-001b-1 就撞上了：裁剪模块当时**还没有 router**
+    （router 属于 T-CUT-001c），于是 ``import app.main`` 拉不到裁剪模型，
+    守卫 TD-01 / TD-04 报「表既没建也不在白名单」，而真相是**表早就建好了**。
+
+    症状极其恶劣：它**依赖用例执行顺序** —— 全量跑时前面的用例碰巧 import 过
+    裁剪模型，守卫就绿；单独跑那个文件就红。这类「换个顺序就红」的测试
+    等于没有测试。
+
+    为什么用 ``pkgutil`` 遍历而不是手写 import 列表：新增模块时无需改这里，
+    也不会因为漏写 import 而让 autogenerate 悄悄漏表（``docs/04 §6.2``）。
+
+    ⚠️ 函数内 import：``app.common`` 是最底层，顶层 import 会形成
+    ``common → modules → common`` 的环（本仓 ``app/core/numbering.py``
+    用的是同一手法）。
+    """
+    import importlib
+    import pkgutil
+
+    import app.modules
+
+    for module_info in pkgutil.iter_modules(app.modules.__path__):
+        try:
+            importlib.import_module(f"app.modules.{module_info.name}.models")
+        except ModuleNotFoundError:
+            # 该模块还没建 models（P0 阶段逐个模块落地），跳过即可
+            continue

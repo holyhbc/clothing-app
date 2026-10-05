@@ -91,6 +91,73 @@ def format_style_no(prefix: str, year: int, sequence: int) -> str:
     return f"{prefix}-{year:0{YEAR_DIGITS}d}-{sequence:0{SEQUENCE_DIGITS}d}"
 
 
+#: 单据号里的日期位数（09 §2.1：``CT-YYYYMMDD-6 位序号``）。
+DOC_DATE_DIGITS = 8
+#: 单据号里的序号位数（09 §2.1：6 位）。
+DOC_SEQUENCE_DIGITS = 6
+#: 一天之内一个前缀最多能发出的单据数（6 位序号的自然上限）。
+MAX_DOC_SEQUENCE = 10**DOC_SEQUENCE_DIGITS - 1
+
+#: 单据前缀（09 §2.1）。**只放已实现的**，别把 ``BD`` / ``MI`` 也写进来 ——
+#: 那些模块还没建，而前缀的归属与那张表的「取号器」必须同时存在。
+DOC_PREFIX_CUTTING = "CT"
+
+
+def format_doc_no(prefix: str, doc_date: date, sequence: int) -> str:
+    """拼单据号：``{前缀}-{YYYYMMDD}-{6 位序号}``（09 §2.1、C1）。
+
+    ⚠️ 与 :func:`format_style_no` 的区别只有一处，但那一处很要紧：
+    款号是**建议**（用户填的号一律优先，Q-P0-04），而单据号是**服务端发的**
+    —— 所以这里序号用尽时只能**报错**，没有「请手动输入」的出路。
+
+    :raises BusinessError: 序号超出 6 位 —— 继续下去会拼出 ``CT-20261018-1000000``
+        这种违反 09 §2.1 的号，而「号格式不符」比「号用尽」难排查得多。
+    """
+    if not 1 <= sequence <= MAX_DOC_SEQUENCE:
+        raise BusinessError(
+            ErrorCode.PARAM_INVALID,
+            f"今日单据号已用尽（上限 {MAX_DOC_SEQUENCE} 个），请明日再开单或联系管理员",
+            details={
+                "prefix": prefix,
+                "doc_date": doc_date.isoformat(),
+                "max_sequence": MAX_DOC_SEQUENCE,
+            },
+        )
+    return f"{prefix}-{doc_date.strftime('%Y%m%d')}-{sequence:0{DOC_SEQUENCE_DIGITS}d}"
+
+
+async def take_doc_no(session: AsyncSession, *, prefix: str, doc_date: date | None = None) -> str:
+    """取一个单据号（``CT-{YYYYMMDD}-{6 位}``），**从 1 开始、按天重置**。
+
+    ⚠️ **必须在 service 的事务内调用**，理由与 :func:`take_style_no` 完全一样：
+    本方法靠行锁串行化，放到事务外会各自开隐式事务。
+
+    ⚠️ **为什么按天重置而不是全局递增**：C1 的格式里**有日期**，「每天从 1 开始」
+    是格式的直接后果。用 ``(doc_date, prefix)`` 作唯一键，新的一天自然是一行新的计数器
+    —— 而用 PG ``SEQUENCE`` 做不到这件事（``setval`` 既不能放在应用事务里，
+    也不该由应用跑 DDL）。详见迁移 0010 的文件头注。
+
+    ⚠️ **回滚会退回号，但那个号从未被看见**：事务回滚时 ``next_no`` 一起退回，
+    下一个事务拿到同一个号 —— 而那个号**从未出现在任何响应里**（单据没建成），
+    所以业务上不可观测。真正保证「发出即唯一」的是 ``uq_cutting_orders_doc_no``。
+
+    :param doc_date: 业务日期，默认今天（工厂当地日历，见 :data:`BUSINESS_TZ`）。
+        测试必须显式传入 —— 否则跨零点跑就会挂，而那种失败极难复现
+        （docs/10 §10「时间相关测试必须可注入时间」）。
+    """
+    resolved_date = doc_date if doc_date is not None else business_today()
+    await _ensure_doc_counter_row(session, prefix=prefix, doc_date=resolved_date)
+    model = _doc_counter_model()
+    stmt = (
+        update(model)
+        .where(model.doc_date == resolved_date, model.prefix == prefix)
+        .values(next_no=model.next_no + 1)
+        .returning(model.next_no - 1)
+    )
+    allocated = int((await session.execute(stmt)).scalar_one())
+    return format_doc_no(prefix, resolved_date, allocated)
+
+
 async def take_style_no(session: AsyncSession, *, customer_id: UUID | None, year: int) -> int:
     """取一个建议序号（从 1 开始，按 ``(customer_id, year)`` 分组递增）。
 
@@ -151,6 +218,33 @@ def _counter_model() -> type[Any]:
     return StyleNoSequence
 
 
+def _doc_counter_model() -> type[Any]:
+    """取 ``CuttingDocNoSequence`` 模型。
+
+    函数内导入的理由与 :func:`_counter_model` 相同（避免 ``core → modules → core`` 的环）。
+    """
+    from app.modules.cutting.models import CuttingDocNoSequence
+
+    return CuttingDocNoSequence
+
+
+async def _ensure_doc_counter_row(session: AsyncSession, *, prefix: str, doc_date: date) -> None:
+    """确保 ``(doc_date, prefix)`` 的计数器行存在。
+
+    ⚠️ 用 ``ON CONFLICT DO NOTHING`` 而不是「先查后插」，理由与
+    :func:`_ensure_counter_row` 完全相同：并发首次取号时两个事务都可能查到
+    「没有行」，后去插的那个靠唯一索引报 ``IntegrityError``，而**异常会把整个
+    事务置为 aborted**，调用方后续任何语句都失败。
+    """
+    model = _doc_counter_model()
+    stmt = (
+        pg_insert(model)
+        .values(prefix=prefix, doc_date=doc_date, next_no=1)
+        .on_conflict_do_nothing(index_elements=["doc_date", "prefix"])
+    )
+    await session.execute(stmt)
+
+
 async def _ensure_counter_row(
     session: AsyncSession, *, customer_id: UUID | None, year: int
 ) -> None:
@@ -177,14 +271,19 @@ async def _ensure_counter_row(
 
 __all__ = [
     "BUSINESS_TZ",
+    "DOC_PREFIX_CUTTING",
+    "DOC_SEQUENCE_DIGITS",
     "FACTORY_STYLE_PREFIX",
+    "MAX_DOC_SEQUENCE",
     "MAX_SEQUENCE",
     "SEQUENCE_DIGITS",
     "YEAR_DIGITS",
     "business_today",
+    "format_doc_no",
     "format_style_no",
     "normalize_style_no",
     "quantize_price",
     "suggest_style_no",
+    "take_doc_no",
     "take_style_no",
 ]

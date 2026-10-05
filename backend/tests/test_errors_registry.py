@@ -1,7 +1,15 @@
 """错误码与 docs/05 §4 的一致性（docs/12-文档与变更归档规范.md §9 检查项 3）。
 
 这是**规范一致性闸门**：``ErrorCode`` 的取值必须是 docs/05 §4 已登记的码，
-且通用段（10xxx / 11xxx / 12xxx）不允许缺实现。防止 AI 自行编造错误码。
+且**已实现段**不允许缺实现。防止 AI 自行编造错误码。
+
+⚠️ **REV-2026-10 这条守卫原来有个洞，T-CUT-001b 补上**：原文的
+``test_generic_segments_fully_implemented`` 只 ``parametrize`` 了
+``["10", "11", "12"]`` 三个段，于是 **20xxx / 30xxx / 40xxx 在 ``05 §4`` 里登记了
+却一个都没实现、也没有任何守卫会报** —— 事实是 ``30002`` / ``30006`` / ``40001`` /
+``40006`` 一直缺实现，而裁剪单的错误码全在这个范围里。
+本卡补实现的同时把守卫扩成 :data:`IMPLEMENTED_SEGMENTS`，
+并加 :func:`test_unimplemented_segments_have_no_codes` 反向守住另一头。
 """
 
 import re
@@ -56,6 +64,52 @@ def _parse_documented_codes() -> set[int]:
 
 DOCUMENTED_CODES = _parse_documented_codes()
 
+#: **特殊码**：不属于任何业务段，不能用「前两位 = 段」那套逻辑去卡它们。
+#: ``0`` 是 OK（成功响应，不是错误）；``99999`` 是 INTERNAL（docs/05 §4 的兜底段）。
+SPECIAL_CODES: frozenset[int] = frozenset({0, 99999})
+
+#: **已登记但本阶段刻意不实现**的错误码 → 归属卡。
+#:
+#: ⚠️ 为什么要显式列出来，而不是把段整个排除：段内部常常**横跨阶段**。
+#: 真实例子是 ``40xxx`` —— ``40001``（库存不足）与 ``40006``（布批可用量不足）
+#: 裁剪单立刻就要用（T-CUT-001b-2 的 C38），而 ``40002``~``40005`` / ``40007``
+#: 分别是「批次成本锁定」「库存与台账不平」「整件入库」「采购批次已被消耗」
+#: 「成衣入库与 WIP 不符」—— **全部要等库存业务（`00 §7` 的 P3）**，
+#: 而库存业务一张表都还没建。按段整体排除会让 ``40006`` 一起失去守卫，
+#: 按段整体纳入会让这条守卫天天红。**所以按码列。**
+#:
+#: ⚠️ 方向是「实现了就删」。留着一条已实现的码在这里不是无害的 ——
+#: :func:`test_deferred_codes_are_really_deferred` 会立刻报出来。
+DEFERRED_CODES: dict[int, str] = {
+    # ---- 40xxx 库存业务（P3，00 §7 方案 A 的「库存业务」阶段）----
+    40002: "P3 批次成本锁定（ADR-0011 改价走红冲）",
+    40003: "P3 库存与台账对账（v_stock_reconciliation 恒 0 行）",
+    40004: "P3 完工入库整件校验（依赖 finished_goods_stocks）",
+    40005: "P3 采购批次已被下游裁剪消耗（依赖 purchase_orders）",
+    40007: "P3 成衣入库与 WIP 结存比对（依赖 wip_stocks 全链路）",
+}
+
+#: **本仓当前声称「已实现」的错误码段**（前两位）。
+#:
+#: ⚠️ 这份名单的**方向是「实现了就加进来」**，加进来就意味着
+#: 「``05 §4`` 登记的每一个码都必须有实现（``DEFERRED_CODES`` 里显式推迟的除外）」。
+#: 往没在名单里的段里塞一个码是**静默**的，而那个码一旦进了
+#: ``HTTP_STATUS_BY_CODE`` 就会**看起来**已经支持了 —— 读代码的人不会去查
+#: 它属于哪个阶段。由 :func:`test_unimplemented_segments_have_no_codes` 反向守住。
+#:
+#: 未进名单的段与它们的归属卡：
+#: - ``31`` 打菲单 → T-BUND-001
+#: - ``32`` 计件 → P2
+#: - ``33`` 工资 → P2
+#: - ``50`` 采购 / 销售 / 财务往来 → P4 / P5
+#: - ``60`` 报表与导出 → P6
+IMPLEMENTED_SEGMENTS: tuple[str, ...] = ("10", "11", "12", "20", "30", "40")
+
+
+def _segment_of(code: int) -> str | None:
+    """码所属的段（前两位）；特殊码返回 ``None``。"""
+    return None if code in SPECIAL_CODES else str(code)[:2]
+
 
 def test_errorcode_values_are_all_documented() -> None:
     """TC-I04：ErrorCode 的每个取值都必须在 docs/05 §4 登记过。"""
@@ -74,13 +128,61 @@ def test_http_status_matches_document(code: int, expected_http: int) -> None:
     assert HTTP_STATUS_BY_CODE[error_code] == expected_http
 
 
-@pytest.mark.parametrize("segment", ["10", "11", "12"])
-def test_generic_segments_fully_implemented(segment: str) -> None:
-    """通用段 / 认证段 / 权限段在 docs 登记的码必须全部有实现，不允许缺。"""
-    documented = {code for code in DOCUMENTED_CODES if str(code).startswith(segment)}
+@pytest.mark.parametrize("segment", IMPLEMENTED_SEGMENTS)
+def test_implemented_segments_are_fully_implemented(segment: str) -> None:
+    """已实现段里 ``docs/05 §4`` 登记的码必须全部有实现，不允许缺。
+
+    ``DEFERRED_CODES`` 里显式推迟的除外 —— 它们要么删掉、要么补实现，没有第三种状态。
+
+    ⚠️ 这条与 :func:`test_unimplemented_segments_have_no_codes`、
+    :func:`test_deferred_codes_are_really_deferred` **成对**：只守正向的话，
+    「往未实现段里偷偷加一个码」是静默的，而「推迟一个已经实现的码」也是静默的。
+    """
+    documented = {code for code in DOCUMENTED_CODES if _segment_of(code) == segment}
     implemented = {int(code) for code in ErrorCode}
-    missing = documented - implemented
+    missing = documented - implemented - set(DEFERRED_CODES)
     assert not missing, f"docs/05 §4 已登记但未实现的 {segment}xxx 错误码：{sorted(missing)}"
+
+
+def test_unimplemented_segments_have_no_codes() -> None:
+    """**未**列入 :data:`IMPLEMENTED_SEGMENTS` 的段，必须一个码都没实现。
+
+    ⚠️ 反向守卫。作用是让「这个码属于哪个阶段」变成**机器可查**的事实，
+    而不是靠读代码时心里默认。往未实现段里加码时必须同时把该段加进
+    :data:`IMPLEMENTED_SEGMENTS` —— 那一步会让正向守卫报出该段还缺哪些码，
+    也就是强制你把那一段补齐或明确推迟。
+    """
+    pending = {
+        segment
+        for segment in {_segment_of(code) for code in DOCUMENTED_CODES} - {None}
+        if segment not in IMPLEMENTED_SEGMENTS
+    }
+    implemented = {int(code) for code in ErrorCode}
+    smuggled = sorted(
+        code for code in implemented if (seg := _segment_of(code)) is not None and seg in pending
+    )
+    assert not smuggled, (
+        f"这些错误码落在「未实现段」{sorted(pending)} 里：{smuggled}。"
+        f"要么把该段加进 IMPLEMENTED_SEGMENTS（并补齐该段其余已登记的码），"
+        f"要么先确认这个码的归属阶段 —— 混进去的后果是它看起来已经支持了"
+    )
+
+
+def test_deferred_codes_are_really_deferred() -> None:
+    """:data:`DEFERRED_CODES` 里的每一条都必须**真的还没实现、且真的在 §4 登记过**。
+
+    ⚠️ 双向守。这份名单烂掉的两种方式都很便宜、后果都很贵：
+
+    - **条目已实现却没删** → 那条码其实已经可用了，而清单说它没有。
+      有人按清单去「重新实现」一遍，或者反过来因为「它还没实现」而不去处理它。
+    - **条目不在 §4** → 清单里躺着一个谁也没登记过的码，等于给未来的自己
+      发一张可以「按惯例实现」的假通行证。
+    """
+    implemented = {int(code) for code in ErrorCode}
+    already_done = sorted(set(DEFERRED_CODES) & implemented)
+    assert not already_done, f"DEFERRED_CODES 里的 {already_done} 已经实现了 —— 从清单删掉"
+    unknown = sorted(set(DEFERRED_CODES) - DOCUMENTED_CODES)
+    assert not unknown, f"DEFERRED_CODES 里的 {unknown} 不在 docs/05 §4 登记过"
 
 
 def test_http_status_mapping_is_total() -> None:

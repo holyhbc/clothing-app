@@ -214,8 +214,15 @@ def _model_tables() -> dict[str, set[str]]:
     拿模型当基准才不会被迁移脚本的书写方式（``op.create_table`` vs
     ``op.execute``）影响。
     """
-    import app.main  # noqa: F401 —— 副作用是注册全部模型
-    from app.common.models import Base
+    from app.common.models import Base, register_all_models
+
+    # ⚠️ 用**共享的注册入口**而不是 `import app.main`（T-CUT-001b-1 修正）：
+    #    `app.main` 只 import 三个 router，所以「模块还没 router 时」
+    #    （裁剪的 router 属于 T-CUT-001c）它的 models 就注册不上 ——
+    #    守卫于是报「表既没建也不在白名单」，而真相是表早就建好了。
+    #    症状更恶劣的是它**依赖用例执行顺序**：全量跑时前面的用例碰巧
+    #    import 过就绿，单跑这个文件就红。「换个顺序就红」等于没有测试。
+    register_all_models()
 
     return {
         name: {column.name for column in table.columns} - COMMON_COLUMNS
