@@ -352,8 +352,8 @@ CuttingOrderService, recalc_line` —— 由 `__init__.py` 重导出命中。
 | # | 问题 | 需要谁确认 | 阻塞什么 | 状态 |
 |---|------|-----------|---------|------|
 | Q-01 | 「历史已应用迁移不纳入 400 行拆分」是否需要独立 ADR，还是作为本设计稿的非目标约定即可 | 架构师 / 业务 | 是否新增 ADR | 本稿按**设计稿约定**处理（ADR-0031 已覆盖模块代码；迁移是历史不可变物，重写会破坏 revision 与 downgrade 历史）。**若业务要求独立决策记录，再新开 ADR**（不擅自新增） |
-| Q-02 | `cutting/service.py` 的 5 Mixin 边界（表头写 / 批量替换 / 明细落库 / 比例模式 / 公共锁）是否为最终方案 | 架构师 | T-CUT-002c 文件清单 | 建议采纳；照抄 base `StyleService` 6 Mixin 的已验证配方，编码前需闭环 |
-| Q-03 | `recalc_*` 除包入口外是否同时承诺 `app.modules.cutting.service.recalc` 深路径稳定 | 架构师 | 未来 `bundling` 导入写法 | 建议**包入口为契约**、深路径不承诺；`bundling` 设计稿写清用哪个 |
+| Q-02 | `cutting/service.py` 的 5 Mixin 边界（表头写 / 批量替换 / 明细落库 / 比例模式 / 公共锁）是否为最终方案 | 架构师 | T-CUT-002c 文件清单 | 已确认：采纳 5 Mixin + `recalc.py` + 组合类（照 T-BASE-010c 配方），T-CUT-002c 已落地 |
+| Q-03 | `recalc_*` 除包入口外是否同时承诺 `app.modules.cutting.service.recalc` 深路径稳定 | 架构师 | 未来 `bundling` 导入写法 | 已确认：**包入口为契约**（`from app.modules.cutting.service import recalc_order`），深路径不承诺；`bundling` 设计稿据此写 |
 | Q-04 | `system/router.py` 实际 18 端点（非卡面所写 20）是否影响任何验收 | 架构师 | T-SYS-001b | 本稿以核实为准；端点集合逐字不变即可，数字仅背景描述 |
 | Q-05 | 是否同步修订 L-081 的存量清单（把这 7 个文件标记为「已拆」） | 架构师 | docs/12 归档 | 建议在 T-REFACTOR-001 收口时更新 L-081（本系列只加 0101 变更行，不动 L-081 结论） |
 

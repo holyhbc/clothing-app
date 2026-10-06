@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | cut |
 | 负责人 | backend-dev |
-| 状态 | todo |
+| 状态 | done |
 | 优先级 | P0 |
 | 依赖 | T-CUT-002a, T-CUT-002b |
 | 被依赖 | T-REFACTOR-001 |
@@ -88,7 +88,18 @@
 
 | 文件 | 行数 | 说明 |
 | --- | --- | --- |
-| | | |
+| `service/__init__.py` | 61 | 聚合重导出（含 `recalc_*`） |
+| `service/common.py` | 163 | 常量/纯助手 + `CommonMixin` |
+| `service/cutting_order_service.py` | 20 | 组合类 + `__init__` |
+| `service/insert_mixin.py` | 240 | 明细/颜色/尺码落库 + 布批校验 |
+| `service/line_mixin.py` | 279 | 三层批量替换 + 全单重算 |
+| `service/order_mixin.py` | 252 | 表头建/改/删/读 + 列表 + 款号校验 |
+| `service/ratio_mixin.py` | 201 | 比例带出 + 模式切换 |
+| `service/recalc.py` | 90 | **复用资产** `recalc_color`/`recalc_line`/`recalc_order` |
+| `service.py` | 删除 | 原 1047 行文件 |
+
+**提交记录**：
+- `refactor(cut): 拆分 cutting/service.py(1047 行) 为 5 Mixin + recalc + 组合（≤400 行）`
 
 ## 遗留问题
 
