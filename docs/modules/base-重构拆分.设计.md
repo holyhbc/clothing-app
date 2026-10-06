@@ -228,10 +228,10 @@
 |---|------|-----------|---------|------|
 | Q-01 | `StyleService.copy_template` 归属 | 架构师 | 010c 拆分边界 | 已确认：归 `style_template_mixin.py`（款号强相关） |
 | Q-02 | `RateService` 三档取价 SQL 是否下推 repository | 架构师 | 010c 实现细节 | 已确认：`build_rate_resolve_stmt` 放 `rate_helpers.py`（供计件复用），repository 只做简单查询 |
-| Q-03 | `StyleService` 内部 6 Mixin 的切分边界（query/crud/child/ratio/operation/template）是否最终方案 | 架构师 | 010c 文件清单 | 待确认（本稿为建议方案，编码前定稿） |
+| Q-03 | `StyleService` 内部 6 Mixin 的切分边界（query/crud/child/ratio/operation/template）是否最终方案 | 架构师 | 010c 文件清单 | 已确认：采纳 6 Mixin 边界 query/crud/child/ratio/operation/template（T-BASE-010c 按此实现） |
 | Q-04 | 初版的 `recalc_mixin`/`state_mixin`/`export_mixin` 是否成立 | 架构师 | 010c | 已核实**证据不足**：base 的字典/款号/单价无汇总重算、无单据状态机，导出为各端点自写；本轮不抽，待后续模块出现重复再抽 |
 | Q-05 | `service/common.py` 是否再拆为 `common` + `query` | 架构师 | 010c | 待确认（本轮合并，约 215 行，仍 ≤400） |
-| Q-06 | `RateService`（384 行）计入自身 import 后是否超 400 | 架构师 | 010c | 待确认：本轮用 `RateQueryMixin` 拆为两文件以保证 ≤400；若团队认定 import 不计入，可合并回单文件 |
+| Q-06 | `RateService`（384 行）计入自身 import 后是否超 400 | 架构师 | 010c | 已确认：采用 `RateQueryMixin` 拆两文件保证 ≤400（`rate_query_mixin.py` 101 行 + `rate_service.py` 318 行） |
 | Q-07 | 跨模块生产导入（`system/service.py::write_document_log`、`document_logs.py::StyleService`）是否改深路径 | 架构师 | 010f | 待确认：本轮靠 `service/__init__.py` 重导出保持零改动 |
 | Q-08 | 非目标清单里其它 >400 行文件（cutting/system/auth/cli）的拆分排期 | 业务/架构师 | 后续卡 | 待排期 |
 

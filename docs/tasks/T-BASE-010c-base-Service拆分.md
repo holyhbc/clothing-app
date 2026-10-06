@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | base |
 | 负责人 | backend-dev |
-| 状态 | todo |
+| 状态 | done |
 | 优先级 | P0 |
 | 依赖 | T-BASE-010a, T-BASE-010b |
 | 被依赖 | T-BASE-010d, T-BASE-010f |
@@ -95,10 +95,27 @@
 
 | 文件 | 行数 | 说明 |
 | --- | --- | --- |
-| | +0 / -0 | |
+| `backend/app/modules/base/service/__init__.py` | 87 | 保留原 service.py 模块 docstring + 聚合重导出（4 Service / 2 Query / `build_rate_resolve_stmt` / `write_document_log` / 4 个 `ACTION_*`），原导入面零改动 |
+| `backend/app/modules/base/service/common.py` | 225 | `logger`、`ACTION_*`、`DOC_*`、`MAX_*`、`SKIP_*`、`SCALE_*`、`RATIO_NOT_COPIED_MESSAGE`、`STYLE_TRGM_QUALIFIED`、排序白名单、`StyleQuery`/`RateQuery`、`_validate_page`/`_validate_sort`/`_validate_sort_order`、`write_document_log`、`numeric_str`、`_duplicated` |
+| `backend/app/modules/base/service/dict_service.py` | 320 | `DictService`（9 字典统一 CRUD，原 132-429） |
+| `backend/app/modules/base/service/dict_helpers.py` | 36 | `payload_dict_changes`、`_unique_violation`（原 431-454） |
+| `backend/app/modules/base/service/style_service.py` | 30 | `StyleService(...)` 继承 6 Mixin + `__init__`（原 758-763） |
+| `backend/app/modules/base/service/style_query_mixin.py` | 329 | 款号读：`list_styles`/`list_options`/`suggest`/`get_required`/`export_styles`/`get_detail`/色码尺码读 + `_style_list_stmt`（原 726-741、767-1022） |
+| `backend/app/modules/base/service/style_crud_mixin.py` | 257 | 款号主表 CRUD + `_suggest`/`_find_by_no`/`_assert_category_usable`/`_duplicate_style_error`（原 1024-1197、1363-1414） |
+| `backend/app/modules/base/service/style_child_mixin.py` | 191 | `add_colors`/`add_sizes`/`_resolve_size_items`（原 1199-1361） |
+| `backend/app/modules/base/service/style_ratio_mixin.py` | 264 | 比例全量替换 + `_assert_aggregate_version`/`_bump_aggregate`（原 1416-1639） |
+| `backend/app/modules/base/service/style_operation_mixin.py` | 281 | 款号工序全量替换 + `_current_rates`（原 1641-1874） |
+| `backend/app/modules/base/service/style_template_mixin.py` | 348 | 模板复制 `copy_template`/`_copy_structure`/`_copy_prices`（原 1876-2167） |
+| `backend/app/modules/base/service/rate_service.py` | 318 | `RateService(RateQueryMixin)`：`resolve`/`set_rate`/`_reconcile_intervals`/`_resolve_target_style`（原 2173-2178、2260-2537） |
+| `backend/app/modules/base/service/rate_query_mixin.py` | 101 | `list_rates`/`_filtered`/`export_rates`/`_visible_style_nos`（原 2180-2259） |
+| `backend/app/modules/base/service/rate_helpers.py` | 96 | `build_rate_resolve_stmt`（ADR-0026 §2 唯一取价 SQL）、`rate_source_of`、`rate_out`（原 630-679、697-723） |
+| `backend/app/modules/base/service/material_options_service.py` | 211 | `MaterialOptionsService` + `MATERIAL_TRGM_QUALIFIED`/`SUPPLIER_TRGM_QUALIFIED`（原 2543-2554、2558-2737） |
+| `backend/app/modules/base/service.py` | -2751 | **删除**（纯代码搬运，内容逐字迁入上述 15 个文件） |
+
+新增/搬运合计 **+3094 / -2751**（净 +343）；单文件最大 348 行（≤400）。逐字搬运原业务代码 2558 行 + 原模块 docstring 47 行；新增各文件 import / 类声明 / Mixin `TYPE_CHECKING` 前置声明 / 包聚合约 489 行。81 个函数经 AST 比对逐字一致，无行为变更。
 
 **提交记录**：
-- `<hash>` feat(base): split service.py (2751 lines) into 4 services + StyleService mixins (≤400 each)
+- `<hash>` refactor(base): 拆分 service.py(2751 行) 为 4 Service + StyleService 6 Mixin（≤400 行）
 
 ## 遗留问题
 
