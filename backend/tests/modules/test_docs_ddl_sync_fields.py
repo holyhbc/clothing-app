@@ -46,36 +46,16 @@ import pytest
 # ⚠️ 从**兄弟测试模块**导入解析器，而不是在这里重抄一份正则：
 #    这两份文档守卫的价值全在「解析器认得真实文档的写法」上，
 #    重抄一份就多一个会各自漂移的副本 —— 而漂移的方向恰好是「守卫变假绿」。
-from test_docs_ddl_sync import COMMON_COLUMNS, _documented_ddl, _parse_columns
+from test_docs_ddl_sync import (
+    COMMON_COLUMNS,
+    DOC_PUBLIC_COLUMNS,
+    DOC_PUBLIC_CONVENTION_TABLES,
+    _documented_ddl,
+    _parse_columns,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DOC_04 = REPO_ROOT / "docs" / "04-数据库规范.md"
-
-#: 哪些表走 `04 §7.3` 的「单据公共列」约定 —— 那一组列由 §7.3 统一声明、
-#: **不在各自的字段表里**，而本表对应的 `04 §7.16` 段落是用注释声明适用范围的
-#: （抄一遍就多一个可能不一致的副本）。比对时必须从**字段表侧**拿掉。
-#:
-#: ⚠️ **只有这两张表**。`stock_reservations` / `cutting_scrap_records` 也有
-#: `doc_id` 列，但那是**它们自己的真列**（占用方单据 id / 来源单据 id），
-#: 与 §7.3 的「行表 `doc_id` 指向单据表」不是一回事。⚠️ 早先把它做成全局排除项，
-#: 结果这两张表立刻各报一次「DDL 有列、字段表没有」—— 假失败比没守卫更坏。
-DOC_PUBLIC_CONVENTION_TABLES = frozenset({"bundling_orders", "bundling_order_lines"})
-
-#: `04 §7.3` 的单据公共列。
-DOC_PUBLIC_COLUMNS = frozenset(
-    {
-        "doc_no",
-        "status",
-        "doc_date",
-        "workshop_id",
-        "approved_by",
-        "approved_at",
-        "rejected_reason",
-        "cancelled_reason",
-        "doc_id",
-        "line_no",
-    }
-)
 
 #: 表名 → （字段表所在的 docs 文件、起始标记、结束标记）。
 #:
@@ -84,6 +64,12 @@ FIELD_TABLE_SOURCES: dict[str, tuple[str, str, str]] = {
     # 打菲（T-BASE-004）
     "bundling_orders": ("modules/03-打菲.md", "### 3.1 `bundling_orders`", "### 3.2 "),
     "bundling_order_lines": ("modules/03-打菲.md", "### 3.2 `bundling_order_lines`", "### 3.3 "),
+    # 打菲标签打印记录（T-BUND-001；append-only，DDL 见 04 §7.16）
+    "bundle_label_prints": (
+        "modules/03-打菲.md",
+        "### 3.4 `bundle_label_prints`",
+        "### 3.5 ",
+    ),
     # 库存台账（T-BASE-008）
     "stock_ledgers": ("modules/06-库存.md", "### 3.3 `stock_ledgers`", "### 3.4 "),
     "stock_ledger_lines": ("modules/06-库存.md", "### 3.4 `stock_ledger_lines`", "### 3.5 "),

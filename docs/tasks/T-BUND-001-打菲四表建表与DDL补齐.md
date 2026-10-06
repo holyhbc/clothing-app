@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | bundling |
 | 负责人 | backend-dev |
-| 状态 | `todo` |
+| 状态 | `done` |
 | 优先级 | P1（阻塞 T-BUND-002~010） |
 | 依赖 | 无（迁移号需避让 T-BASE-009-2，见「实现要点」） |
 | 被依赖 | T-BUND-002、T-BUND-003、T-BUND-004、T-BUND-005a、T-BUND-006、T-BUND-007 |
@@ -107,10 +107,22 @@
 
 | 文件 | 行数 | 说明 |
 | --- | --- | --- |
-| 待回填 | | |
+| `backend/alembic/versions/0014_bundling_tables.py` | 389 | `bundle_status` 枚举 + 四表 + 索引 + 权限收口；down 先子后父删表并 `DROP TYPE IF EXISTS bundle_status` |
+| `backend/app/modules/bundling/__init__.py` | 9 | 包声明（`register_all_models` 靠 pkgutil 发现） |
+| `backend/app/modules/bundling/models/__init__.py` | 40 | 聚合重导出（照 `cutting/models/__init__.py`） |
+| `backend/app/modules/bundling/models/order.py` | 242 | `BundlingOrder` / `BundlingOrderLine` |
+| `backend/app/modules/bundling/models/bundle.py` | 209 | `bundle_status` 枚举 + `Bundle` / `BundleLabelPrint`（append-only） |
+| `backend/tests/modules/test_bundling_tables.py` | 364 | TC-B01~B08（CHECK 真拦 + 真跑 downgrade） |
+| `backend/tests/modules/test_docs_ddl_sync.py` | 781 | P1_PENDING_TABLES 删四表；新增 `DOC_PUBLIC_*` 常量供 TD-02 处理 §7.3 约定 |
+| `backend/tests/modules/test_docs_ddl_sync_fields.py` | 258 | `FIELD_TABLE_SOURCES` 增 `bundle_label_prints`；`DOC_PUBLIC_*` 改为从 `test_docs_ddl_sync` import |
+
+> ⚠️ `test_docs_ddl_sync.py` 由 748 → 781 行，超 `ADR-0030` 的 400 行单文件线 ——
+> 该文件**建卡前已是越线存量**（`docs/12 §5` L-081 登记 746），本卡按卡片要求
+> 必须改它（P1_PENDING_TABLES），且 TD-02 真比对这两张用 §7.3 约定的表需要
+> `DOC_PUBLIC_*` 常量。拆测试文件的专门卡未开，故按 L-081「存量随各自卡迁移」口径处理。
 
 **提交记录**：
-- `<hash>` db(bundling): 打菲四表建表 + `bundle_label_prints` DDL 补齐
+- `<hash>` db(bundling): 打菲四表建表（迁移 0014）+ bundling 模块骨架
 
 ## 遗留问题
 

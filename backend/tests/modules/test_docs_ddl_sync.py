@@ -69,8 +69,6 @@ IGNORED_TABLES = frozenset({"alembic_version"})
 #: 会拿本白名单当兜底放行条件，那才是真正的洞。
 P1_PENDING_TABLES = frozenset(
     {
-        # §7.0 打菲件表（ADR-0016）
-        "bundles",
         # §7.1 计件流水
         "piecework_logs",
         # §7.5 采购
@@ -80,11 +78,9 @@ P1_PENDING_TABLES = frozenset(
         "purchase_arrival_lines",
         # §7.6 工资结算周期
         "payroll_periods",
-        # 打菲单表与明细表（T-BASE-004 已搬运到 04 §7.16，建表卡待开）
-        "bundling_orders",
-        "bundling_order_lines",
-        # §7.16 打菲标签打印记录（2026-10-06 补 DDL，闭环 L-072；建表卡 T-BUND-001 待开）
-        "bundle_label_prints",
+        # §7.0 打菲件表 / §7.16 打菲单表+明细+标签打印（T-BUND-001 已建，迁移 0014）——
+        # 移出本白名单意味着 TD-02 / TD-04 从此对它们**真比对**而不是跳过；
+        # ⚠️ 不要加回来：加回等于让它们「文档写错也不抓」（与下一条注释同款）。
         # §7.7.5 裁剪结转与布头登记（T-BASE-008 已搬运到 04 §7.7.5，建表卡待开）
         "cutting_outputs",
         "cutting_scrap_records",
@@ -116,6 +112,40 @@ COMMON_COLUMNS = frozenset(
         "deleted_at",
         "version",
         "remark",
+    }
+)
+
+#: 走 `04 §7.3` 单据公共列约定、且其 `04 §7` DDL 段落**刻意不重复抄**这一组列的表。
+#:
+#: `04 §7.16` 对这两张表用注释声明「§7.3 的 8 个单据公共列 + uq_*_doc_no 适用」，
+#: 抄一遍就多一个可能不一致的副本 —— 所以 TD-02 比对时要从**模型侧**把它们拿掉，
+#: 否则每张表都会因为「文档没抄 doc_no」而红，而那恰恰是文档的**优点**。
+#: 与 `test_docs_ddl_sync_fields.DOC_PUBLIC_CONVENTION_TABLES` 是同一份口径，
+#: 本文件是唯一定义处（那个文件从这里 import，避免两处各写一份而漂移）。
+#:
+#: ⚠️ **只许放「DDL 段落确实没抄 §7.3 列」的表**：
+#:
+#: - `cutting_orders` 虽然也用 §7.3，但它的 DDL 把 8 列逐列写出了，放进来会让它
+#:   「文档有列、模型侧被拿掉」而报错。
+#: - `stock_reservations` / `cutting_scrap_records` 也有 `doc_id` 列，但那是**它们
+#:   自己的真列**（占用方单据 id / 来源单据 id），与 §7.3 的「行表 `doc_id` 指向
+#:   单据表」不是一回事。早先把它做成**全局**排除项，结果这两张表立刻各报一次
+#:   「DDL 有列、字段表没有」—— 假失败比没守卫更坏。
+DOC_PUBLIC_CONVENTION_TABLES = frozenset({"bundling_orders", "bundling_order_lines"})
+
+#: `04 §7.3` 的单据公共列（表头 8 列 + 行表 2 列）。
+DOC_PUBLIC_COLUMNS = frozenset(
+    {
+        "doc_no",
+        "status",
+        "doc_date",
+        "workshop_id",
+        "approved_by",
+        "approved_at",
+        "rejected_reason",
+        "cancelled_reason",
+        "doc_id",
+        "line_no",
     }
 )
 
@@ -340,6 +370,9 @@ def test_docs_04_section7_columns_match_the_model(table: str) -> None:
         pytest.skip(f"04 §7 的 {table} DDL 没有可解析的业务列")
 
     model_columns = _model_tables()[table]
+    if table in DOC_PUBLIC_CONVENTION_TABLES:
+        # 文档没抄 §7.3 公共列（见常量注释），模型侧一并拿掉才能双向对齐
+        model_columns = model_columns - DOC_PUBLIC_COLUMNS
     assert columns <= model_columns, (
         f"docs/04 §7 的 {table} DDL 写了模型里不存在的列："
         f"{sorted(columns - model_columns)}。\n"
