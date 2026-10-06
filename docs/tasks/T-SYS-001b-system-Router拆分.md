@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | auth（`system` 归 auth 提交域） |
 | 负责人 | backend-dev |
-| 状态 | todo |
+| 状态 | done |
 | 优先级 | P0 |
 | 依赖 | T-SYS-001a |
 | 被依赖 | T-REFACTOR-001 |
@@ -20,13 +20,13 @@
 ## 范围
 
 **要做**（6 个文件，见设计稿 §2.5）：
-- [ ] `router/deps.py`：`SessionDep`/`ContextDep`/`SYSTEM_TAGS`/`_require`/`_users`/`_roles`(53-78)
-- [ ] `router/user_router.py`：用户 9 端点(84-280)
-- [ ] `router/role_router.py`：角色 6 端点(286-417)
-- [ ] `router/restore_router.py`：内置库 2 端点(423-486)
-- [ ] `router/permission_router.py`：权限点 1 端点(492-508)
-- [ ] `router/__init__.py`：组装**单个** `router = APIRouter(prefix="/system", tags=["系统管理"])`，按 `user → role → restore → permission` 顺序 include；重导出 `router`
-- [ ] 删除原 `router.py`
+- [x] `router/deps.py`：`SessionDep`/`ContextDep`/`SYSTEM_TAGS`/`_require`/`_users`/`_roles`(53-78)
+- [x] `router/user_router.py`：用户 9 端点(84-280)
+- [x] `router/role_router.py`：角色 6 端点(286-417)
+- [x] `router/restore_router.py`：内置库 2 端点(423-486)
+- [x] `router/permission_router.py`：权限点 1 端点(492-508)
+- [x] `router/__init__.py`：组装**单个** `router = APIRouter(prefix="/system", tags=["系统管理"])`，按 `user → role → restore → permission` 顺序 include；重导出 `router`
+- [x] 删除原 `router.py`
 
 **不做**：
 - 不改路径、方法、权限点、响应模型、数据范围、函数名（OpenAPI `operationId` 依赖函数名）
@@ -54,28 +54,35 @@
 
 ## 验收标准
 
-- [ ] `uv run pytest tests/modules/test_system_router.py -q` 全部通过
-- [ ] 权限测试：无权限 → `12001`、越权数据范围 → `12002`
-- [ ] **OpenAPI 零 diff**：`openapi.json` / `schema.d.ts` / `permissions.ts` 生成后 `git diff` 无输出
-- [ ] 18 个端点全部可达、`/dicts/builtin-missing` 与 `/permissions` 不被遮蔽
-- [ ] 本次新增 6 个文件单文件 ≤400 行
-- [ ] 闸门 1-4 本地预跑通过
+- [x] `uv run pytest tests/modules/test_system_router.py -q` 全部通过
+- [x] 权限测试：无权限 → `12001`、越权数据范围 → `12002`
+- [x] **OpenAPI 零 diff**：`openapi.json` / `schema.d.ts` / `permissions.ts` 生成后 `git diff` 无输出
+- [x] 18 个端点全部可达、`/dicts/builtin-missing` 与 `/permissions` 不被遮蔽
+- [x] 本次新增 6 个文件单文件 ≤400 行
+- [x] 闸门 1-4 本地预跑通过（`scripts/gate.sh --host` 全绿）
 
 ## 测试清单
 
 | # | 用例 | 期望 | 结果 |
 |---|------|------|------|
-| TC-01 | 用户/角色全端点 | 状态码、响应结构、权限校验与拆分前一致 | |
-| TC-02 | 内置库恢复端点 | `system:config:manage` 校验、返回结构不变 | |
-| TC-03 | 权限点端点 | `permission_groups()` 输出顺序不变 | |
-| TC-04 | 路由顺序 | `/users/options`、`/roles/options` 不被 `/{id}` 遮蔽 | |
-| TC-05 | 导入面 | `from app.modules.system.router import router` 单个对象 | |
+| TC-01 | 用户/角色全端点 | 状态码、响应结构、权限校验与拆分前一致 | ✅ `test_system_router.py` 27 passed，OpenAPI 零 diff |
+| TC-02 | 内置库恢复端点 | `system:config:manage` 校验、返回结构不变 | ✅ `test_system_restore.py` + 定向用例通过 |
+| TC-03 | 权限点端点 | `permission_groups()` 输出顺序不变 | ✅ `test_permission_registry.py` 通过，`/permissions` OpenAPI 零 diff |
+| TC-04 | 路由顺序 | `/users/options`、`/roles/options` 不被 `/{id}` 遮蔽 | ✅ 源码顺序 include，OpenAPI 零 diff |
+| TC-05 | 导入面 | `from app.modules.system.router import router` 单个对象 | ✅ 冒烟输出 `APIRouter 99` |
 
 ## 实际改动（完成后回填）
 
 | 文件 | 行数 | 说明 |
 | --- | --- | --- |
-| | | |
+| `backend/app/modules/system/router/__init__.py` | 40 | 组装单个 `router = APIRouter(prefix="/system", tags=["系统管理"])`，按 user→role→restore→permission include；`__all__=["router"]` |
+| `backend/app/modules/system/router/deps.py` | 42 | `SessionDep`/`ContextDep`/`SYSTEM_TAGS`/`_require`/`_users`/`_roles`（原 55-78 行） |
+| `backend/app/modules/system/router/user_router.py` | 226 | 用户 9 端点（原 84-280 行） |
+| `backend/app/modules/system/router/role_router.py` | 159 | 角色 6 端点（原 286-417 行） |
+| `backend/app/modules/system/router/restore_router.py` | 87 | 内置库 2 端点（原 423-486 行） |
+| `backend/app/modules/system/router/permission_router.py` | 30 | 权限点 1 端点（原 492-508 行） |
+| `backend/app/modules/system/router.py` | 删除 | 原 511 行文件 |
+| **合计** | **584（新增）/ 511（删除）/ 净 +73** | 单文件最大 226 行（≤400） |
 
 ## 遗留问题
 
@@ -92,3 +99,4 @@
 | 日期 | 变更内容 | 操作人 |
 |------|---------|--------|
 | 2026-10-06 | 初版：system/router.py(511) → 4 子 router + deps + 包，导出单个 `router`，照抄 T-BASE-010d 配方 | AI |
+| 2026-10-06 | 完成：6 文件 584 行（净 +73），OpenAPI 零 diff（99 paths），定向 27 passed，闸门 1-4 全绿 | AI |
