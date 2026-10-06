@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | base |
 | 负责人 | backend-dev |
-| 状态 | todo |
+| 状态 | done |
 | 优先级 | P0 |
 | 依赖 | T-BASE-010c |
 | 被依赖 | T-BASE-010f |
@@ -58,35 +58,45 @@
 
 ## 验收标准
 
-- [ ] `uv run pytest tests/modules/test_base_dict_router.py -q` 全部通过
-- [ ] `uv run pytest tests/modules/test_base_style_service.py -q` 全部通过（含 router 集成）
-- [ ] `uv run pytest tests/modules/test_operation_rates.py -q` 全部通过
-- [ ] `uv run pytest tests/modules/test_style_disable_export.py -q` 全部通过（`EXPORT_GLOBAL_PERMISSION` 导入）
-- [ ] `uv run pytest tests/modules/test_material_stock_options.py -q` 全部通过
-- [ ] 权限测试：无权限→12001、越权数据范围→12002
-- [ ] OpenAPI 生成无 diff
-- [ ] 本次新增 8 个文件单文件 ≤400 行
-- [ ] 闸门 1-4 本地预跑通过
+- [x] `uv run pytest tests/modules/test_base_dict_router.py -q` 全部通过
+- [x] `uv run pytest tests/modules/test_base_style_service.py -q` 全部通过（含 router 集成）
+- [x] `uv run pytest tests/modules/test_operation_rates.py -q` 全部通过
+- [x] `uv run pytest tests/modules/test_style_disable_export.py -q` 全部通过（`EXPORT_GLOBAL_PERMISSION` 导入）
+- [x] `uv run pytest tests/modules/test_material_stock_options.py -q` 全部通过
+- [x] 权限测试：无权限→12001、越权数据范围→12002
+- [x] OpenAPI 生成无 diff
+- [x] 本次新增 8 个文件单文件 ≤400 行（最大 347）
+- [x] 闸门 1-4 本地预跑通过
 
 ## 测试清单
 
 | # | 用例 | 期望 | 结果 |
 |---|------|------|------|
-| TC-01 | 字典列表/详情/创建/编辑/停用/删除 | 状态码 200/201、响应结构标准、权限校验 | |
-| TC-02 | 款号 CRUD + 比例/工序全量替换 | 三层嵌套响应、建议号端点正常 | |
-| TC-03 | 单价设价/调价/取价/历史 | 三档参数、区间校验、取价 SQL 正确 | |
-| TC-04 | 候选端点 | 物料/供应商/布批候选返回结构不变 | |
-| TC-05 | 路由匹配顺序 | `/colors/exports`、`/styles/suggested-no` 不被 `/{code}`、`/{style_no}` 遮蔽 | |
-| TC-06 | 导入面 | `from app.modules.base.router import router, EXPORT_GLOBAL_PERMISSION, _EXPORT_COLUMN_MAP` 无报错 | |
+| TC-01 | 字典列表/详情/创建/编辑/停用/删除 | 状态码 200/201、响应结构标准、权限校验 | ✅ |
+| TC-02 | 款号 CRUD + 比例/工序全量替换 | 三层嵌套响应、建议号端点正常 | ✅ |
+| TC-03 | 单价设价/调价/取价/历史 | 三档参数、区间校验、取价 SQL 正确 | ✅ |
+| TC-04 | 候选端点 | 物料/供应商/布批候选返回结构不变 | ✅ |
+| TC-05 | 路由匹配顺序 | `/colors/exports`、`/styles/suggested-no` 不被 `/{code}`、`/{style_no}` 遮蔽 | ✅ |
+| TC-06 | 导入面 | `from app.modules.base.router import router, EXPORT_GLOBAL_PERMISSION, _EXPORT_COLUMN_MAP` 无报错 | ✅ |
 
 ## 实际改动（完成后回填）
 
 | 文件 | 行数 | 说明 |
 | --- | --- | --- |
-| | +0 / -0 | |
+| `backend/app/modules/base/router/__init__.py` | 56 | 组装**单个** `router = APIRouter(tags=["基础资料"])`；按源码顺序 include 4 个子 router；末尾调用 `register_resource_routes(router)`；重导出 `router`/`RESOURCES`/`DictResource`/`register_resource_routes`/`EXPORT_GLOBAL_PERMISSION`/`_EXPORT_COLUMN_MAP` |
+| `backend/app/modules/base/router/deps.py` | 166 | `logger`/`EndpointResult`/`SessionDep`/`ContextDep`/`EXPORT_GLOBAL_PERMISSION`/`_export_filename`/`_permission`/`_require`/`_require_base`/`_service`/`_style_service`/`_rate_service`/`_material_options_service`/`_list_query`/`STYLE_TAGS`/`STOCK_TAGS`/`STYLE_EXPORT_COLUMNS`/`RATE_EXPORT_COLUMNS`（原 77-160、629-681、1349-1356） |
+| `backend/app/modules/base/router/dict_handlers.py` | 347 | 9 字典资源 7 个 handler + `_validate`/`_short`/`_EXPORT_COLUMN_MAP`/`_export_columns`（原 162-475） |
+| `backend/app/modules/base/router/dict_factory.py` | 179 | `register_resource_routes`/`_register_one`/`_bind`/`_signature_without_resource`（原 476-620） |
+| `backend/app/modules/base/router/style_router.py` | 281 | `/styles` 列表/导出/候选/创建/建议号（先于 `/{style_no}`）/详情/停用/改（原 763-999） |
+| `backend/app/modules/base/router/style_child_router.py` | 197 | 款号色码/尺码/比例/款号工序/模板复制（原 1000-1170） |
+| `backend/app/modules/base/router/material_router.py` | 134 | `/materials`、`/suppliers`、`/material-stocks` 候选 + `/document-logs`（原 684-760、1172-1197） |
+| `backend/app/modules/base/router/rate_router.py` | 187 | `/operation-rates` 列表/取价/导出/设价（原 1200-1346） |
+| `backend/app/modules/base/router.py` | -1362 | **删除**（纯代码搬运，内容逐字迁入上述 8 个文件） |
+
+新增/搬运合计 **+1547 / -1362**（净 +185）；单文件最大 347 行（≤400，ADR-0030）。逐字搬运原端点与辅助函数；新增各文件 import / 子 router 声明 / 包聚合约 185 行。OpenAPI（`backend/openapi.json` / `schema.d.ts` / `permissions.ts` / `baseDictFields.ts`）生成后 `git diff` 无输出。
 
 **提交记录**：
-- `<hash>` feat(base): split router.py (1362 lines) into 7 modules exporting a single `router` (≤400 each)
+- `见下` refactor(base): 拆分 router.py(1362 行) 为 7 模块 + 包 __init__（导出单个 router，≤400 行）
 
 ## 遗留问题
 
@@ -103,3 +113,4 @@
 | 日期 | 变更内容 | 操作人 |
 |------|---------|--------|
 | 2026-10-06 | 修正行数口径（原误将字节 52274 当行数，真实 1362）；由"3 个 Router"更正为 7 内容文件 + `__init__.py`，明确 `__init__.py` 必须导出**单个** `router`（原稿"导出 router 列表"会使 `main.py` 报错）；补 `_EXPORT_COLUMN_MAP`/`EXPORT_GLOBAL_PERMISSION` 重导出 | AI |
+| 2026-10-06 | 完成拆分：8 文件合计 1547 行（原 1362 行删除），单文件最大 347；定向测试 163 passed、闸门 1-4 全绿、OpenAPI 零 diff | AI |
