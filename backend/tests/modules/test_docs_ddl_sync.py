@@ -73,10 +73,6 @@ P1_PENDING_TABLES = frozenset(
         "bundles",
         # §7.1 计件流水
         "piecework_logs",
-        # §7.2.5 库存台账、明细与锁定（T-BASE-008 已搬运，建表卡待开）
-        "stock_ledgers",
-        "stock_ledger_lines",
-        "stock_reservations",
         # §7.5 采购
         "purchase_orders",
         "purchase_order_lines",
