@@ -100,7 +100,7 @@
 | **合计** | **1036 行 / 13 文件**（净 +186 vs 850） | 单文件最大 279（≤400，ADR-0030） |
 
 **提交记录**：
-- `<hash>` refactor(auth): 拆分 permissions_registry.py(850 行) 为 11 个 perm 模块 + 聚合入口（≤400 行）
+- `173ee07` refactor(auth): 拆分 permissions_registry.py(850 行) 为 11 个 perm 模块 + 聚合入口（≤400 行）
 
 ## 遗留问题
 
