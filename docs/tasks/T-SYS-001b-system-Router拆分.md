@@ -99,4 +99,4 @@
 | 日期 | 变更内容 | 操作人 |
 |------|---------|--------|
 | 2026-10-06 | 初版：system/router.py(511) → 4 子 router + deps + 包，导出单个 `router`，照抄 T-BASE-010d 配方 | AI |
-| 2026-10-06 | 完成：6 文件 584 行（净 +73），OpenAPI 零 diff（99 paths），定向 27 passed，闸门 1-4 全绿 | AI |
+| 2026-10-06 | 完成：6 文件 584 行（净 +73），OpenAPI 零 diff（99 paths），定向 27 passed，闸门 1-4 全绿；提交 `ec9cccb` | AI |
