@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | base |
 | 负责人 | qa |
-| 状态 | todo |
+| 状态 | done |
 | 优先级 | P0 |
 | 依赖 | T-BASE-010a, T-BASE-010b, T-BASE-010c, T-BASE-010d, T-BASE-010e |
 | 被依赖 | T-BASE-010g |
@@ -83,46 +83,57 @@
 
 ## 验收标准
 
-- [ ] `uv run pytest tests/ -q --co` 收集无 `ImportError` / `ModuleNotFoundError`
-- [ ] `uv run pytest tests/modules/test_base_dict_service.py tests/modules/test_base_style_service.py tests/modules/test_base_dict_router.py tests/modules/test_operation_rates.py -q` 全部通过
-- [ ] `uv run pytest tests/modules/test_cutting_*.py -q` 全部通过
-- [ ] `uv run pytest tests/modules/test_stock_basis.py tests/modules/test_material_tables.py tests/modules/test_material_stock_options.py -q` 全部通过
-- [ ] `uv run pytest tests/modules/test_permission_registry.py tests/modules/test_seed_cli.py -q` 全部通过
-- [ ] 覆盖率 ≥80%（核心 ≥90%）
-- [ ] 闸门 3 通过
+- [x] `uv run pytest tests/ -q --co` 收集无 `ImportError` / `ModuleNotFoundError`（792 collected）
+- [x] `uv run pytest tests/modules/test_base_dict_service.py tests/modules/test_base_style_service.py tests/modules/test_base_dict_router.py tests/modules/test_operation_rates.py -q` 全部通过
+- [x] `uv run pytest tests/modules/test_cutting_*.py -q` 全部通过
+- [x] `uv run pytest tests/modules/test_stock_basis.py tests/modules/test_material_tables.py tests/modules/test_material_stock_options.py -q` 全部通过
+- [x] `uv run pytest tests/modules/test_permission_registry.py tests/modules/test_seed_cli.py -q` 全部通过
+- [x] 覆盖率 ≥80%（核心 ≥90%）：实际 90.19%
+- [x] 闸门 3 通过
 
 ## 测试清单
 
 | # | 用例 | 期望 | 结果 |
 |---|------|------|------|
-| TC-01 | 全量测试收集 | `pytest --co` 无 `ImportError` / `ModuleNotFoundError` | |
-| TC-02 | base 字典/款号/单价测试 | 全部通过、覆盖率达标 | |
-| TC-03 | cutting 模块测试 | 全部通过（依赖 base 模型/服务） | |
-| TC-04 | stock/物料测试 | 全部通过（依赖 base 模型） | |
-| TC-05 | 权限/认证测试 | 全部通过（依赖 permissions_registry 聚合入口） | |
-| TC-06 | 跨模块生产导入 | `system/service.py`、`base/document_logs.py` 导入无报错 | |
+| TC-01 | 全量测试收集 | `pytest --co` 无 `ImportError` / `ModuleNotFoundError` | ✅ 792 collected，零 ImportError |
+| TC-02 | base 字典/款号/单价测试 | 全部通过、覆盖率达标 | ✅ 通过（`app` 总覆盖率 90.19%） |
+| TC-03 | cutting 模块测试 | 全部通过（依赖 base 模型/服务） | ✅ 4 文件全过 |
+| TC-04 | stock/物料测试 | 全部通过（依赖 base 模型） | ✅ 全过 |
+| TC-05 | 权限/认证测试 | 全部通过（依赖 permissions_registry 聚合入口） | ✅ 全过 |
+| TC-06 | 跨模块生产导入 | `system/service.py`、`base/document_logs.py` 导入无报错 | ✅ 经 `service/__init__.py` 重导出命中（命令方向笔误见变更记录） |
 
 ## 实际改动（完成后回填）
 
 | 文件 | 行数 | 说明 |
 | --- | --- | --- |
-| | +0 / -0 | |
+| （无） | +0 / -0 | 逐文件核对后**零改动**：所有测试/夹具/工厂均经各包 `__init__.py` 重导出的旧路径命中，未发现任何未被重导出的名字 |
 
 **提交记录**：
-- `<hash>` test(base): verify/repair import paths after module split
+- `<hash>` test(base): 核对 base 拆包后测试导入（零改动，全量通过）
 
 ## 遗留问题
 
 | # | 问题 | 登记到 |
 | --- | --- | --- |
-| | | docs/12 §遗留问题清单 |
+| 1 | 任务卡给定的冒烟命令 `from app.modules.base.document_logs import StyleService` **方向写反了**：`StyleService` 从不是 `document_logs` 的公开导出，该文件一直是函数内 `from app.modules.base.service import StyleService`（设计 §2.6 / Q-07 亦把 `document_logs.py` 列为**导入方**）。按真实导入面（`base.service` 导出 `StyleService` + `document_logs` 自身可导入）复跑通过，**无需代码改动** | 无（任务卡文档笔误，非代码/规范问题） |
 
 ## 自检清单
 
 对照 `AGENTS.md` §9 逐条勾选后才可置 `done`。
+
+- [x] 读过本任务对应的 docs 规范（10-测试规范、设计 §2.6、AGENTS §2.1/§7/§9）
+- [x] 无硬编码业务常量（纯核对，零代码改动）
+- [x] 无物理删除
+- [x] 未改测试逻辑/断言/数据/用例数量（零改动）
+- [x] 测试覆盖正常 + 异常 + 权限拒绝 + 并发（全量 792 passed）
+- [x] 闸门 3 通过（`pytest -q --cov=app --cov-fail-under=80`：792 passed / 0 skipped / 90.19%）
+- [x] 提交信息符合规范
+- [x] 手写行数 ≤ 1200，且没有单个文件超 400 行
+- [x] 本次改动已在 docs/12 变更记录留痕
 
 ## 变更记录
 
 | 日期 | 变更内容 | 操作人 |
 |------|---------|--------|
 | 2026-10-06 | 修正行数口径导致的范围变化：明确 §2.6 兼容重导出下本卡为"核对为主、必要时修正"；按真实测试文件补齐清单；补 `test_material_tables`/`test_base_resource_registry`/`test_system_*`/`test_docs_ddl_sync*` | AI |
+| 2026-10-06 | 完成核对：`pytest --co` 792 collected 无 ImportError；全量 `pytest -q --cov=app --cov-fail-under=80` → 792 passed / 0 skipped / 90.19%；定向复跑 501 passed；测试/夹具零改动。澄清任务卡 TC-06 冒烟命令 `from base.document_logs import StyleService` 方向笔误（见遗留问题） | AI |
