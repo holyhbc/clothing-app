@@ -1,0 +1,131 @@
+"""finance 模块权限点（docs/07-认证与权限规范.md §2.2）。
+
+单一来源为 ``app.common.permissions_registry.PERMISSIONS`` —— 本文件是其
+``finance`` 段，聚合顺序与内容由 ``tests/modules/test_permission_registry.py``
+与 docs/07 §2.2 双向守护。本文件是纯代码拆分的产物，**不得单独改动**：
+新增/修改权限点须改 docs/07 §2.2 后同步本段并重跑生成物。
+"""
+
+from app.common.permissions import PermissionSeed
+
+PERMISSIONS_FINANCE: tuple[PermissionSeed, ...] = (
+    PermissionSeed(
+        code="finance:ap:read",
+        name="往来/财务·应付查看",
+        module="finance",
+        action="ap:read",
+        sort_order=36,
+    ),
+    PermissionSeed(
+        code="finance:ar:read",
+        name="往来/财务·应收查看",
+        module="finance",
+        action="ar:read",
+        sort_order=37,
+    ),
+    PermissionSeed(
+        code="finance:export",
+        name="往来/财务·导出",
+        module="finance",
+        action="export",
+        sort_order=38,
+    ),
+    PermissionSeed(
+        code="finance:import",
+        name="往来/财务·导入",
+        module="finance",
+        action="import",
+        sort_order=39,
+    ),
+    PermissionSeed(
+        code="finance:payment",
+        name="往来/财务·付款",
+        module="finance",
+        action="payment",
+        sort_order=40,
+    ),
+    PermissionSeed(
+        code="finance:payment:reverse",
+        name="往来/财务·付款红冲",
+        module="finance",
+        action="payment:reverse",
+        sort_order=41,
+    ),
+    PermissionSeed(
+        code="finance:period:close",
+        name="往来/财务·会计期间关账",
+        module="finance",
+        action="period:close",
+        sort_order=42,
+    ),
+    PermissionSeed(
+        code="finance:period:reopen",
+        name="往来/财务·会计期间反关账",
+        module="finance",
+        action="period:reopen",
+        sort_order=43,
+    ),
+    PermissionSeed(
+        code="finance:receipt",
+        name="往来/财务·收款",
+        module="finance",
+        action="receipt",
+        sort_order=44,
+    ),
+    PermissionSeed(
+        code="finance:receipt:reverse",
+        name="往来/财务·收款红冲",
+        module="finance",
+        action="receipt:reverse",
+        sort_order=45,
+    ),
+    PermissionSeed(
+        code="finance:settle",
+        name="往来/财务·结算",
+        module="finance",
+        action="settle",
+        sort_order=46,
+    ),
+    PermissionSeed(
+        code="finance:statement",
+        name="往来/财务·对账单",
+        module="finance",
+        action="statement",
+        sort_order=47,
+    ),
+    PermissionSeed(
+        code="finance:voucher:create",
+        name="往来/财务·新建凭证",
+        module="finance",
+        action="voucher:create",
+        sort_order=48,
+    ),
+    PermissionSeed(
+        code="finance:voucher:post",
+        name="往来/财务·凭证过账",
+        module="finance",
+        action="voucher:post",
+        sort_order=49,
+    ),
+    PermissionSeed(
+        code="finance:voucher:read",
+        name="往来/财务·凭证查看",
+        module="finance",
+        action="voucher:read",
+        sort_order=50,
+    ),
+    PermissionSeed(
+        code="finance:voucher:reverse",
+        name="往来/财务·凭证红冲",
+        module="finance",
+        action="voucher:reverse",
+        sort_order=51,
+    ),
+    PermissionSeed(
+        code="finance:voucher:update",
+        name="往来/财务·修改凭证",
+        module="finance",
+        action="voucher:update",
+        sort_order=52,
+    ),
+)

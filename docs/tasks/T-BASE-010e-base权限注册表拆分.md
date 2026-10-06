@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | base |
 | 负责人 | backend-dev |
-| 状态 | todo |
+| 状态 | done |
 | 优先级 | P0 |
 | 依赖 | 无 |
 | 被依赖 | T-BASE-010f |
@@ -62,32 +62,45 @@
 
 ## 验收标准
 
-- [ ] `uv run pytest tests/modules/test_permission_registry.py -q` 全部通过
-- [ ] `uv run pytest tests/modules/test_seed_cli.py -q` 全部通过
-- [ ] 权限点总数 = 122（与 ADR-0008 一致），且顺序与拆分前逐个相同
-- [ ] `ROLES` 与拆分前逐个相同
-- [ ] 本次新增/重写的 13 个文件单文件 ≤400 行
-- [ ] 闸门 1-4 本地预跑通过
+- [x] `uv run pytest tests/modules/test_permission_registry.py -q` 全部通过（41 passed 含 `test_seed_cli.py`）
+- [x] `uv run pytest tests/modules/test_seed_cli.py -q` 全部通过
+- [x] 权限点总数 = 122（与 ADR-0008 一致），且顺序与拆分前逐个相同（逐元素比对 HEAD 旧值）
+- [x] `ROLES` 与拆分前逐个相同（字段逐元素比对）
+- [x] 本次新增/重写的 13 个文件单文件 ≤400 行（最大 279）
+- [x] 闸门 1-4 本地预跑通过（`scripts/gate.sh --host`）
 
 ## 测试清单
 
 | # | 用例 | 期望 | 结果 |
 |---|------|------|------|
-| TC-01 | 权限点注册总数 | `len(PERMISSIONS) == 122` | |
-| TC-02 | 权限点顺序 | 与拆分前 `PERMISSIONS` 逐元素相同 | |
-| TC-03 | 内置角色权限解析 | `resolve_role_permissions(RoleSeed("super_admin", ...))` 返回全部 | |
-| TC-04 | 各模块权限点前缀 | `base`/`bundling`/`cutting`/`finance`/`payroll`/`piecework`/`purchase`/`sales`/`self`/`stock`/`system` 计数正确 | |
-| TC-05 | 种子数据同步 | `seed_baseline` 写入无报错、数量 122 | |
-| TC-06 | 前端/文档一致性守卫 | `test_permission_registry.py` 比对 docs/07 §2.2 通过 | |
+| TC-01 | 权限点注册总数 | `len(PERMISSIONS) == 122` | ✅ 122 |
+| TC-02 | 权限点顺序 | 与拆分前 `PERMISSIONS` 逐元素相同 | ✅ 逐元素相同（`sort_order` 1..122 无重复） |
+| TC-03 | 内置角色权限解析 | `resolve_role_permissions(RoleSeed("super_admin", ...))` 返回全部 | ✅ 122；10 角色逐角色解析结果不变 |
+| TC-04 | 各模块权限点前缀 | `base`/`bundling`/`cutting`/`finance`/`payroll`/`piecework`/`purchase`/`sales`/`self`/`stock`/`system` 计数正确 | ✅ 11/12/12/17/13/6/13/12/4/15/7 |
+| TC-05 | 种子数据同步 | `seed_baseline` 写入无报错、数量 122 | ✅ `seed_baseline --check`：权限点 122 / 角色 10 |
+| TC-06 | 前端/文档一致性守卫 | `test_permission_registry.py` 比对 docs/07 §2.2 通过 | ✅ 41 passed（两个定向文件）+ 全量 792 passed |
 
 ## 实际改动（完成后回填）
 
 | 文件 | 行数 | 说明 |
 | --- | --- | --- |
-| | +0 / -0 | |
+| `backend/app/common/permissions/__init__.py` | 37 | 新增：`PermissionSeed`/`RoleSeed` 下沉（import `DataScope`），切断循环导入 |
+| `backend/app/common/permissions/perm_base.py` | 61 | 新增：base 11 |
+| `backend/app/common/permissions/perm_bundling.py` | 64 | 新增：bundling 12 |
+| `backend/app/common/permissions/perm_cutting.py` | 60 | 新增：cutting 12 |
+| `backend/app/common/permissions/perm_finance.py` | 131 | 新增：finance 17 |
+| `backend/app/common/permissions/perm_payroll.py` | 63 | 新增：payroll 13 |
+| `backend/app/common/permissions/perm_piecework.py` | 50 | 新增：piecework 6 |
+| `backend/app/common/permissions/perm_purchase.py` | 71 | 新增：purchase 13 |
+| `backend/app/common/permissions/perm_sales.py` | 52 | 新增：sales 12 |
+| `backend/app/common/permissions/perm_self.py` | 40 | 新增：self 4 |
+| `backend/app/common/permissions/perm_stock.py` | 67 | 新增：stock 15 |
+| `backend/app/common/permissions/perm_system.py` | 61 | 新增：system 7 |
+| `backend/app/common/permissions_registry.py` | 279（原 850，diff -615/+44） | 重写：聚合入口（按原顺序拼接）+ `ROLES` + 查询函数，重导出 `PermissionSeed`/`RoleSeed` |
+| **合计** | **1036 行 / 13 文件**（净 +186 vs 850） | 单文件最大 279（≤400，ADR-0030） |
 
 **提交记录**：
-- `<hash>` feat(auth): split permissions_registry.py (850 lines) into 11 module files + aggregator (≤400 each)
+- `<hash>` refactor(auth): 拆分 permissions_registry.py(850 行) 为 11 个 perm 模块 + 聚合入口（≤400 行）
 
 ## 遗留问题
 
