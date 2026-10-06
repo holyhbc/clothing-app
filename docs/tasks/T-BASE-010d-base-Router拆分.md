@@ -96,7 +96,7 @@
 新增/搬运合计 **+1547 / -1362**（净 +185）；单文件最大 347 行（≤400，ADR-0030）。逐字搬运原端点与辅助函数；新增各文件 import / 子 router 声明 / 包聚合约 185 行。OpenAPI（`backend/openapi.json` / `schema.d.ts` / `permissions.ts` / `baseDictFields.ts`）生成后 `git diff` 无输出。
 
 **提交记录**：
-- `见下` refactor(base): 拆分 router.py(1362 行) 为 7 模块 + 包 __init__（导出单个 router，≤400 行）
+- `42aeef0` refactor(base): 拆分 router.py(1362 行) 为 7 模块 + 包 __init__（导出单个 router，≤400 行）
 
 ## 遗留问题
 
