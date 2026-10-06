@@ -81,7 +81,7 @@
 | `docs/tasks/T-BASE-010g-base闸门验证.md` | +35 / -33 | 状态置 done、清单勾选、测试结果与实际改动回填 |
 
 **提交记录**：
-- 见下 chore(base): pass all 5 gates after module split
+- 642c5ad chore(base): pass all 5 gates after module split
 
 ## 遗留问题
 
