@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | base |
 | 负责人 | backend-dev |
-| 状态 | todo |
+| 状态 | done |
 | 优先级 | P0 |
 | 依赖 | T-BASE-010a |
 | 被依赖 | T-BASE-010c, T-BASE-010d, T-BASE-010f |
@@ -74,10 +74,18 @@
 
 | 文件 | 行数 | 说明 |
 | --- | --- | --- |
-| | +0 / -0 | |
+| `backend/app/modules/base/schemas/__init__.py` | 176 | 聚合重导出全部 schema + `WRITE_MODELS` + `ACTION_BY_OPERATION`，保持原导入面零改动 |
+| `backend/app/modules/base/schemas/common_schemas.py` | 192 | 公共片段 + 通用响应（`Versioned`/`DictOut`/`DictRow`/`OptionOut`/`StockBatchOptionOut`/`DisableIn`/`PatchIn`/`DeleteOut`/`DocumentLogOut`/`SuggestedStyleNoOut`/`DisableOut`/`payload_dict`） |
+| `backend/app/modules/base/schemas/dict_schemas.py` | 232 | 9 字典 `*Create`/`*Patch` + `SizeGroupItemIn` + `CustomerCreate`/`CustomerPatch` |
+| `backend/app/modules/base/schemas/style_schemas.py` | 175 | 款号主表/色码/尺码 |
+| `backend/app/modules/base/schemas/style_child_schemas.py` | 196 | 比例/款号工序/模板复制 |
+| `backend/app/modules/base/schemas/rate_schemas.py` | 120 | 工序单价 |
+| `backend/app/modules/base/schemas.py` | -913 | **删除**（纯代码搬运，内容逐字迁入上述 6 个文件） |
+
+新增/搬运合计 **+1091 / -913**；单文件最大 232 行（≤400）。
 
 **提交记录**：
-- `<hash>` feat(base): split schemas.py (913 lines) into 5 modules + package init (≤400 each)
+- （hash 由紧随其后的 docs 回填提交填入）
 
 ## 遗留问题
 
