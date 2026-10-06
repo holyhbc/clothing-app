@@ -121,7 +121,7 @@
 
 | # | 问题 | 登记到 |
 | --- | --- | --- |
-| | | docs/12 §遗留问题清单 |
+| L-090 | 卡面点名的三条并发用例（款号并发创建 / 单价并发调价 / 比例全量替换一成一败 `10003`）在仓库中不存在，只有 `concurrent_sessions` 夹具与清理逻辑；实际 base 并发覆盖在 `tests/integration/test_no_dangling_refs.py`（CC-2/CC-3/CC-6，18 passed） | docs/12 §5 L-090 |
 
 ## 自检清单
 
