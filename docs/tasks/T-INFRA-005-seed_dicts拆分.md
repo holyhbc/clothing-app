@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | infra（`app/cli`） |
 | 负责人 | backend-dev |
-| 状态 | todo |
+| 状态 | done |
 | 优先级 | P1 |
 | 依赖 | 无 |
 | 被依赖 | T-REFACTOR-001 |
@@ -72,7 +72,11 @@
 
 | 文件 | 行数 | 说明 |
 | --- | --- | --- |
-| | | |
+| `backend/app/cli/seed_dicts/__init__.py` | 66 | 聚合重导出 16 个公开名（6 组 `BUILTIN_*` + `DICT_DOC_TYPES` + `tombstoned_codes` + 6 个 `seed_*` + `seed_dict_library` + `check_dict_library`）|
+| `backend/app/cli/seed_dicts/builtin_data.py` | 118 | 6 组 `BUILTIN_*` + `_SEED_OPERATOR` + `DICT_DOC_TYPES`（原 37-145 逐字搬运）|
+| `backend/app/cli/seed_dicts/seeders.py` | 271 | `tombstoned_codes`/`_skip_tombstoned`/`seed_dict_library` + 6 个 `seed_*`（原 148-382 逐字搬运）|
+| `backend/app/cli/seed_dicts/checker.py` | 89 | `check_dict_library`（原 385-447 逐字搬运）|
+| `backend/app/cli/seed_dicts.py` | -447 | 删除原文件 |
 
 ## 遗留问题
 
@@ -89,3 +93,4 @@
 | 日期 | 变更内容 | 操作人 |
 |------|---------|--------|
 | 2026-10-06 | 初版：cli/seed_dicts.py(447) → 数据/写入/校验三文件 + 包 | AI |
+| 2026-10-06 | 完成：4 文件 544 行（净 +97），单文件最大 271 行；数据/函数逐字未改、旧导入面零改动；定向 39 passed、`pytest tests/ --co -q` 795 collected 无 ImportError、闸门 1-4 全绿；提交 `<hash>` | AI |
