@@ -9,7 +9,7 @@
 | 依赖 | 无（迁移号需避让 T-BASE-009-2，见「实现要点」） |
 | 被依赖 | T-BUND-002、T-BUND-003、T-BUND-004、T-BUND-005a、T-BUND-006、T-BUND-007 |
 | 关联设计 | [`docs/modules/03-打菲.md`](../modules/03-打菲.md) §3.1/§3.2/§3.3/§3.4、[`P1-打菲-实施说明.md`](../modules/P1-打菲-实施说明.md) §2/§3 |
-| 关联 ADR | [ADR-0016](../adr/0016-打菲按手与扫码得件数.md)、[ADR-0031](../adr/0031-模块文件结构按职责拆分.md)、[ADR-0030](../adr/0030-提交体量上限放宽到1200行.md) |
+| 关联 ADR | [ADR-0016](../adr/0016-打菲按手与扫码得件数.md)、[ADR-0020](../adr/0020-商品分类与手数直接输入.md)、[ADR-0031](../adr/0031-模块文件结构按职责拆分.md)、[ADR-0030](../adr/0030-提交体量上限放宽到1200行.md) |
 | 估算 | 0.5d |
 
 ## 目标
@@ -20,8 +20,9 @@
 ## 范围
 
 **要做**：
-- [ ] **`docs/04 §7.16` 追加 `bundle_label_prints` 的 `CREATE TABLE`**（字段照 `modules/03 §3.4`
-      逐字搬运；索引 `idx_bundle_label_prints_bundle_no (bundle_no, printed_at DESC)` 一并落）
+- [x] **`docs/04 §7.16` 追加 `bundle_label_prints` 的 `CREATE TABLE`** —— ✅ 已由规范变更
+      **0111**（2026-10-06）完成（字段照 `modules/03 §3.4` 搬运，append-only 公共字段口径）；
+      **本卡不再重复改 `docs/04`**
 - [ ] `backend/tests/modules/test_docs_ddl_sync_fields.py` 的 `FIELD_TABLE_SOURCES` 增加
       `bundle_label_prints`（字段表源 `modules/03` §3.4），使 TD4-01 双向往返守卫覆盖它
 - [ ] 迁移（建卡时 `head+1`，当前 0013 → 0014；若 0014 已被 T-BASE-009-2 占用则顺延）：
@@ -30,7 +31,7 @@
       （`models/order.py` = `BundlingOrder`/`BundlingOrderLine`；`models/bundle.py` =
       `bundle_status` 枚举 + `Bundle`/`BundleLabelPrint`；`models/__init__.py` 聚合重导出）
 - [ ] `backend/tests/modules/test_bundling_tables.py`：表结构 + 枚举 + CHECK 真拦
-- [ ] `P1_PENDING_TABLES` 删除 `bundling_orders` / `bundling_order_lines` / `bundles`（TD-02 从此真比对）
+- [ ] `P1_PENDING_TABLES` **先补登 `bundle_label_prints`**（DDL 已进 `04 §7.16` 但表未建，缺此登记 TD-04 会报「未知表」）；建表后与 `bundling_orders` / `bundling_order_lines` / `bundles` 一并删除（TD-02 从此真比对）
 - [ ] 归档：`docs/12` 变更记录加行
 
 **不做**：
@@ -44,9 +45,9 @@
 
 | 文件 | 类型 | 说明 |
 | --- | --- | --- |
-| `docs/04-数据库规范.md` | 修改 | §7.16 追加 `bundle_label_prints` DDL |
+| `docs/04-数据库规范.md` | — | §7.16 的 `bundle_label_prints` DDL 与 `hands integer` 已由规范变更 **0111** 完成，本卡**不再修改本文件** |
 | `backend/tests/modules/test_docs_ddl_sync_fields.py` | 修改 | 字段表源 + 白名单同步 |
-| `backend/tests/modules/test_docs_ddl_sync.py` | 修改 | `P1_PENDING_TABLES` 删三表 |
+| `backend/tests/modules/test_docs_ddl_sync.py` | 修改 | `P1_PENDING_TABLES` 先补登 `bundle_label_prints`，建表后删四表 |
 | `backend/alembic/versions/00NN_bundling_tables.py` | 新增 | 枚举 + 四表 + 索引 |
 | `backend/app/modules/bundling/__init__.py` | 新增 | 包声明（`register_all_models` 靠 pkgutil 发现） |
 | `backend/app/modules/bundling/models/__init__.py` | 新增 | 聚合重导出（照 `cutting/models/__init__.py`） |
@@ -74,18 +75,18 @@
       `idx_bundles_counted_pending` / `idx_bundles_line_id` / `idx_bundles_cutting` /
       `idx_bundle_label_prints_bundle_no`
 - [ ] **迁移号避让**：先 `uv run alembic heads`；`T-BASE-009-2` 计划占 0014，谁先落地谁取 `head+1`
-- [ ] ⚠️ `bundling_order_lines.hands` 类型按 `04 §7.16` 现为 `numeric(14,4)`；若 Q-B16 结论为
-      `integer`，**本卡不自行改**，待规范修订后另开迁移对齐
+- [ ] ✅ `bundling_order_lines.hands` 类型已由规范对齐：`04 §7.16` 现为 **`integer`**（2026-10-06
+      对齐 ADR-0020，Q-B16 已闭环，变更 0111）。**本卡直接按 `integer` 建表**，无需另开迁移对齐
 
 ## 验收标准
 
 - [ ] `uv run pytest tests/modules/test_bundling_tables.py -q` 全部通过
 - [ ] `uv run pytest tests/modules/test_docs_ddl_sync.py tests/modules/test_docs_ddl_sync_fields.py -q` 全部通过
 - [ ] `uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head && uv run alembic check` 输出 `No new upgrade operations detected.`
-- [ ] 四张表均含完整公共字段 + `version`（`bundle_label_prints` 口径待 Q-B14，**按 04 落地为准**）
+- [ ] 四张表公共字段按 `04`：`bundling_orders` / `bundling_order_lines` / `bundles` 含完整公共字段 + `version`；`bundle_label_prints` 为 **append-only**，只有 `id` + `created_at` + `created_by`（**无** `version` / `deleted_at` / `updated_*`，Q-B14 已闭环）
 - [ ] `bundles` 的 `uq_bundles_hand UNIQUE (doc_id, color_code, size_code, hands)` 与
       `ck_bundles_qty` / `ck_bundles_cnt` / `ck_bundles_one` 真拦（测试里插违反行验证）
-- [ ] `P1_PENDING_TABLES` 不再含 `bundling_orders` / `bundling_order_lines` / `bundles`
+- [ ] `P1_PENDING_TABLES` 不再含 `bundling_orders` / `bundling_order_lines` / `bundles` / `bundle_label_prints`
 - [ ] 本次新增/修改文件单文件 ≤400 行
 - [ ] 闸门 1-4 本地预跑通过
 
@@ -115,9 +116,9 @@
 
 | # | 问题 | 登记到 |
 | --- | --- | --- |
-| Q-B14 | `bundle_label_prints` 公共字段/append-only 口径 | `P1-打菲-实施说明.md` §7 |
-| Q-B16 | `bundling_order_lines.hands` 类型 | `P1-打菲-实施说明.md` §7 |
-| L-072 | DDL 部分本卡闭环；索引/查询守卫随表建立 | — |
+| Q-B14 | ✅ **已闭环 2026-10-06**：append-only，公共字段仅 `id` + `created_at` + `created_by`（无 `version`/`deleted_at`/`updated_*`），DDL 见 `04 §7.16` | — |
+| Q-B16 | ✅ **已闭环 2026-10-06（规范对齐 ADR-0020）**：`hands` 为 `integer`，建表直接按 integer | — |
+| L-072 | DDL 部分已闭环 2026-10-06（`04 §7.16` 已补 `bundle_label_prints`，变更 0111）；索引/查询守卫随本卡建表落地 | — |
 
 ## 自检清单
 
@@ -128,3 +129,4 @@
 | 日期 | 变更内容 | 操作人 |
 | --- | --- | --- |
 | 2026-10-06 | 初版：四表建表 + `bundle_label_prints` DDL 补齐，明确迁移号避让 T-BASE-009-2 | AI |
+| 2026-10-06 | 同步规范变更 0111：`04 §7.16` 的 DDL 与 `hands integer` 已由规范完成（本卡不再改 `docs/04`）；Q-B14/Q-B16 闭环并从阻塞遗留移除；补 `P1_PENDING_TABLES` 需先登记 `bundle_label_prints` | AI |

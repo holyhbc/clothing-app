@@ -83,6 +83,8 @@ P1_PENDING_TABLES = frozenset(
         # 打菲单表与明细表（T-BASE-004 已搬运到 04 §7.16，建表卡待开）
         "bundling_orders",
         "bundling_order_lines",
+        # §7.16 打菲标签打印记录（2026-10-06 补 DDL，闭环 L-072；建表卡 T-BUND-001 待开）
+        "bundle_label_prints",
         # §7.7.5 裁剪结转与布头登记（T-BASE-008 已搬运到 04 §7.7.5，建表卡待开）
         "cutting_outputs",
         "cutting_scrap_records",
