@@ -115,7 +115,7 @@
 新增/搬运合计 **+3094 / -2751**（净 +343）；单文件最大 348 行（≤400）。逐字搬运原业务代码 2558 行 + 原模块 docstring 47 行；新增各文件 import / 类声明 / Mixin `TYPE_CHECKING` 前置声明 / 包聚合约 489 行。81 个函数经 AST 比对逐字一致，无行为变更。
 
 **提交记录**：
-- `<hash>` refactor(base): 拆分 service.py(2751 行) 为 4 Service + StyleService 6 Mixin（≤400 行）
+- `98fe3eb` refactor(base): 拆分 service.py(2751 行) 为 4 Service + StyleService 6 Mixin（≤400 行）
 
 ## 遗留问题
 
