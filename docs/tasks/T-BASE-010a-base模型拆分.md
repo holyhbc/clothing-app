@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | base |
 | 负责人 | backend-dev |
-| 状态 | todo |
+| 状态 | done |
 | 优先级 | P0 |
 | 依赖 | 无 |
 | 被依赖 | T-BASE-010b, T-BASE-010c, T-BASE-010d, T-BASE-010f |
@@ -19,14 +19,14 @@
 ## 范围
 
 **要做**：
-- [ ] 创建 `backend/app/modules/base/models/org.py`：`Workshop`(89)、`WorkshopGroup`(116)、`Warehouse`(151)、`UomUnit`(179)
-- [ ] 创建 `backend/app/modules/base/models/dict.py`：`Color`(209)、`Size`(252)、`SizeGroup`(303)、`SizeGroupItem`(343)、`Operation`(374)、`ProductCategory`(429)
-- [ ] 创建 `backend/app/modules/base/models/style.py`：`Customer`(469)、`Style`(503)、`StyleColor`(569)、`StyleSize`(599)、`StyleColorSizeRatio`(629)、`StyleOperation`(665)、`StyleNoSequence`(824)
-- [ ] 创建 `backend/app/modules/base/models/rate.py`：**`OperationRate`(722)**（REQ-000 §2 三档取价核心资产，单独归属）
-- [ ] 创建 `backend/app/modules/base/models/material.py`：`MaterialCategory`(876)、`Material`(914)、`Supplier`(976)
-- [ ] 创建 `backend/app/modules/base/models/stock.py`：`MaterialStock`(1055)、`WipStock`(1192)、`WipLedgerLine`(1263)
-- [ ] 更新 `backend/app/modules/base/models/__init__.py`：按原顺序导出全部 24 个模型，保证现有 `from app.modules.base.models import X` 零改动
-- [ ] 删除原 `models.py`（或重命名为 `.bak` 待验证后删）
+- [x] 创建 `backend/app/modules/base/models/org.py`：`Workshop`(89)、`WorkshopGroup`(116)、`Warehouse`(151)、`UomUnit`(179)
+- [x] 创建 `backend/app/modules/base/models/dict.py`：`Color`(209)、`Size`(252)、`SizeGroup`(303)、`SizeGroupItem`(343)、`Operation`(374)、`ProductCategory`(429)
+- [x] 创建 `backend/app/modules/base/models/style.py`：`Customer`(469)、`Style`(503)、`StyleColor`(569)、`StyleSize`(599)、`StyleColorSizeRatio`(629)、`StyleOperation`(665)、`StyleNoSequence`(824)
+- [x] 创建 `backend/app/modules/base/models/rate.py`：**`OperationRate`(722)**（REQ-000 §2 三档取价核心资产，单独归属）
+- [x] 创建 `backend/app/modules/base/models/material.py`：`MaterialCategory`(876)、`Material`(914)、`Supplier`(976)
+- [x] 创建 `backend/app/modules/base/models/stock.py`：`MaterialStock`(1055)、`WipStock`(1192)、`WipLedgerLine`(1263)
+- [x] 更新 `backend/app/modules/base/models/__init__.py`：按原顺序导出全部 24 个模型，保证现有 `from app.modules.base.models import X` 零改动
+- [x] 删除原 `models.py`（或重命名为 `.bak` 待验证后删）
 
 **不做**：
 - 不改变任何表结构、字段、约束、索引
@@ -51,40 +51,50 @@
 
 ## 实现要点（必读规范）
 
-- [ ] 遵守 docs/03-代码规范.md：模型定义风格、Mixin 组合顺序、CheckConstraint 命名
-- [ ] 遵守 docs/04-数据库规范.md：公共字段、枚举 PG enum、部分唯一索引、GIN 索引表达式
-- [ ] `models/__init__.py` 按原顺序导出，确保现有导入零改动（`resources.py`/`cutting/service.py`/`cli/seed_dicts.py`/`core/numbering.py` 及全部测试）
-- [ ] `register_all_models()` 自动发现新包，无需修改
+- [x] 遵守 docs/03-代码规范.md：模型定义风格、Mixin 组合顺序、CheckConstraint 命名
+- [x] 遵守 docs/04-数据库规范.md：公共字段、枚举 PG enum、部分唯一索引、GIN 索引表达式
+- [x] `models/__init__.py` 按原顺序导出，确保现有导入零改动（`resources.py`/`cutting/service.py`/`cli/seed_dicts.py`/`core/numbering.py` 及全部测试）
+- [x] `register_all_models()` 自动发现新包，无需修改
 
 ## 验收标准
 
-- [ ] `uv run pytest tests/modules/test_base_dict_service.py -q` 全部通过
-- [ ] `uv run pytest tests/modules/test_base_style_service.py -q` 全部通过
-- [ ] `uv run pytest tests/modules/test_material_tables.py -q` 全部通过
-- [ ] `uv run pytest tests/modules/test_stock_basis.py -q` 全部通过
-- [ ] `uv run alembic check` 无漂移（模型与数据库完全一致）
-- [ ] 本次新增的 7 个文件单文件 ≤400 行
-- [ ] 闸门 1-4 本地预跑通过
+- [x] `uv run pytest tests/modules/test_base_dict_service.py -q` 全部通过
+- [x] `uv run pytest tests/modules/test_base_style_service.py -q` 全部通过
+- [x] `uv run pytest tests/modules/test_material_tables.py -q` 全部通过
+- [x] `uv run pytest tests/modules/test_stock_basis.py -q` 全部通过
+- [x] `uv run alembic check` 无漂移（模型与数据库完全一致）
+- [x] 本次新增的 7 个文件单文件 ≤400 行
+- [x] 闸门 1-4 本地预跑通过
 
 ## 测试清单
 
 | # | 用例 | 期望 | 结果 |
 |---|------|------|------|
-| TC-01 | 所有模型可导入 | `from app.modules.base.models import Workshop, Style, OperationRate, MaterialStock` 无报错 | |
-| TC-02 | 字典 CRUD | 创建/查询/更新/停用/真删（未引用）正常 | |
-| TC-03 | 款号全流程 | 建款号→色码尺码→比例→工序→模板复制正常 | |
-| TC-04 | 物料/供应商/库存 | 建物料→建供应商→库存结存查询正常 | |
-| TC-05 | 迁移检查 | `alembic check` 无新操作 | |
-| TC-06 | 模型注册 | `register_all_models()` 后 `Base.metadata` 含全部 24 表 | |
+| TC-01 | 所有模型可导入 | `from app.modules.base.models import Workshop, Style, OperationRate, MaterialStock` 无报错 | | 通过 |
+| TC-02 | 字典 CRUD | 创建/查询/更新/停用/真删（未引用）正常 | | 通过 |
+| TC-03 | 款号全流程 | 建款号→色码尺码→比例→工序→模板复制正常 | | 通过 |
+| TC-04 | 物料/供应商/库存 | 建物料→建供应商→库存结存查询正常 | | 通过 |
+| TC-05 | 迁移检查 | `alembic check` 无新操作 | | 通过 |
+| TC-06 | 模型注册 | `register_all_models()` 后 `Base.metadata` 含全部 24 表 | | 通过 |
 
 ## 实际改动（完成后回填）
 
 | 文件 | 行数 | 说明 |
 | --- | --- | --- |
-| | +0 / -0 | |
+| `backend/app/modules/base/models/__init__.py` | 84 | 统一导出 24 个模型 + `SIZE_CLASS`/`TRGM_*`/`_trgm_index`，保持原导入面零改动 |
+| `backend/app/modules/base/models/_shared.py` | 31 | **新增**：`_trgm_index` + `TRGM_*` 常量（dict/style 两域共用、无天然归属，故单独放置） |
+| `backend/app/modules/base/models/org.py` | 129 | `Workshop` / `WorkshopGroup` / `Warehouse` / `UomUnit` |
+| `backend/app/modules/base/models/dict.py` | 293 | `Color` / `Size` / `SizeGroup` / `SizeGroupItem` / `Operation` / `ProductCategory` + `SIZE_CLASS` |
+| `backend/app/modules/base/models/style.py` | 327 | `Customer` / `Style` / `StyleColor` / `StyleSize` / `StyleColorSizeRatio` / `StyleOperation` / `StyleNoSequence` |
+| `backend/app/modules/base/models/rate.py` | 113 | `OperationRate`（三档取价核心复用资产，单独归属） |
+| `backend/app/modules/base/models/material.py` | 197 | `MaterialCategory` / `Material` / `Supplier` |
+| `backend/app/modules/base/models/stock.py` | 277 | `MaterialStock` / `WipStock` / `WipLedgerLine` |
+| `backend/app/modules/base/models.py` | -1302 | **删除**（纯代码搬运，内容逐字迁入上述 7 个文件） |
+
+新增/搬运合计 **+1451 / -1302**；单文件最大 327 行（≤400）。
 
 **提交记录**：
-- `<hash>` db(base): split models.py (1302 lines) into 6 domain files (≤400 each)
+- （hash 由紧随其后的 docs 回填提交填入）
 
 ## 遗留问题
 
