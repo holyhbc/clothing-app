@@ -26,7 +26,7 @@
   - 原样保留 `ROLES`（668-837）
   - 保留 `permission_codes`/`permissions_by_module`/`SELF_PERMISSION_CODES`/`role_codes`/`resolve_role_permissions`（649-668、838-850）
   - 重导出 `PermissionSeed`/`RoleSeed`
-- [ ] 删除原 `permissions_registry.py` 内联定义（或重命名为 `.bak` 待验证后删）
+- [x] 删除原 `permissions_registry.py` 内联定义（未留 `.bak`；git 有历史，与 010a-010d 口径一致）
 
 **不做**：
 - 不改变任何权限点 code、名称、module、action、sort_order、顺序
@@ -50,7 +50,6 @@
 | `backend/app/common/permissions/perm_stock.py` | 新增 | stock 15 | ~85 |
 | `backend/app/common/permissions/perm_system.py` | 新增 | system 7 | ~50 |
 | `backend/app/common/permissions_registry.py` | 重写 | 聚合入口 | ~330 |
-| `backend/app/common/permissions_registry.py.bak` | 备份 | 原 850 行文件 | - |
 
 ## 实现要点（必读规范）
 
