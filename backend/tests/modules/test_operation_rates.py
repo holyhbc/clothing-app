@@ -23,12 +23,13 @@ R20                     调价必填 ``reason`` → ``10006``
 且价格一律写死日期（docs/10 §10：测试里写死日期导致跨月失败）。
 """
 
+import asyncio
 from datetime import date
 from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.common.enums import DataScope, RateSource
@@ -895,6 +896,87 @@ async def _purge_concurrency_rows(migration_url: str) -> None:
                 await conn.execute(text(sql).bindparams(**params))
     finally:
         await engine.dispose()
+
+
+async def test_concurrent_set_rate_same_triple_same_day_yields_one_row(
+    concurrent_sessions,
+):
+    """真并发：``CONCURRENCY`` 个独立连接对同一 ``(款号, 工序, 生效日)`` 设价 →
+    恰好 1 行，其余 ``20002``（CC-4 / modules/01 §7、TC-27）。
+
+    全部请求在 ``SELECT ... FOR UPDATE`` 时都还看不到对方的未提交行，因此都走到
+    插入；最后由 ``uq_operation_rates``（四列 + ``NULLS NOT DISTINCT``，ADR-0026）
+    兜底，冲突被翻成 ``20002``（``STYLE_ALREADY_EXISTS``）。同一生效日**不是**
+    区间重叠，所以**不是** ``20005``。
+    """
+    style_no = f"{CONC_STYLE_PREFIX}{uuid4().hex[:6].upper()}"
+    operation_no = f"{CONC_OPERATION_PREFIX}{uuid4().hex[:6].upper()}"
+    setup = concurrent_sessions[0]
+    category = ProductCategory(
+        code=f"{CONC_CATEGORY_PREFIX}{uuid4().hex[:6].upper()}",
+        name="并发分类",
+        created_by=OPERATOR_ID,
+        updated_by=OPERATOR_ID,
+    )
+    setup.add(category)
+    await setup.flush()
+    setup.add(
+        Style(
+            style_no=style_no,
+            name="并发单价款",
+            category_id=category.id,
+            created_by=OPERATOR_ID,
+            updated_by=OPERATOR_ID,
+        )
+    )
+    setup.add(
+        Operation(
+            operation_no=operation_no,
+            name="并发工序",
+            created_by=OPERATOR_ID,
+            updated_by=OPERATOR_ID,
+        )
+    )
+    await setup.commit()
+
+    barrier = asyncio.Barrier(CONCURRENCY)
+
+    async def _set_rate(index: int) -> str:
+        session = concurrent_sessions[index]
+        await barrier.wait()
+        try:
+            await RateService(session, _ctx()).set_rate(
+                OperationRateCreate(
+                    operation_no=operation_no,
+                    style_no=style_no,
+                    unit_price=Decimal("0.350000"),
+                    effective_from=D_START,
+                )
+            )
+            return "ok"
+        except BusinessError as exc:
+            return f"rejected:{int(exc.code)}"
+
+    results = await asyncio.gather(*(_set_rate(index) for index in range(CONCURRENCY)))
+    assert results.count("ok") == 1, results
+    assert results.count(f"rejected:{int(ErrorCode.STYLE_ALREADY_EXISTS)}") == CONCURRENCY - 1, (
+        f"同日冲突应全部是 20002，实际 {results}"
+    )
+
+    async with concurrent_sessions[CONCURRENCY + 1] as verify:
+        rows = int(
+            await verify.scalar(
+                select(func.count())
+                .select_from(OperationRate)
+                .where(
+                    OperationRate.style_no == style_no,
+                    OperationRate.operation_no == operation_no,
+                    OperationRate.effective_from == D_START,
+                    OperationRate.deleted_at.is_(None),
+                )
+            )
+        )
+    assert rows == 1, f"该三元组应恰好 1 行，实际 {rows} 行"
 
 
 # ------------------------------------------------ 剩余边界与守卫

@@ -22,6 +22,7 @@ S3                      建款号 → 配工序 → 设价 → ``resolve`` 全�
 它们都是"漏了也不会报错、只会静默算错钱"的那一类。
 """
 
+import asyncio
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -1152,6 +1153,154 @@ async def _purge_concurrency_rows(migration_url: str) -> None:
                 await conn.execute(text(sql).bindparams(**params))
     finally:
         await engine.dispose()
+
+
+# ------------------------------------------------ 款号 / 比例真并发
+
+
+async def test_concurrent_create_same_style_no_yields_one_row(concurrent_sessions):
+    """真并发：``CONCURRENCY`` 个独立连接建同一款号 → 恰好 1 行，其余 ``20002``。
+
+    唯一索引 ``uq_styles_style_no`` 才是兜底（R15：禁止"先查后插"）；应用层的
+    ``_find_by_no`` 只负责给友好文案。
+
+    并发下**两条合法的重复检测路径都会出现**：
+    - 抢在赢家提交前完成查重的任务 → 都不撞唯一键，随后插入时被唯一索引拦下，
+      由 ``_duplicate_style_error`` 翻成 ``20002``（``STYLE_ALREADY_EXISTS``）；
+    - 赢家提交后才查重的任务 → ``_find_by_no`` 直接看到已存在行，走预检
+      ``10001``（``PARAM_INVALID``，带已有款名）。
+
+    两者都是**重复类业务码**；本用例断言恰 1 成功、其余全部落在这两类里、
+    最终恰好 1 行 —— 不允许出现任何未翻译的 ``IntegrityError`` 或别的码。
+    """
+    style_no = f"{CONC_STYLE_PREFIX}{uuid4().hex[:6].upper()}"
+    setup = concurrent_sessions[0]
+    category = ProductCategory(
+        code=f"{CONC_CATEGORY_PREFIX}{uuid4().hex[:6].upper()}",
+        name="并发分类",
+        is_active=True,
+        created_by=OPERATOR_ID,
+        updated_by=OPERATOR_ID,
+    )
+    setup.add(category)
+    await setup.commit()
+    category_id = category.id
+
+    barrier = asyncio.Barrier(CONCURRENCY)
+
+    async def _create(index: int) -> str:
+        session = concurrent_sessions[index]
+        await barrier.wait()
+        try:
+            await _svc(session).create(
+                StyleCreate(style_no=style_no, name=f"并发款{index}", category_id=category_id)
+            )
+            return "created"
+        except BusinessError as exc:
+            return f"rejected:{int(exc.code)}"
+
+    results = await asyncio.gather(*(_create(index) for index in range(CONCURRENCY)))
+    assert results.count("created") == 1, results
+    duplicate_codes = {int(ErrorCode.PARAM_INVALID), int(ErrorCode.STYLE_ALREADY_EXISTS)}
+    failures = [item for item in results if item != "created"]
+    assert len(failures) == CONCURRENCY - 1, results
+    assert {int(item.split(":")[1]) for item in failures} <= duplicate_codes, (
+        f"失败必须都是重复类业务码（10001/20002），实际 {results}"
+    )
+
+    async with concurrent_sessions[CONCURRENCY + 1] as verify:
+        rows = int(
+            await verify.scalar(
+                select(func.count()).select_from(Style).where(Style.style_no == style_no)
+            )
+        )
+    assert rows == 1, f"库里应恰好 1 行，实际 {rows} 行"
+
+
+async def test_concurrent_replace_ratios_same_version_is_one_success_one_conflict(
+    concurrent_sessions,
+):
+    """真并发：同一聚合 ``version`` 的两次全量替换 → 1 成功 / 1 ``10003``（TC-B31）。
+
+    ``replace_ratios`` 事务内先 ``SELECT ... FOR UPDATE`` 锁 ``styles`` 聚合行，
+    **再**校验 ``version``：后到者拿到锁时先到者已提交、聚合 ``version`` 已 +1，
+    校验必然不符 → ``10003``。若反过来"先校验再加锁"，两者会读到同一个 version
+    并双双成功，乐观锁等于没有。
+    """
+    style_no = f"{CONC_STYLE_PREFIX}{uuid4().hex[:6].upper()}"
+    setup = concurrent_sessions[0]
+    category = ProductCategory(
+        code=f"{CONC_CATEGORY_PREFIX}{uuid4().hex[:6].upper()}",
+        name="并发分类",
+        is_active=True,
+        created_by=OPERATOR_ID,
+        updated_by=OPERATOR_ID,
+    )
+    setup.add(category)
+    await setup.flush()
+    style = Style(
+        style_no=style_no,
+        name="并发比例款",
+        category_id=category.id,
+        created_by=OPERATOR_ID,
+        updated_by=OPERATOR_ID,
+    )
+    setup.add(style)
+    await setup.flush()
+    for order, size_code in enumerate(("S", "M"), start=1):
+        setup.add(
+            StyleSize(
+                style_id=style.id,
+                style_no=style_no,
+                size_code=size_code,
+                size_name=size_code,
+                sort_no=order,
+                created_by=OPERATOR_ID,
+                updated_by=OPERATOR_ID,
+            )
+        )
+    await setup.commit()
+    version = style.version
+
+    barrier = asyncio.Barrier(2)
+
+    async def _replace(index: int) -> str:
+        session = concurrent_sessions[index]
+        await barrier.wait()
+        try:
+            await _svc(session).replace_ratios(
+                RatioReplaceIn(
+                    style_no=style_no,
+                    color_code="BLK",
+                    version=version,
+                    items=[
+                        RatioItemIn(size_code="S", ratio=Decimal("1")),
+                        RatioItemIn(size_code="M", ratio=Decimal("2")),
+                    ],
+                )
+            )
+            return "ok"
+        except BusinessError as exc:
+            return f"rejected:{int(exc.code)}"
+
+    results = await asyncio.gather(_replace(1), _replace(2))
+    assert results.count("ok") == 1, results
+    assert results.count(f"rejected:{int(ErrorCode.OPTIMISTIC_LOCK_CONFLICT)}") == 1, results
+
+    async with concurrent_sessions[CONCURRENCY + 1] as verify:
+        live = (
+            (
+                await verify.execute(
+                    select(StyleColorSizeRatio).where(
+                        StyleColorSizeRatio.style_no == style_no,
+                        StyleColorSizeRatio.deleted_at.is_(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert {row.size_code for row in live} == {"S", "M"}, "最终必须是**其中一份完整比例**"
 
 
 # ------------------------------------------------ 款号详情 / 列表 / 建议号
