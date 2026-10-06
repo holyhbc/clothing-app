@@ -95,7 +95,7 @@
 37 个函数/方法体 AST 逐字一致（含 docstring），7 个模块级常量 AST 一致，原 `__all__` 逐字一致。
 
 **提交记录**：
-- `refactor(auth): 拆分 system/service.py(869 行) 为用户 3 Mixin + 角色 + common（≤400 行）`
+- `refactor(auth): 拆分 system/service.py(869 行) 为用户 3 Mixin + 角色 + common（≤400 行）`（`4b063b4`）
 
 ## 遗留问题
 
@@ -128,4 +128,4 @@
 | 日期 | 变更内容 | 操作人 |
 |------|---------|--------|
 | 2026-10-06 | 初版：system/service.py(869) → SystemUserService 3 Mixin + SystemRoleService + common，照抄 base 配方 | AI |
-| 2026-10-06 | 完成：纯搬运落地 7 文件，AST 逐字比对一致；定向 64 passed、全量 795 passed、闸门 1-5 全绿 | AI |
+| 2026-10-06 | 完成：纯搬运落地 7 文件，AST 逐字比对一致；定向 64 passed、全量 795 passed、闸门 1-5 全绿（`4b063b4`）| AI |
