@@ -73,8 +73,8 @@ async def test_is_login_locked_does_not_consume_the_counter(db_session) -> None:
 
 async def test_lock_falls_back_to_log_window_when_redis_down(db_session, monkeypatch) -> None:
     """Redis 挂掉时降级为查 ``auth_login_logs``（docs/07 §1.1）。"""
-    monkeypatch.setattr("app.modules.auth.service.redis_get_int", _always_none)
-    monkeypatch.setattr("app.modules.auth.service.redis_incr_with_ttl", _always_none)
+    monkeypatch.setattr("app.modules.auth.service.read_mixin.redis_get_int", _always_none)
+    monkeypatch.setattr("app.modules.auth.service.read_mixin.redis_incr_with_ttl", _always_none)
     service = AuthService(db_session)
     employee_no = "FALL01"
 
@@ -106,7 +106,7 @@ async def test_log_window_ignores_old_failures(db_session, monkeypatch) -> None:
     """窗口外的失败不计入 —— 否则锁 15 分钟就变成了永久锁。"""
     from datetime import UTC, datetime, timedelta
 
-    monkeypatch.setattr("app.modules.auth.service.redis_get_int", _always_none)
+    monkeypatch.setattr("app.modules.auth.service.read_mixin.redis_get_int", _always_none)
     old = datetime.now(tz=UTC) - timedelta(minutes=LOCK_MINUTES + 5)
     for _index in range(MAX_LOGIN_FAILURES + 3):
         db_session.add(

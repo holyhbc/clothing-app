@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | auth |
 | 负责人 | backend-dev |
-| 状态 | todo |
+| 状态 | done |
 | 优先级 | P0 |
 | 依赖 | 无 |
 | 被依赖 | T-REFACTOR-001 |
@@ -83,7 +83,14 @@
 
 | 文件 | 行数 | 说明 |
 | --- | --- | --- |
-| | | |
+| `backend/app/modules/auth/service/__init__.py` | 34 | 聚合重导出 6 个公开名 |
+| `backend/app/modules/auth/service/common.py` | 62 | 原模块 docstring + `logger` + 锁常量 + 两 dataclass + `build_lock_key` |
+| `backend/app/modules/auth/service/read_mixin.py` | 113 | 查询 + 登录锁定助手（含 Redis 降级） |
+| `backend/app/modules/auth/service/login_mixin.py` | 200 | `authenticate`/`_find_user_by_employee_no`/`_record_login`/`change_password` |
+| `backend/app/modules/auth/service/token_mixin.py` | 128 | `_issue_tokens`/`refresh`/`logout`/`revoke_all_tokens` |
+| `backend/app/modules/auth/service/auth_service.py` | 20 | `AuthService(ReadMixin, LoginMixin, TokenMixin)` + `__init__` |
+| `backend/app/modules/auth/service.py` | -424 | 删除原文件 |
+| `backend/tests/modules/test_auth_service.py` | 3 处 | monkeypatch 目标改指 `read_mixin`（不改断言/逻辑） |
 
 ## 遗留问题
 
@@ -100,3 +107,4 @@
 | 日期 | 变更内容 | 操作人 |
 |------|---------|--------|
 | 2026-10-06 | 初版：auth/service.py(424) → 查询/登录/令牌三 Mixin + common + 组合；登记并修正 monkeypatch 目标例外 | AI |
+| 2026-10-06 | 完成：6 文件 557 行（净 +133），单文件最大 200 行；定向 64 passed、闸门 1-4 全绿；提交 `COMMIT_HASH_PLACEHOLDER` | AI |
