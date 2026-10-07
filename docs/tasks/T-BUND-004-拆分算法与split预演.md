@@ -104,7 +104,7 @@
    五层分层），只读方法必须挂在 service 上（T-BUND-007 的 router 才要调得到）。
 
 **提交记录**：
-- `<hash>` feat(bundling): 打菲拆分算法纯函数 + /split 只读预演（T-BUND-004）
+- `4215ab9` feat(bundling): 打菲拆分算法纯函数 + /split 只读预演（T-BUND-004）
 
 ## 遗留问题
 
