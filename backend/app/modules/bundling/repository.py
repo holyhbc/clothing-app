@@ -14,11 +14,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from decimal import Decimal
+from typing import Any, NamedTuple
 from uuid import UUID
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Column, MetaData, Numeric, Select, String, Table, func, select
+from sqlalchemy.dialects.postgresql import UUID as PgUUID  # noqa: N811 —— 别名照抄 docs/04 §2
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, with_loader_criteria
 from sqlalchemy.sql.elements import ColumnElement
@@ -27,12 +30,16 @@ from app.core.errors import BusinessError, ErrorCode
 from app.core.permissions import AuthContext
 from app.core.scope import apply_data_scope
 from app.modules.bundling.models import (
+    Bundle,
     BundlingOrder,
     BundlingOrderLine,
 )
 from app.modules.cutting.models import (
     CuttingOrder,
+    CuttingOrderLine,
+    CuttingOrderLineColor,
     CuttingOrderSizeLine,
+    CuttingOutput,
 )
 
 #: 列表行的类型别名。⚠️ **只有列表用它** —— 详情 / 加锁那几条返回的是具体的
@@ -216,6 +223,144 @@ async def get_cutting_size_line(
 async def get_cutting_order(session: AsyncSession, cutting_order_id: UUID) -> CuttingOrder | None:
     """取裁剪单（校验来源单据状态用）。"""
     return await session.get(CuttingOrder, cutting_order_id)
+
+
+# =================================================================== T-BUND-004 只读预演
+
+
+class ActiveBundleHand(NamedTuple):
+    """一条**已存在**的 ACTIVE 打菲码，键即 ``uq_bundles_hand`` 的四列。"""
+
+    color_code: str
+    size_code: str
+    hands: int
+    bundle_no: str
+
+
+@dataclass(frozen=True, slots=True)
+class OutputAvailability:
+    """一个尺码的**可打菲余量**（``v_cutting_output_available`` 的一行）。"""
+
+    size_code: str
+    output_qty: Decimal
+    balance_qty: Decimal
+    bundled_qty: Decimal
+    reserved_qty: Decimal
+    available_qty: Decimal
+
+
+#: 「可打菲余量」**不是列**，是视图算出来的（docs/04 §7.7.5 / 02 §3.6）。
+#:
+#: ⚠️ 这里只声明**要用的那几列**、不加 ``autoload_with``：把一张视图当 ORM 模型
+#: 会让迁移 / autogenerate 把视图当表来比对，而视图本来就不能被 DDL 改。
+v_cutting_output_available: Table = Table(
+    "v_cutting_output_available",
+    MetaData(),
+    Column("id", PgUUID(as_uuid=True)),
+    Column("size_code", String(32)),
+    Column("output_qty", Numeric(14, 3)),
+    Column("balance_qty", Numeric(14, 3)),
+    Column("bundled_qty", Numeric(14, 3)),
+    Column("reserved_qty", Numeric(14, 3)),
+    Column("available_qty", Numeric(14, 3)),
+)
+
+
+async def list_active_bundle_hands(session: AsyncSession, doc_id: UUID) -> list[ActiveBundleHand]:
+    """取本单**已有 ACTIVE 码**的手序号（T-BUND-004 预演的 ``conflicts[]`` 用）。
+
+    ⚠️ 只取 ``ACTIVE``：``VOIDED`` 的码已经退出业务（``31002``），拿它当冲突会让
+    主管看到一堆「冲突」却怎么也消不掉。
+    """
+    stmt = (
+        select(Bundle.color_code, Bundle.size_code, Bundle.hands, Bundle.bundle_no)
+        .where(Bundle.doc_id == doc_id, Bundle.deleted_at.is_(None))
+        .where(Bundle.status == "ACTIVE")
+        .order_by(Bundle.color_code, Bundle.size_code, Bundle.hands)
+    )
+    return [ActiveBundleHand(*row) for row in (await session.execute(stmt)).all()]
+
+
+async def get_cutting_size_lines_by_ids(
+    session: AsyncSession, ids: Sequence[UUID]
+) -> dict[UUID, CuttingOrderSizeLine]:
+    """按 id 批量取裁剪尺码明细行，返回 ``{id: 行}``。
+
+    ⚠️ **批量 IN 查询**而不是逐行 ``session.get``：一张打菲单最多 500 行明细
+    （modules/03 §6），逐行取就是 500 次往返。
+    """
+    if not ids:
+        return {}
+    stmt = (
+        select(CuttingOrderSizeLine)
+        .where(CuttingOrderSizeLine.id.in_(list(ids)))
+        .where(CuttingOrderSizeLine.deleted_at.is_(None))
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+    return {row.id: row for row in rows}
+
+
+async def get_cutting_size_lines_by_cutting_order(
+    session: AsyncSession, cutting_order_id: UUID, *, color_code: str
+) -> list[CuttingOrderSizeLine]:
+    """取来源裁剪单某个色下的**全部**尺码明细行（``available-outputs`` 用）。
+
+    ⚠️ 刻意**不带** ``hands`` / ``qty_per_hand`` 过滤：打菲单录入时要看到该色下
+    **所有**尺码，含还没打的，已打的靠 ``available_qty`` 体现。
+    """
+    stmt = (
+        select(CuttingOrderSizeLine)
+        .join(CuttingOrderLineColor, CuttingOrderSizeLine.line_color_id == CuttingOrderLineColor.id)
+        .join(CuttingOrderLine, CuttingOrderSizeLine.line_id == CuttingOrderLine.id)
+        .where(CuttingOrderLine.doc_id == cutting_order_id)
+        .where(CuttingOrderLineColor.color_code == color_code)
+        .where(CuttingOrderSizeLine.deleted_at.is_(None))
+        .order_by(
+            CuttingOrderLine.doc_id, CuttingOrderSizeLine.line_id, CuttingOrderSizeLine.size_line_no
+        )
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def list_available_outputs(
+    session: AsyncSession, ctx: AuthContext, *, style_no: str, color_code: str
+) -> list[OutputAvailability]:
+    """取「可打菲来源」的余量（modules/03 §6 的 ``available-outputs``）。
+
+    ⚠️ ``apply_data_scope`` 挂在 **``CuttingOutput``** 而不是视图上：``apply_data_scope``
+    按 ``__tablename__`` 查 ``SCOPE_SPECS``，而 ``cutting_outputs`` 是登记在册的模型
+    （含 ``workshop_id`` + ``created_by``）。``available_qty`` 那一列从视图 join 进来 ——
+    数据范围过滤与余量口径各归各家，不互相顶替。
+    """
+    stmt = apply_data_scope(
+        select(
+            CuttingOutput.size_code,
+            CuttingOutput.output_qty,
+            CuttingOutput.balance_qty,
+            CuttingOutput.bundled_qty,
+            CuttingOutput.reserved_qty,
+            v_cutting_output_available.c.available_qty,
+        ),
+        CuttingOutput,
+        ctx,
+    )
+    stmt = (
+        stmt.join(v_cutting_output_available, v_cutting_output_available.c.id == CuttingOutput.id)
+        .where(CuttingOutput.style_no == style_no, CuttingOutput.color_code == color_code)
+        .order_by(CuttingOutput.size_code)
+    )
+    rows = (await session.execute(stmt)).all()
+    return [
+        OutputAvailability(
+            size_code=size_code,
+            output_qty=output_qty,
+            balance_qty=balance_qty,
+            bundled_qty=bundled_qty,
+            reserved_qty=reserved_qty,
+            available_qty=available_qty,
+        )
+        for size_code, output_qty, balance_qty, bundled_qty, reserved_qty, available_qty in rows
+    ]
 
 
 def _filters(q: BundlingOrderListQuery) -> tuple[ColumnElement[bool], ...]:

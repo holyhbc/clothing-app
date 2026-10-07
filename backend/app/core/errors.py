@@ -70,6 +70,26 @@ class ErrorCode(IntEnum):
     #: 手数必须为正整数（ADR-0020：件数 = 手数 × 每手件数，精确值不取整）
     CUTTING_HANDS_MUST_BE_POSITIVE_INT = 30006
 
+    # ---- 31xxx 打菲单 ----
+    #: ⚠️ **整段在 T-BUND-004 一次性登记**（docs/05 §4 全部 7 个码，不留缺口）。
+    #: 只补 ``31003`` 的话 ``test_implemented_segments_are_fully_implemented`` 会报
+    #: 「该段还缺哪些」—— 那条守卫的设计意图正是「登记一个段就把整段补齐」，
+    #: 分几批塞只会让守卫失去意义。各码的归属卡见末尾注释。
+    #: 打菲号不存在：码格式对但查无此码（扫码输错 / 别厂码；T-BUND-007 + T-PW-001）
+    BUNDLE_NO_NOT_FOUND = 31001
+    #: 该打菲号已作废（``status='VOIDED'``；T-PW-001 扫码侧）
+    BUNDLE_ALREADY_VOIDED = 31002
+    #: 打菲件数必须为整数（尾数不生成码，09 §4.2；**T-BUND-004 已用**）
+    BUNDLE_QTY_MUST_BE_INTEGER = 31003
+    #: 打菲码数与裁剪手数不一致（少打或多打；T-BUND-005a submit 预检 / 005b approve）
+    BUNDLE_HANDS_MISMATCH = 31004
+    #: 手序号重复（同单同色同尺码同手号已存在；T-BUND-004 预演的 ``conflicts[]`` 预列）
+    BUNDLE_HAND_DUPLICATED = 31005
+    #: 已计件的码不可改手数（B23；T-BUND-006）
+    BUNDLE_COUNTED_HAND_LOCKED = 31006
+    #: 码已打印，不可静默重建，需作废后重打（ADR-0021；T-BUND-006）
+    BUNDLE_ALREADY_PRINTED = 31007
+
     # ---- 40xxx 库存 ----
     STOCK_INSUFFICIENT = 40001
     #: 布批可用库存不足（ADR-0022：裁剪领料 > 可用量）
@@ -114,6 +134,13 @@ HTTP_STATUS_BY_CODE: dict[ErrorCode, int] = {
     ErrorCode.CUTTING_ALREADY_COUNTED: HTTPStatus.CONFLICT,
     ErrorCode.CUTTING_REAPPROVAL_REQUIRED: HTTPStatus.CONFLICT,
     ErrorCode.CUTTING_HANDS_MUST_BE_POSITIVE_INT: HTTPStatus.UNPROCESSABLE_ENTITY,
+    ErrorCode.BUNDLE_NO_NOT_FOUND: HTTPStatus.NOT_FOUND,
+    ErrorCode.BUNDLE_ALREADY_VOIDED: HTTPStatus.CONFLICT,
+    ErrorCode.BUNDLE_QTY_MUST_BE_INTEGER: HTTPStatus.UNPROCESSABLE_ENTITY,
+    ErrorCode.BUNDLE_HANDS_MISMATCH: HTTPStatus.CONFLICT,
+    ErrorCode.BUNDLE_HAND_DUPLICATED: HTTPStatus.CONFLICT,
+    ErrorCode.BUNDLE_COUNTED_HAND_LOCKED: HTTPStatus.CONFLICT,
+    ErrorCode.BUNDLE_ALREADY_PRINTED: HTTPStatus.CONFLICT,
     ErrorCode.STOCK_INSUFFICIENT: HTTPStatus.CONFLICT,
     ErrorCode.BATCH_STOCK_INSUFFICIENT: HTTPStatus.CONFLICT,
     ErrorCode.INTERNAL: HTTPStatus.INTERNAL_SERVER_ERROR,

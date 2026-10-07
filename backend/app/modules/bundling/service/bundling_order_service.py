@@ -37,11 +37,16 @@ from app.modules.bundling.schemas import (
 )
 from app.modules.bundling.service.common import CommonMixin
 from app.modules.bundling.service.numbering import next_doc_no
+from app.modules.bundling.service.preview import PreviewMixin
 from app.modules.cutting.models import CuttingOrderSizeLine
 
 
-class BundlingOrderService(CommonMixin):
-    """打菲单草稿态服务。**事务边界唯一入口**（docs/03 §1.4）。"""
+class BundlingOrderService(CommonMixin, PreviewMixin):
+    """打菲单草稿态服务 + 只读预演。**写路径的事务边界唯一入口**（docs/03 §1.4）。
+
+    ⚠️ :class:`PreviewMixin` 里的方法**不开事务**（只读，见其模块 docstring），
+    与 ``CommonMixin`` 的写路径相反 —— 组装顺序不影响这一点，各方法各自管理边界。
+    """
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
