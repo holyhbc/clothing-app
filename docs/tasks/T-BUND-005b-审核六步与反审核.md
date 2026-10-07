@@ -133,7 +133,7 @@
 > 「超了说明该抽组件，而不是下次注意」。
 
 **提交记录**：
-- `<hash>` feat(bundling): approve 审核六步批量生成 + reverse 反审核（T-BUND-005b）
+- `a917da1` feat(bundling): approve 审核六步批量生成 + reverse 反审核（T-BUND-005b）
 
 ## 遗留问题
 
