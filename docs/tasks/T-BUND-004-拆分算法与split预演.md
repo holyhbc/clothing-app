@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | bundling |
 | 负责人 | backend-dev |
-| 状态 | `todo`（**Q-B15 / Q-B16 / Q-B13 未闭环前不得定版**） |
+| 状态 | `todo`（Q-B13/Q-B15/Q-B16 已于 2026-10-06 定版，可开工） |
 | 优先级 | P1 |
 | 依赖 | T-BUND-003 |
 | 被依赖 | T-BUND-005a（submit 码数=手数预检）、T-BUND-005b（approve 复用同一算法） |
@@ -41,7 +41,7 @@
 | 文件 | 类型 | 说明 |
 | --- | --- | --- |
 | `backend/app/modules/bundling/service/split.py` | 新增 | 拆分纯函数（审核/预演共用） |
-| `backend/app/modules/bundling/service.py` | 修改 | `preview_split` / `available_outputs` 只读方法 |
+| `backend/app/modules/bundling/service/preview.py` | 新增 | `preview_split` / `available_outputs` 只读方法（`BundlingOrderService` 的 Mixin 或独立模块） |
 | `backend/app/modules/bundling/service/__init__.py` | 修改 | 重导出 `split_size_line` 等纯函数 |
 | `backend/tests/modules/test_bundling_split.py` | 新增 | 纯函数 + 零写库 |
 
