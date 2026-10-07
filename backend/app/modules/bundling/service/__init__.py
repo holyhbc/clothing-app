@@ -1,7 +1,9 @@
-"""打菲模块 service 入口（T-BUND-003 / T-BUND-004）。
+"""打菲模块 service 入口（T-BUND-003 / T-BUND-004 / T-BUND-005a）。
 
-导出服务类、只读预演 Mixin 与拆分纯函数。**``split_size_line`` 等纯函数被
-审核（T-BUND-005b）与预演共用**，从这里导入是稳定契约。
+导出服务类、只读预演 Mixin、状态机 Mixin 与拆分纯函数。**``split_size_line`` 等
+纯函数被审核（T-BUND-005b）与预演共用**，从这里导入是稳定契约；
+``StateMixin`` 里的 ``submit`` / ``reject`` / ``withdraw`` / ``cancel`` 同样是
+T-BUND-005b 的调用入口。
 """
 
 from .bundling_order_service import BundlingOrderService
@@ -25,6 +27,8 @@ from .split import (
     preview_order,
     split_size_line,
 )
+from .state_guard import OutputPlan, StateGuardMixin
+from .state_mixin import StateMixin
 
 __all__ = [
     "HAND_DUPLICATED_CODE",
@@ -34,10 +38,13 @@ __all__ = [
     "CommonMixin",
     "HandConflict",
     "OrderSplitPreview",
+    "OutputPlan",
     "PreviewMixin",
     "SizeLineSplit",
     "SplitBundle",
     "SplitLineInput",
+    "StateGuardMixin",
+    "StateMixin",
     "assert_whole",
     "build_bundle_no",
     "is_valid_bundle_no",

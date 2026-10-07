@@ -1,11 +1,14 @@
-"""打菲单草稿态业务逻辑（T-BUND-003）。
+"""打菲单业务逻辑：**草稿态**（T-BUND-003）+ **轻状态迁移**（T-BUND-005a）。
 
-只做草稿态：建单 / 改表头 / 明细全量替换 / 详情 / 列表。
-状态机动作由后续卡实现。
+草稿态：建单 / 改表头 / 明细全量替换 / 详情 / 列表。
+轻状态迁移：``submit`` / ``reject`` / ``withdraw`` / ``cancel``（在
+:mod:`.state_mixin`，校验与预占在 :mod:`.state_guard`）。``approve`` / ``reverse``
+在 T-BUND-005b。
 
 参考 :mod:`app.modules.cutting.service` 的拆分模式：私有助手（校验 / 取单 /
 乐观锁 / 明细落库 / 汇总重算 / 写日志）抽到 :mod:`.common` 的 ``CommonMixin``，
-本类只留公开方法并组装（ADR-0031 单文件 ≤400 行）。
+本类只留公开方法并组装（ADR-0031 单文件 ≤400 行；状态机那侧同样按 ADR-0030
+拆成 ``state_mixin`` + ``state_guard``）。
 """
 
 from collections.abc import Sequence  # noqa: F401 —— 仅供下方类型推导
@@ -38,14 +41,16 @@ from app.modules.bundling.schemas import (
 from app.modules.bundling.service.common import CommonMixin
 from app.modules.bundling.service.numbering import next_doc_no
 from app.modules.bundling.service.preview import PreviewMixin
+from app.modules.bundling.service.state_mixin import StateMixin
 from app.modules.cutting.models import CuttingOrderSizeLine
 
 
-class BundlingOrderService(CommonMixin, PreviewMixin):
-    """打菲单草稿态服务 + 只读预演。**写路径的事务边界唯一入口**（docs/03 §1.4）。
+class BundlingOrderService(CommonMixin, StateMixin, PreviewMixin):
+    """打菲单草稿态服务 + 轻状态迁移 + 只读预演。**写路径的事务边界唯一入口**（docs/03 §1.4）。
 
     ⚠️ :class:`PreviewMixin` 里的方法**不开事务**（只读，见其模块 docstring），
-    与 ``CommonMixin`` 的写路径相反 —— 组装顺序不影响这一点，各方法各自管理边界。
+    与 ``CommonMixin`` / ``StateMixin`` 的写路径相反 —— 组装顺序不影响这一点，
+    各方法各自管理边界。
     """
 
     def __init__(self, session: AsyncSession) -> None:

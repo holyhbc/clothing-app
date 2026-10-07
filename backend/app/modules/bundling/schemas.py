@@ -22,6 +22,10 @@ from app.core.pydantic_types import Str
 #: 单页最大行数。打菲单明细通常 ≤ 20 行（色码 × 尺码），上限留 500 防恶意提交。
 MAX_LINES = 500
 
+#: 状态动作的**原因**最大长度（驳回 / 作废）。与 ``remark`` 同一口径 —— DB 列是
+#: ``text`` 放得下，这里限的是「让人能在列表页一眼看完」的长度，不是存储上限。
+MAX_REASON = 500
+
 
 class LineIn(BaseModel):
     """打菲明细入参（按尺码，每行必带 `cutting_size_line_id`）。
@@ -118,6 +122,41 @@ class PutLinesIn(BaseModel):
 
     version: Annotated[int, Field(ge=1, description="乐观锁版本号")]
     items: Annotated[list[LineIn], Field(max_length=MAX_LINES, description="明细行（全量）")]
+
+
+# ------------------------------------------------------------------ 状态动作入参（T-BUND-005a）
+
+
+class RejectIn(BaseModel):
+    """驳回入参（``POST .../rejections``；08 §1.1：**必填原因**）。
+
+    ⚠️ ``reason`` 落**两处**：``bundling_orders.rejected_reason`` 与
+    ``document_logs.reason`` —— 只落后者的话，单据上看不到「为什么被驳回」。
+    ⚠️ ``min_length=1`` 挡不住全空白（``"   "``），所以 service 里还有一次
+    空白校验并报 ``10002``（03 §9：缺原因 → ``10002`` 弹原因输入框）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: Annotated[
+        str,
+        Field(min_length=1, max_length=MAX_REASON, description="驳回原因（必填，≤500 字）"),
+    ]
+
+
+class CancelIn(BaseModel):
+    """作废入参（``POST .../cancellations``；08 §1.1：必填原因，终态）。
+
+    ⚠️ 字段名是 ``cancelled_reason`` 而不是 ``reason``：表列同名，而
+    ``reason`` 会被误当成通用原因字段，将来反审核（``reverse``，也要必填原因）
+    接手时就出现「两个字段都是原因」的歧义。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    cancelled_reason: Annotated[
+        str, Field(min_length=1, max_length=MAX_REASON, description="作废原因（必填，≤500 字）")
+    ]
 
 
 # ------------------------------------------------------------------ 出参片段

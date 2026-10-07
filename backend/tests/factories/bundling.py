@@ -21,6 +21,7 @@ from app.modules.cutting.models import (
     CuttingOrderLine,
     CuttingOrderLineColor,
     CuttingOrderSizeLine,
+    CuttingOutput,
 )
 from app.modules.cutting.service.recalc import recalc_color, recalc_line, recalc_order
 from tests.factories.user import OPERATOR_ID, WorkshopFactory
@@ -334,13 +335,66 @@ def wid(world: dict[str, Any], key: str) -> UUID:
     return value.id if hasattr(value, "id") else UUID(str(value))
 
 
+async def attach_output(
+    session: AsyncSession,
+    style_id: UUID,
+    style_no: str,
+    workshop_id: UUID,
+    *,
+    size_code: str,
+    output_qty: Decimal,
+) -> CuttingOutput:
+    """补一条**裁剪结转行**并 flush（``available_qty`` 的唯一来源）。
+
+    ⚠️ ``build_world`` 不写结转（那是裁剪审核第 ⑦ 步的事），不补它可用量恒为 0。
+    """
+    row = CuttingOutput(
+        style_id=style_id,
+        style_no=style_no,
+        color_code="WHT",
+        size_code=size_code,
+        workshop_id=workshop_id,
+        output_qty=output_qty,
+        balance_qty=Decimal("0"),
+        bundled_qty=Decimal("0"),
+        reserved_qty=Decimal("0"),
+        cut_waste_qty=Decimal("0"),
+        created_by=OPERATOR_ID,
+        updated_by=OPERATOR_ID,
+    )
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def read_reserved(session: AsyncSession, style_no: str, *, size_code: str) -> Decimal:
+    """重读结转行的 ``reserved_qty``（预占 / 释放的断言入口）。
+
+    ⚠️ ``populate_existing`` 必须带：Core ``UPDATE`` 后对象仍是旧值，断言会假绿。
+    """
+    row = (
+        await session.execute(
+            select(CuttingOutput)
+            .where(
+                CuttingOutput.style_no == style_no,
+                CuttingOutput.color_code == "WHT",
+                CuttingOutput.size_code == size_code,
+            )
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    return Decimal(row.reserved_qty)
+
+
 __all__ = [
     "DOC_DATE",
+    "attach_output",
     "build_world",
     "ctx",
     "line_in",
     "make_approved_cutting_order",
     "make_style",
     "payload",
+    "read_reserved",
     "wid",
 ]
