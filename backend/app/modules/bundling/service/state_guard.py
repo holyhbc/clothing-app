@@ -41,6 +41,16 @@ from app.modules.cutting.models import CuttingOrderSizeLine, CuttingOutput
 
 ZERO = Decimal("0")
 
+#: 单尺码单行手数上限（2026-10-06 业务确认）。**99 不是随手取的**：打菲号
+#: `{doc_no}-{尺码码1~3位}{手序号2位}-{件序号4位}` 里尺码码与手序号之间**没有分隔符**，
+#: 所以手序号超过 2 位就与「更长的尺码码」不可区分 —— `XL100` 会被解析成
+#: 「尺码 `XL1` 的第 0 手」，而 DB 的 CHECK 只管字符集、**放行**这个静默损坏的码
+#: （实测 `parse_bundle_no('…-XL100-0001') -> size_code='XL1', hands_seq=0`）。
+#: 99 手 ≈ 6000~9900 件/尺码（一手 60~100 件），对车间单批量绰绰有余；
+#: 真要突破，唯一正解是改 `bundle_no` 格式（手序号加位/加分隔符），那要动 ADR-0016
+#: 与全部已印标签，不在 P1 范围。
+MAX_HANDS_PER_SIZE_LINE = 99
+
 
 @dataclass(frozen=True, slots=True)
 class OutputPlan:
@@ -132,10 +142,11 @@ class StateGuardMixin:
     async def _assert_hands_match(
         self, lines: Sequence[BundlingOrderLine], size_lines: Mapping[UUID, CuttingOrderSizeLine]
     ) -> None:
-        """§4 ⑤ / B21：**码数 = 手数**预检，不一致 → ``31004``。
+        """§4 ⑤ / B21：**防超打**预检，打的手数 > 裁剪可打手数 → ``31004``。
 
-        口径：**按 (色码, 尺码) 分组**，本单该组的 ``Σ hands`` 必须等于它**所引用的**
-        裁剪尺码明细行的 ``Σ hands``（少打、多打都拦），``details`` 回传两侧手数。
+        口径（2026-10-06 业务确认，从「必须相等」放宽为「不得超打」）：**按 (色码, 尺码) 分组**，
+        本单该组的 ``Σ hands`` **不得超过**它所引用的裁剪尺码明细行的 ``Σ hands``。
+        **少打允许**（主管控制节奏 / 分批打是常态），**多打拦截**（超打 = 要出多余的码）。
 
         ⚠️ 比的是**本单引用到的那几行**，而不是裁剪单该色该尺码的全部行：引用了哪几行
         就该打满哪几行，而同一尺码可以来自裁剪的多个布批（ADR-0017 §4）。
@@ -147,13 +158,24 @@ class StateGuardMixin:
             expected[key] = expected.get(key, 0) + line.hands
             source = size_lines[line.cutting_size_line_id]
             actual[key] = actual.get(key, 0) + source.hands
+            # ⚠️ 单尺码手数上限 99：`bundle_no` 的手序号固定 2 位且与「1~3 位尺码码」之间
+            #    **没有分隔符**（`XL10`+`0` 与 `XL1`+`00` 字符串上不可区分），超过 99 手会
+            #    生成能被 DB CHECK 放行、却解析成「尺码 XL1 的第 0 手」的**静默损坏**码。
+            #    99 手上限 ≈ 6000~9900 件/尺码（一手 60~100 件），对车间批量绰绰有余。
+            if line.hands > MAX_HANDS_PER_SIZE_LINE:
+                raise BusinessError(
+                    ErrorCode.PARAM_INVALID,
+                    f"第 {key[0]}/{key[1]} 行：单尺码手数 {line.hands} 超过上限 "
+                    f"{MAX_HANDS_PER_SIZE_LINE}（打菲号的手序号只有 2 位）",
+                    details={"hands": line.hands, "max": MAX_HANDS_PER_SIZE_LINE},
+                )
         for key, planned in sorted(expected.items()):
             cutting_hands = actual[key]
-            if planned != cutting_hands:
+            if planned > cutting_hands:
                 raise BusinessError(
                     ErrorCode.BUNDLE_HANDS_MISMATCH,
-                    f"{key[0]}/{key[1]}：打菲 {planned} 手与裁剪的 {cutting_hands} 手不一致"
-                    "（少打或多打都不行）",
+                    f"{key[0]}/{key[1]}：打菲 {planned} 手超过裁剪可打的 {cutting_hands} 手"
+                    "（超打不允许；少打可以，分批打是常态）",
                     details={
                         "color_code": key[0],
                         "size_code": key[1],
