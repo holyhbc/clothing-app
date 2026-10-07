@@ -89,12 +89,13 @@
 | `backend/app/modules/bundling/service/bundling_order_service.py` | +12 / -7 | 组合 `BundlingOrderService(CommonMixin, StateMixin, PreviewMixin)` |
 | `backend/app/modules/bundling/service/__init__.py` | +10 / -3 | 重导出 `StateMixin` / `StateGuardMixin` / `OutputPlan` |
 | `docs/12` | +6 | 变更记录 `0116` + 遗留 L-091~L-095 |
+| **闸门** | — | 1 lint ✅ / 2 typecheck ✅ / 3 单测 ✅（本卡 9 条；全量 7 个既有失败见 L-094）/ 4 迁移往返 ✅ |
 
 合计手写 1252 行代码 + 约 80 行文档；单文件最大 395 行（≤400，ADR-0030）。
 **新增权限点 0 / 错误码 0 / 迁移 0 / 接口 0**（router 属 T-BUND-007）。
 
 **提交记录**：
-- `<hash>` feat(bundling): 打菲单 submit/reject/withdraw/cancel + 预占/释放（T-BUND-005a）
+- `f23cde7` feat(bundling): 打菲单 submit/reject/withdraw/cancel + 预占/释放（T-BUND-005a）
 
 ## 遗留问题
 
