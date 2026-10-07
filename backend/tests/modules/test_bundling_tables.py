@@ -322,7 +322,7 @@ async def _objects_present(url: str) -> tuple[bool, int]:
 
 
 def test_migration_downgrade_removes_tables_and_enum(_schema, migration_url: str) -> None:
-    """TC-B07：``alembic downgrade -1`` 干净删四表 + ``bundle_status``，再 upgrade 还原。
+    """TC-B07：``alembic downgrade 0013`` 干净删四表 + ``bundle_status``，再 upgrade 还原。
 
     ⚠️ 必须**真跑**迁移：只查 ``pg_constraint`` / 只读迁移源码都证明不了
     ``downgrade`` 能执行 —— 而 downgrade 失败会在发布回滚时才发现。
@@ -335,7 +335,8 @@ def test_migration_downgrade_removes_tables_and_enum(_schema, migration_url: str
 
     os.environ["DATABASE_URL_MIGRATION"] = migration_url
     config = Config("alembic.ini")
-    command.downgrade(config, "-1")
+    # 当前 head 是 0015，打菲表在 0014，所以要降到 0013
+    command.downgrade(config, "0013")
     try:
         present, enum_count = asyncio.run(_objects_present(migration_url))
         assert not present, "downgrade 之后四张打菲表仍在"

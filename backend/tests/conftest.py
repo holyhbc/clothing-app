@@ -356,3 +356,41 @@ async def cutting_world_persisted(app_database_url: str) -> dict[str, Any]:
         }
     finally:
         await engine.dispose()
+
+
+# ------------------------------------------------------------------ 打菲模块的最小世界
+
+
+@pytest_asyncio.fixture
+async def bundling_world(db_session: AsyncSession) -> dict[str, Any]:
+    """打菲测试用的「一个车间 + 一个款号 + 一个已审核裁剪单 + 它的尺码明细行」。
+
+    夹具放 conftest 里避免 ruff F811 噪声（同 cutting_world 的理由）。
+    建造逻辑在 :func:`tests.factories.bundling.build_world`。
+    """
+    from tests.factories.bundling import build_world
+
+    return await build_world(db_session)
+
+
+@pytest_asyncio.fixture
+async def bundling_world_persisted(app_database_url: str) -> dict[str, Any]:
+    """``bundling_world`` 的**真提交**版本，供并发用例用（docs/10 §2.3 / §5.4）。"""
+    from tests.factories.bundling import build_world
+    from tests.factories.user import OPERATOR_ID  # noqa: F401
+
+    engine = create_async_engine(app_database_url, pool_pre_ping=True)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            world = await build_world(session, style_no=f"BD-CONC-{uuid4().hex[:10].upper()}")
+            await session.commit()
+        return {
+            "workshop": world["workshop"].id,
+            "style": world["style"].id,
+            "style_no": world["style"].style_no,
+            "cutting_order": world["cutting_order"].id,
+            "cutting_size_lines": [sl.id for sl in world["cutting_size_lines"]],
+        }
+    finally:
+        await engine.dispose()

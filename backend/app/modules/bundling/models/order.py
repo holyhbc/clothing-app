@@ -188,7 +188,18 @@ class BundlingOrderLine(BaseModel):
     __tablename__ = "bundling_order_lines"
 
     __table_args__ = (
-        UniqueConstraint("doc_id", "line_no", name="uq_bundling_order_lines_line"),
+        # ⚠️ **部分唯一索引**（迁移 0011，REV-2026-10）：原为普通 UNIQUE 约束，
+        #    而 modules/02 §6 的 PUT /lines 是**全量替换**语义 —— 硬约束下
+        #    「软删旧行 + 插新行」必然撞 `duplicate key ... (doc_id, line_no)`。
+        #    唯一约束要表达的是「**当前有效**的行之间不重号」；软删行已不在业务上，
+        #    用它占号没有意义。与 styles.uq_styles_no / uq_material_stocks_lot 同一口径。
+        Index(
+            "uq_bundling_order_lines_line",
+            "doc_id",
+            "line_no",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
         CheckConstraint("version > 0", name="ck_bundling_order_lines_version_positive"),
         CheckConstraint("hands > 0", name="ck_bundling_lines_hands"),
         CheckConstraint("planned_qty = trunc(planned_qty)", name="ck_bundling_lines_planned"),
