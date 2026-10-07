@@ -4,6 +4,7 @@
 """
 
 from .bundling_order_service import BundlingOrderService
+from .common import CommonMixin
 from .numbering import (
     build_bundle_no,
     is_valid_bundle_no,
@@ -13,6 +14,7 @@ from .numbering import (
 
 __all__ = [
     "BundlingOrderService",
+    "CommonMixin",
     "build_bundle_no",
     "is_valid_bundle_no",
     "next_doc_no",

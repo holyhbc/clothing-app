@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | bundling |
 | 负责人 | backend-dev |
-| 状态 | `todo` |
+| 状态 | `done` |
 | 优先级 | P1 |
 | 依赖 | T-BUND-001 |
 | 被依赖 | T-BUND-004、T-BUND-005a、T-BUND-007 |
@@ -90,10 +90,18 @@
 
 | 文件 | 行数 | 说明 |
 | --- | --- | --- |
-| 待回填 | | |
+| `backend/app/modules/bundling/service/bundling_order_service.py` | 254 | 公开方法（create/patch/put_lines/get/list_orders）+ 组合类 |
+| `backend/app/modules/bundling/service/common.py` | 225 | `CommonMixin`：私有助手（校验/取单/乐观锁/明细落库/汇总/写日志）——按 ADR-0031 从 461 行单文件拆出 |
+| `backend/app/modules/bundling/repository.py` | 238 | 只读查询 |
+| `backend/app/modules/bundling/schemas.py` | 196 | pydantic 入参/出参 |
+| `backend/alembic/versions/0017_bundling_lines_partial_unique_index.py` | 53 | 唯一约束 → 部分唯一索引 |
+| `backend/app/modules/bundling/models/order.py` | 修改 | `uq_bundling_order_lines_line` 改部分索引 |
+| `backend/tests/factories/bundling.py` / `test_bundling_service.py` | 346 / 398 | 夹具 + service 单测 |
+| `backend/tests/conftest.py` | +38 | `bundling_world` 夹具 |
 
 **提交记录**：
-- `<hash>` feat(bundling): 打菲单草稿态 service（表头 + 明细全量替换 + 乐观锁）
+- `5585720` feat(bundling): 打菲单草稿态 service（表头 + 明细全量替换 + 乐观锁，T-BUND-003）
+- `<split-hash>` refactor(bundling): 按 ADR-0031 把 461 行 service 拆为 `common.py`(CommonMixin) + 组合类（≤400 行）
 
 ## 遗留问题
 
