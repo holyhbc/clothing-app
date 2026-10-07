@@ -7,7 +7,7 @@
 分层：`common` 不依赖任何 mixin，也不反向 import 组合类。
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -207,8 +207,15 @@ class CommonMixin:
         from_status: str | None,
         to_status: str,
         reason: str | None = None,
+        changed_fields: Mapping[str, Any] | None = None,
     ) -> None:
-        """写 document_logs（谁、何时、从什么状态到什么状态、为什么）。"""
+        """写 document_logs（谁、何时、从什么状态到什么状态、为什么、改了什么）。
+
+        ⚠️ ``changed_fields`` 记的是**重算前后的值**（03 §5.3「取整前后值」）：审核会重算
+        ``hands_total`` / ``output_qty`` / ``balance_qty``，而这三个数在单据上只有一个
+        「当前值」—— 不留前后值，「申请 2000 手、实得 1998 个码」就无人知晓（§5.3 原文
+        明确要求写日志）。留痕表只追加不修改，所以这是**唯一**能追溯那组数的地方。
+        """
         from app.common.models import DocumentLog
 
         log = DocumentLog(
@@ -221,6 +228,6 @@ class CommonMixin:
             operator_id=operator_id,
             operator_name="系统",  # TODO: 获取真实操作人姓名
             reason=reason,
-            changed_fields=None,
+            changed_fields=changed_fields,
         )
         self.session.add(log)

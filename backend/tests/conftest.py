@@ -432,7 +432,11 @@ async def _purge_persisted_world(
             stmts = [
                 # ⓪ 日志（无 FK 指向它，先清最省事）
                 "DELETE FROM document_logs WHERE doc_no = '{style_no}'",
-                # ① 打菲侧（子 → 父）
+                # ① 打菲侧（子 → 父）。⚠️ ``bundles`` 必须在 ``bundling_order_lines``
+                #    **之前**删：``fk_bundles_line`` 是 ``ON DELETE RESTRICT``，而审核
+                #    （T-BUND-005b）之后每张单都带码行，先删明细会撞外键。
+                "DELETE FROM bundles WHERE doc_id IN "  # noqa: S608
+                f"(SELECT id FROM bundling_orders WHERE style_no {style_like})",
                 "DELETE FROM bundling_order_lines WHERE doc_id IN "  # noqa: S608
                 f"(SELECT id FROM bundling_orders WHERE style_no {style_like})",
                 f"DELETE FROM cutting_outputs WHERE style_no {style_like}",  # noqa: S608

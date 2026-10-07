@@ -23,11 +23,14 @@ ADR-0030 的「单文件 ≤400 行手写」硬上限。所以**写路径**单�
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.modules.bundling.models import BundlingOrder, BundlingOrderLine
 from app.modules.cutting.models import CuttingOutput
@@ -141,6 +144,106 @@ async def release_output_qty(
     return len((await session.execute(stmt)).all()) == 1
 
 
+@dataclass(frozen=True, slots=True)
+class OutputBalance:
+    """一次结转后的 ``cutting_outputs`` 四列（审核断言 ④ 用）。
+
+    ⚠️ **从 ``RETURNING`` 取**而不是回读 ORM 对象：结转走 Core UPDATE
+    （``synchronize_session=False``），identity map 里那行是**旧值** —— 回读会拿到结转前
+    的数，断言于是恒真（与「重读必须带 ``populate_existing``」同源，见
+    :func:`app.modules.bundling.repository.get_order_with_lines`）。
+    """
+
+    output_qty: Decimal
+    balance_qty: Decimal
+    bundled_qty: Decimal
+    reserved_qty: Decimal
+
+
+async def carry_over_output_qty(
+    session: AsyncSession, *, output_id: UUID, qty: Decimal, operator_id: UUID
+) -> OutputBalance | None:
+    """审核结转（03 §4.1 第 ⑥ 步）：``bundled_qty += qty`` **且** ``reserved_qty -= qty``。
+
+    ⚠️ **同一条 UPDATE 里做完两半**，不是两次调用拼起来：:func:`reserve_output_qty` 已按
+    「本单件数」预占过，分两次写就留一个「已结转但未释放」的中间态 —— 那个瞬间
+    ``available_qty`` 虚增一个 ``qty``，并发的另一张打菲单能抢走（INV-6）。
+    「预占 → 结转 → 释放预占」三步都在本文件，是为了让 approve / reject / withdraw /
+    approve-反审核 四条路径共用**同一份** ``cutting_outputs`` 写入口。
+
+    :param qty: 本单该 (色码, 尺码) 的件数（= ``Σ hands × qty_per_hand``）。
+    :returns: 结转后的四列；``reserved_qty < qty``（预占已不在）时返回 ``None``，
+        由 service 翻译成 ``30002``。
+    """
+    return await _shift_output_qty(
+        session,
+        output_id=output_id,
+        qty=qty,
+        operator_id=operator_id,
+        bundled_delta=qty,
+        reserved_delta=-qty,
+        guard_column=cast("ColumnElement[Decimal]", CuttingOutput.reserved_qty),
+    )
+
+
+async def roll_back_output_qty(
+    session: AsyncSession, *, output_id: UUID, qty: Decimal, operator_id: UUID
+) -> OutputBalance | None:
+    """反审核还原：``bundled_qty -= qty`` **且** ``reserved_qty += qty``（与上一条成对）。
+
+    ⚠️ 守卫换成 ``bundled_qty >= qty``：减掉别人的结转等于凭空放大可打菲余量（INV-6），
+    症状是「反审核一张单，全厂该尺码凭空多出几百件可打」。
+    """
+    return await _shift_output_qty(
+        session,
+        output_id=output_id,
+        qty=qty,
+        operator_id=operator_id,
+        bundled_delta=-qty,
+        reserved_delta=qty,
+        guard_column=cast("ColumnElement[Decimal]", CuttingOutput.bundled_qty),
+    )
+
+
+async def _shift_output_qty(
+    session: AsyncSession,
+    *,
+    output_id: UUID,
+    qty: Decimal,
+    operator_id: UUID,
+    bundled_delta: Decimal,
+    reserved_delta: Decimal,
+    guard_column: ColumnElement[Any],
+) -> OutputBalance | None:
+    """结转两半的**唯一实现**（审核与反审核共用，见上面两条的 docstring）。"""
+    stmt = (
+        update(CuttingOutput)
+        .where(CuttingOutput.id == output_id, guard_column >= qty)
+        .values(
+            bundled_qty=CuttingOutput.bundled_qty + bundled_delta,
+            reserved_qty=CuttingOutput.reserved_qty + reserved_delta,
+            version=CuttingOutput.version + 1,
+            updated_by=operator_id,
+        )
+        .returning(
+            CuttingOutput.output_qty,
+            CuttingOutput.balance_qty,
+            CuttingOutput.bundled_qty,
+            CuttingOutput.reserved_qty,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    row = (await session.execute(stmt)).first()
+    if row is None:
+        return None
+    return OutputBalance(
+        output_qty=Decimal(row[0]),
+        balance_qty=Decimal(row[1]),
+        bundled_qty=Decimal(row[2]),
+        reserved_qty=Decimal(row[3]),
+    )
+
+
 async def snapshot_available_qty_before(
     session: AsyncSession,
     *,
@@ -174,11 +277,14 @@ async def snapshot_available_qty_before(
 
 
 __all__ = [
+    "OutputBalance",
     "OutputKey",
     "available_qty_of",
+    "carry_over_output_qty",
     "lock_cutting_outputs",
     "lock_order_for_transition",
     "release_output_qty",
     "reserve_output_qty",
+    "roll_back_output_qty",
     "snapshot_available_qty_before",
 ]

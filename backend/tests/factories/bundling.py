@@ -330,7 +330,23 @@ async def attach_output(
     """补一条**裁剪结转行**并 flush（``available_qty`` 的唯一来源）。
 
     ⚠️ ``build_world`` 不写结转（那是裁剪审核第 ⑦ 步的事），不补它可用量恒为 0。
+    ⚠️ **同一 (款, 色, 尺码) 重复调用是幂等的**（返回已有行）—— 见函数体里的唯一索引说明。
     """
+    # ⚠️ 幂等：``uq_cutting_outputs_style_color_size`` 是 (款,色,尺码) 上的**部分唯一索引**，
+    # 而 ``bundling_world`` 的款号是固定的 ``BD-TEST-1`` —— 同一尺码重复补结转行会撞唯一索引，
+    # 而报错（"duplicate key"）完全看不出是「测试补数据补重了」。
+    existing = (
+        await session.execute(
+            select(CuttingOutput).where(
+                CuttingOutput.style_no == style_no,
+                CuttingOutput.color_code == "WHT",
+                CuttingOutput.size_code == size_code,
+                CuttingOutput.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
     row = CuttingOutput(
         style_id=style_id,
         style_no=style_no,
