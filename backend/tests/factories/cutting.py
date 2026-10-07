@@ -20,7 +20,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.enums import DataScope
@@ -31,6 +31,7 @@ from app.modules.base.models import (
     Style,
     StyleColorSizeRatio,
     StyleSize,
+    Warehouse,
 )
 from app.modules.cutting.schemas import (
     CuttingOrderCreateIn,
@@ -91,6 +92,99 @@ async def make_style(db_session: AsyncSession, style_no: str = "CT-TEST-1") -> S
     return style
 
 
+async def _pick_warehouse(db_session: AsyncSession) -> UUID:
+    """取面料仓库 id，**没有就建**（幂等）。
+
+    ⚠️ 为什么不用 ``.scalar_one()`` 硬查：``FAB`` 仓库原先只由
+    ``test_stock_basis.py`` 造，本工厂硬查等于**跨文件顺序依赖**
+    （docs/10 §2.2 明令禁止）—— 该文件没先跑、或库被清空重建时，
+    这里直接 ``NoResultFound``，而报错点离真因十万八千里。
+    """
+    existing = (
+        await db_session.execute(select(Warehouse).where(Warehouse.code == "FAB"))
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing.id
+    warehouse = Warehouse(
+        code="FAB",
+        name="面料库",
+        warehouse_type="FABRIC",
+        created_by=OPERATOR_ID,
+        updated_by=OPERATOR_ID,
+    )
+    db_session.add(warehouse)
+    await db_session.flush()
+    return warehouse.id
+
+
+async def make_material(db_session: AsyncSession) -> Any:
+    """建一条物料 + 它的类目 / 单位 / 仓库，返回 ``material``。
+
+    ⚠️ 用固定 code（``F-CT-888801``）：每个用例独立事务、跑完回滚，所以不会撞。
+    写成随机的话，失败信息里是一串没法检索的十六进制。
+
+    ⚠️ 本函数原先住在 ``tests/modules/test_stock_basis.py`` 里，而**工厂反过来
+    import 测试模块**（``tests/factories/bundling.py`` 曾经这么干）——那是跨文件
+    顺序依赖（docs/10 §2.2 禁止）：那个测试文件没先跑、或库被清空时就失败。
+    所以下沉到工厂，两边共用。
+    """
+    from app.modules.base.models import (
+        Material,
+        MaterialCategory,
+        UomUnit,
+    )
+
+    async def pick(model: Any, column: Any, value: Any, factory: Any) -> Any:
+        row = (await db_session.execute(select(model).where(column == value))).scalar_one_or_none()
+        if row is None:
+            row = factory()
+            db_session.add(row)
+        return row
+
+    category = await pick(
+        MaterialCategory,
+        MaterialCategory.code,
+        "CT",
+        lambda: MaterialCategory(
+            code="CT",
+            name="纯棉布",
+            is_builtin=True,
+            created_by=OPERATOR_ID,
+            updated_by=OPERATOR_ID,
+        ),
+    )
+    uom = await pick(
+        UomUnit,
+        UomUnit.code,
+        "M",
+        lambda: UomUnit(
+            code="M",
+            name="米",
+            decimal_places=3,
+            created_by=OPERATOR_ID,
+            updated_by=OPERATOR_ID,
+        ),
+    )
+    # 仓库由 make_stock 侧的 _pick_warehouse 负责建（幂等），这里只保证类目/单位就位
+    await _pick_warehouse(db_session)
+    material = await pick(
+        Material,
+        Material.code,
+        "F-CT-888801",
+        lambda: Material(
+            code="F-CT-888801",
+            name="测试全棉布",
+            material_type="FABRIC",
+            category_id=category.id,
+            uom_unit_id=uom.id,
+            created_by=OPERATOR_ID,
+            updated_by=OPERATOR_ID,
+        ),
+    )
+    await db_session.flush()
+    return material
+
+
 async def make_stock(
     db_session: AsyncSession, material: Any, lot: str = "DY-CUT-TEST"
 ) -> MaterialStock:
@@ -114,10 +208,13 @@ async def make_stock(
     ).scalar_one_or_none()
     if existing is not None:
         return existing
+    # ⚠️ 仓库用 `pick`（先查后建）而不是 `.scalar_one()` 硬查单行：
+    # `FAB` 原本只由 test_stock_basis.py 造，本工厂 .scalar_one() 等于**跨文件
+    # 顺序依赖**（docs/10 §2.2 禁止）——该文件没先跑或库被清空时，这里直接
+    # NoResultFound，而报错点离真因十万八千里。
+    warehouse_id = await _pick_warehouse(db_session)
     stock = MaterialStock(
-        warehouse_id=(
-            await db_session.execute(text("SELECT id FROM warehouses WHERE code = 'FAB'"))
-        ).scalar_one(),
+        warehouse_id=warehouse_id,
         material_id=material.id,
         supplier_id=None,
         dye_lot_no=lot,

@@ -9,12 +9,12 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.enums import DataScope, DocumentStatus
 from app.core.permissions import AuthContext
-from app.modules.base.models import MaterialStock, Operation, ProductCategory, Style
+from app.modules.base.models import Operation, ProductCategory, Style
 from app.modules.bundling.schemas import BundlingOrderCreateIn, LineIn
 from app.modules.cutting.models import (
     CuttingOrder,
@@ -24,6 +24,7 @@ from app.modules.cutting.models import (
     CuttingOutput,
 )
 from app.modules.cutting.service.recalc import recalc_color, recalc_line, recalc_order
+from tests.factories.cutting import make_material, make_stock
 from tests.factories.user import OPERATOR_ID, WorkshopFactory
 
 #: 固定单据日期（docs/10 §10：时间相关测试必须可注入时间）
@@ -106,29 +107,11 @@ async def make_approved_cutting_order(
     if size_codes is None:
         size_codes = ["S", "M", "L", "XL"]
 
-    # 先建布批（level=MaterialStock）
-    from tests.modules.test_stock_basis import _material
-
-    material = await _material(db_session)
-    stock = MaterialStock(
-        warehouse_id=(
-            await db_session.execute(text("SELECT id FROM warehouses WHERE code = 'FAB'"))
-        ).scalar_one(),
-        material_id=material.id,
-        supplier_id=None,
-        dye_lot_no=f"DY-{style.style_no}",
-        bolt_no="B-1",
-        width_cm=Decimal("152.00"),
-        stock_qty=Decimal("500.000"),
-        total_length_m=Decimal("500.000"),
-        locked_qty=Decimal("0.000"),
-        unit_cost=Decimal("12.500000"),
-        in_date=DOC_DATE,
-        created_by=OPERATOR_ID,
-        updated_by=OPERATOR_ID,
-    )
-    db_session.add(stock)
-    await db_session.flush()
+    # ⚠️ 复用 cutting 工厂而不是 `from tests.modules.test_stock_basis import _material`：
+    # 工厂 import 测试模块是**跨文件顺序依赖**（docs/10 §2.2 禁止）—— 那个文件没先跑
+    # 或库被清空时就直接失败，报错点离真因十万八千里。
+    material = await make_material(db_session)
+    stock = await make_stock(db_session, material, lot=f"DY-{style.style_no}")
 
     # 建裁剪单（三层结构）
     from app.core.numbering import DOC_PREFIX_CUTTING, take_doc_no

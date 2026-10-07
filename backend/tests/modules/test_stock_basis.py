@@ -33,89 +33,14 @@ STOCK_TABLES = ("material_stocks", "wip_stocks", "wip_ledger_lines")
 async def _material(db_session):
     """建一条物料 + 它的类目 / 单位 / 仓库，返回 ``material``。
 
-    ⚠️ 用固定 code（``F-CT-888801``）：每个用例独立事务、跑完回滚，所以不会撞。
-    写成随机的话，失败信息里是一串没法检索的十六进制。
+    ⚠️ 已下沉到 :func:`tests.factories.cutting.make_material`：原先它住在本测试
+    模块里，而 ``tests/factories/bundling.py`` 反过来 import 本模块的私有函数 ——
+    那是**跨文件顺序依赖**（docs/10 §2.2 禁止），库一清空就失败且报错点离真因很远。
+    本函数保留为薄壳，只为不改动本文件其余调用点。
     """
-    from app.modules.base.models import (
-        Material,
-        MaterialCategory,
-        UomUnit,
-        Warehouse,
-    )
+    from tests.factories.cutting import make_material
 
-    async def pick(model, column, value, factory):
-        row = (await db_session.execute(select(model).where(column == value))).scalar_one_or_none()
-        if row is None:
-            row = factory()
-            db_session.add(row)
-        return row
-
-    category = await pick(
-        MaterialCategory,
-        MaterialCategory.code,
-        "CT",
-        lambda: MaterialCategory(
-            code="CT",
-            name="纯棉布",
-            is_builtin=True,
-            created_by=OPERATOR_ID,
-            updated_by=OPERATOR_ID,
-        ),
-    )
-    uom = await pick(
-        UomUnit,
-        UomUnit.code,
-        "M",
-        lambda: UomUnit(
-            code="M",
-            name="米",
-            decimal_places=3,
-            created_by=OPERATOR_ID,
-            updated_by=OPERATOR_ID,
-        ),
-    )
-    # ⚠️ warehouse 在这里只负责「被建出来」—— 取它的用例自己 select，
-    #    所以**不要**用它的返回值（那会是个没人用的局部变量，ruff 会报 F841）
-    await pick(
-        Warehouse,
-        Warehouse.code,
-        "FAB",
-        lambda: Warehouse(
-            code="FAB",
-            name="面料库",
-            warehouse_type="FABRIC",
-            created_by=OPERATOR_ID,
-            updated_by=OPERATOR_ID,
-        ),
-    )
-    await db_session.flush()
-
-    # ⚠️ REV-2026-10（T-CUT-001b-2）：物料也走 `pick`（先查后建），与上面的
-    #    类目 / 单位 / 仓库同款。**原因**：并发用例必须用独立引擎**真提交**建数据
-    #    （docs/10 §2.3），而真提交不在任何回滚范围内 —— 于是这条物料会留在库里，
-    #    下一个用例再无条件 INSERT 就撞 `uq_materials_code`，而报错指向 materials、
-    #    与「裁剪单建不出来」毫无关系。
-    #    顺带说明：`test_cutting_tables._make_line` 里那段「先查再用」的注释
-    #    同样源于此，现在这里是幂等的，那段也就不再必要了（保留无害）。
-    material = await pick(
-        Material,
-        Material.code,
-        "F-CT-888801",
-        lambda: Material(
-            code="F-CT-888801",
-            name="测试全棉布",
-            material_type="FABRIC",
-            category_id=category.id,
-            uom_unit_id=uom.id,
-            created_by=OPERATOR_ID,
-            updated_by=OPERATOR_ID,
-        ),
-    )
-    # ⚠️ `pick` 只在**新建**分支 add，不 flush —— 而调用方紧接着就用 `material.id`
-    #    去建 `material_stocks`（NOT NULL 外键）。漏掉这次 flush 时那个 id 是 None，
-    #    报错是 `null value in column "material_id"`，指向库存表而根因在物料上
-    await db_session.flush()
-    return material
+    return await make_material(db_session)
 
 
 async def _style(db_session):

@@ -20,7 +20,7 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import (
     AsyncConnection,
@@ -325,7 +325,7 @@ async def cutting_world(db_session: AsyncSession) -> dict[str, Any]:
 
 
 @pytest_asyncio.fixture
-async def cutting_world_persisted(app_database_url: str) -> dict[str, Any]:
+async def cutting_world_persisted(app_database_url: str, migration_url: str) -> dict[str, Any]:
     """``cutting_world`` 的**真提交**版本，供并发用例用（docs/10 §2.3 / §5.4）。
 
     ⚠️ 为什么需要单独一个：并发用例必须用**独立引擎真提交**，否则
@@ -339,15 +339,19 @@ async def cutting_world_persisted(app_database_url: str) -> dict[str, Any]:
 
     engine = create_async_engine(app_database_url, pool_pre_ping=True)
     factory = async_sessionmaker(engine, expire_on_commit=False)
+    style_no = f"CT-CONC-{uuid4().hex[:10].upper()}"
     try:
         async with factory() as session:
-            world = await build_world(session, style_no=f"CT-CONC-{uuid4().hex[:10].upper()}")
+            world = await build_world(session, style_no=style_no)
             await session.commit()
         # ⚠️ 返回**纯 id**而不是 ORM 实体：这些实体绑在一个即将 dispose 的 session 上，
         #    带出夹具会在 GC 时抛 `ResourceWarning: unclosed socket`，而 pytest 会把
         #    unraisable warning 变成**用例失败** —— 报错完全看不出根因是「夹具泄漏了连接」。
         #    `tests.factories.cutting.wid` 同时支持实体与纯 id，所以调用方不用改。
-        return {
+        # ⚠️ 必须 `yield`：`return` 会在返回值那一刻就执行 `finally`，
+        # 清理会跑到测试体之前，被测数据当场消失（症状是 `assert ... is not None`，
+        # 而库里确实是空的 —— 报错点离真因十万八千里）
+        yield {
             "workshop": world["workshop"].id,
             "style": world["style"].id,
             "style_no": world["style"].style_no,
@@ -356,6 +360,7 @@ async def cutting_world_persisted(app_database_url: str) -> dict[str, Any]:
         }
     finally:
         await engine.dispose()
+        await _purge_persisted_world(migration_url, style_no, like_prefix="CT-CONC%")
 
 
 # ------------------------------------------------------------------ 打菲模块的最小世界
@@ -374,23 +379,84 @@ async def bundling_world(db_session: AsyncSession) -> dict[str, Any]:
 
 
 @pytest_asyncio.fixture
-async def bundling_world_persisted(app_database_url: str) -> dict[str, Any]:
-    """``bundling_world`` 的**真提交**版本，供并发用例用（docs/10 §2.3 / §5.4）。"""
+async def bundling_world_persisted(app_database_url: str, migration_url: str) -> dict[str, Any]:
+    """``bundling_world`` 的**真提交**版本，供并发用例用（docs/10 §2.3 / §5.4）。
+
+    ⚠️ **必须清理**：真提交不在任何回滚范围内，这些行会长期留在库里 —— 而
+    ``test_stock_views_and_grants`` / ``test_document_logs`` / ``test_style_disable_export``
+    有「全库计数」断言（视图恒 0 行、取建议号不许留款号行）。不清理的表现是
+    「下一个用例失败，而失败原因与本用例毫无关系」——本仓 L-090 已记录同一类问题。
+    清理用**迁移账号**：``erp_app`` 被 REVOKE 了 DELETE（docs/04 §6.2.1）。
+    """
     from tests.factories.bundling import build_world
     from tests.factories.user import OPERATOR_ID  # noqa: F401
 
     engine = create_async_engine(app_database_url, pool_pre_ping=True)
     factory = async_sessionmaker(engine, expire_on_commit=False)
+    style_no = f"BD-CONC-{uuid4().hex[:10].upper()}"
     try:
         async with factory() as session:
-            world = await build_world(session, style_no=f"BD-CONC-{uuid4().hex[:10].upper()}")
+            world = await build_world(session, style_no=style_no)
             await session.commit()
-        return {
+        # ⚠️ 必须用 `yield` 而不是 `return`：fixture 的 `return` 会在**返回值那一刻**
+        # 就执行 `finally`，清理跑到测试体之前，被测数据当场消失（症状是用例报
+        # `assert size_line is not None`，而库确实是空的 —— 报错点离真因十万八千里）。
+        yield {
             "workshop": world["workshop"].id,
             "style": world["style"].id,
             "style_no": world["style"].style_no,
             "cutting_order": world["cutting_order"].id,
             "cutting_size_lines": [sl.id for sl in world["cutting_size_lines"]],
         }
+    finally:
+        await engine.dispose()
+        await _purge_persisted_world(migration_url, style_no)
+
+
+async def _purge_persisted_world(
+    migration_url: str, style_no: str, like_prefix: str | None = None
+) -> None:
+    """删掉真提交造出的全部行（按前缀，**依赖序：子表 → 父表**）。
+
+    ⚠️ 用**迁移账号**：``erp_app`` 被 REVOKE 了全部 DELETE（docs/04 §6.2.1）。
+    ⚠️ 尺码明细/行内颜色**没有** ``style_no`` 列（靠 ``doc_id`` / ``line_id`` 关联），
+    所以只能从 ``cutting_orders.style_no`` 反查，顺序不能颠倒（先子后父）。
+    """
+    engine = create_async_engine(migration_url, pool_pre_ping=True)
+    # ⚠️ 按**精确** style_no 清理（不按前缀）：前缀会连别的用例仍在用的持久化 world 一起删。
+    #    布批/日志按前缀兜底（同一 world 的缸号由 style_no 派生）。
+    style_like = f"= '{style_no}'"
+    lot_like = f"= 'DY-{style_no}'"
+    try:
+        async with engine.begin() as conn:
+            stmts = [
+                # ⓪ 日志（无 FK 指向它，先清最省事）
+                "DELETE FROM document_logs WHERE doc_no = '{style_no}'",
+                # ① 打菲侧（子 → 父）
+                "DELETE FROM bundling_order_lines WHERE doc_id IN "  # noqa: S608
+                f"(SELECT id FROM bundling_orders WHERE style_no {style_like})",
+                f"DELETE FROM cutting_outputs WHERE style_no {style_like}",  # noqa: S608
+                f"DELETE FROM bundling_orders WHERE style_no {style_like}",  # noqa: S608
+                # ② 裁剪侧（子 → 父）
+                "DELETE FROM cutting_order_size_lines WHERE line_color_id IN "  # noqa: S608
+                "(SELECT c.id FROM cutting_order_line_colors c "
+                "JOIN cutting_order_lines l ON l.id = c.line_id "
+                "JOIN cutting_orders o ON o.id = l.doc_id "
+                f"WHERE o.style_no {style_like})",
+                "DELETE FROM cutting_order_line_colors WHERE line_id IN "  # noqa: S608
+                "(SELECT l.id FROM cutting_order_lines l "
+                "JOIN cutting_orders o ON o.id = l.doc_id "
+                f"WHERE o.style_no {style_like})",
+                "DELETE FROM cutting_order_lines WHERE doc_id IN "  # noqa: S608
+                f"(SELECT id FROM cutting_orders WHERE style_no {style_like})",
+                f"DELETE FROM cutting_orders WHERE style_no {style_like}",  # noqa: S608
+                # ③ 布批（裁剪侧已清，`fk_cutting_order_lines_stock` 不再挡）
+                f"DELETE FROM material_stocks WHERE dye_lot_no {lot_like}",  # noqa: S608
+                # ④ 款号（被 cutting_orders 引用，必须最后）
+                f"DELETE FROM styles WHERE style_no {style_like}",  # noqa: S608
+            ]
+            # 表名与前缀都是模块内字面量，不是输入（docs/03 §1.5 禁的是拼用户输入）
+            for stmt in stmts:
+                await conn.execute(text(stmt))
     finally:
         await engine.dispose()
