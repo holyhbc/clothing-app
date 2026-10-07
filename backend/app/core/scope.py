@@ -110,6 +110,11 @@ SCOPE_SPECS: dict[str, ScopeSpec] = {
     "cutting_orders": ScopeSpec(
         workshop_column="workshop_id", group_column=None, user_column="created_by"
     ),
+    # 裁剪结转与布头登记（T-BASE-009-2 / 迁移 0015）。它是 `cutting_orders` 的子表，
+    # 车间口径与表头一致；`group_no` 挂在行级而结转是单据级，故不按组别过滤。
+    "cutting_outputs": ScopeSpec(
+        workshop_column="workshop_id", group_column=None, user_column="created_by"
+    ),
     "bundling_orders": ScopeSpec(
         workshop_column="workshop_id", group_column=None, user_column="created_by"
     ),

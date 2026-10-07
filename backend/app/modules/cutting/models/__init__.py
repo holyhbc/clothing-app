@@ -51,6 +51,11 @@ from app.modules.cutting.models.lines import (
     CuttingOrderSizeLine,
 )
 from app.modules.cutting.models.order import CuttingOrder
+from app.modules.cutting.models.outputs import (
+    CuttingOutput,
+    CuttingScrapRecord,
+    scrap_type_enum,
+)
 from app.modules.cutting.models.sequence import CuttingDocNoSequence
 
 __all__ = [
@@ -62,4 +67,7 @@ __all__ = [
     "CuttingOrderLine",
     "CuttingOrderLineColor",
     "CuttingOrderSizeLine",
+    "CuttingOutput",
+    "CuttingScrapRecord",
+    "scrap_type_enum",
 ]
