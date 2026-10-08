@@ -1,7 +1,7 @@
 """Redis 连接访问器。
 
 用途仅两处（docs/05 §5 幂等、docs/07 §1.1 登录失败锁定）：
-    - ``Idempotency-Key`` 的结果缓存（TTL 24h）
+    - ``Idempotency-Key`` 的**原子占位**（``SET NX EX``，docs/05 §5 并发语义）与结果缓存（TTL 24h）
     - 登录失败计数（连续 5 次锁 15 分钟）
 
 ⚠️ **Redis 不是强依赖**。未配置 ``REDIS_URL`` 时：
@@ -81,6 +81,33 @@ async def redis_set_json(key: str, value: dict[str, Any], ttl_seconds: int) -> b
         logger.warning("redis 写入失败，幂等保证降级为尽力而为", extra={"key": key})
         return False
     return True
+
+
+async def redis_claim_json(key: str, value: dict[str, Any], ttl_seconds: int) -> bool | None:
+    """**原子占位**：``SET key value NX EX ttl``。Redis 侧唯一的判定点（T-BUND-008f）。
+
+    :returns: ``True`` 占位成功；``False`` 键已被别人占着；``None`` **Redis 不可用 /
+        超时**，调用方据此降级（docs/05 §5）。
+    :param value: 占位载荷。必须能表达「这不是结果，是我在执行」—— 否则后来者分不清
+        「拿到的是首次结果」与「拿到的是别人的占位」，只能一律当命中返回。
+    ⚠️ **三态而不是 bool**：把 ``None`` 当 ``False`` 会把「Redis 挂了」误判成
+    「别人占着这个键」，于是所有请求都去等一个永远不会出现的首次结果，等待上限一到
+    全部超时 —— 故障从「幂等降级为尽力而为」放大成「整个接口不可用」。
+    ⚠️ **必须同时给 ``EX``**：没有 TTL 的话进程崩在执行中途会留下永久占位，
+    而结果只在成功时写入，那个幂等键从此再也用不了（``02`` 的无 TTL 键同款故障）。
+    """
+    client = get_redis()
+    if client is None:
+        return None
+    import json
+
+    try:
+        return bool(
+            await client.set(key, json.dumps(value, ensure_ascii=False), ex=ttl_seconds, nx=True)
+        )
+    except (RedisError, OSError, TimeoutError):
+        logger.warning("redis 占位失败，降级处理", extra={"key": key})
+        return None
 
 
 async def redis_incr_with_ttl(key: str, ttl_seconds: int) -> int | None:

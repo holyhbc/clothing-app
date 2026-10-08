@@ -9,6 +9,10 @@ TC-ST-01 ``submit`` 正常（``SUBMITTED`` + 预占 + 快照 + 日志）；TC-ST
 回滚就留下半张单占着裁剪余量）；后者守「状态字段只由条件 UPDATE 写」——少了
 ``WHERE ... AND status=?``，20 个并发请求会全部成功，把同一份余量预占 20 次（INV-6 破）。
 ⚠️ 并发用例必须**独立引擎真提交**（docs/10 §5.4），否则并发任务看不见那张单。
+⚠️ 末尾两条是 **T-BUND-008f** 补的（闭环 L-110）：守「同一 session 先读 → Core UPDATE
+→ 再读 / 再 submit，拿到的必须是**新值**」。``SELECT ... FOR UPDATE`` 只在数据库侧拿行锁，
+**不刷新 identity map 里已加载的 ORM 对象** —— 生产每请求一个 session 碰不到，
+worker / CLI / 批量任务会踩。
 """
 
 import asyncio
@@ -28,9 +32,11 @@ from app.core.numbering import BUSINESS_TZ
 from app.modules.bundling.models import Bundle, BundlingOrder
 from app.modules.bundling.schemas import CancelIn, RejectIn
 from app.modules.bundling.service import BundlingOrderService
+from app.modules.bundling.state_repository import lock_cutting_outputs
 from app.modules.cutting.models import CuttingOrderSizeLine, CuttingOutput
 from tests.factories.bundling import attach_output, ctx, payload, read_reserved
 from tests.factories.bundling_state import (
+    COLOR,
     SIZE,
     ZERO,
 )
@@ -299,3 +305,74 @@ async def test_concurrent_submit_one_wins(app_database_url, bundling_world_persi
             await session.commit()
     finally:
         await engine.dispose()
+
+
+# ------------------------------------------------------------------ L-110
+async def test_lock_cutting_outputs_refreshes_row_already_in_identity_map(
+    db_session, bundling_world
+) -> None:
+    """L-110：``lock_cutting_outputs`` 必须刷新**已加载**的结转行对象。
+
+    ⚠️ 现象：同 session 里「先读 → Core UPDATE → 再加锁读」拿到的还是**旧值**，
+    于是后续按可用量做的判断（``_reserve`` 的第一层、文案里的数字）全是旧口径。
+    生产每请求一个 session 碰不到；**批量 / worker / CLI** 最容易「先查后写」，必踩。
+    ⚠️ 断言直接断 ``reserved_qty``（而不是绕一圈断「提交是否成功」）：这条守的是
+    repository 层的刷新语义，绕一层会让报错点离根因三层。
+    """
+    world = bundling_world
+    style_no = world["style"].style_no
+    await _make_output(db_session, world, Decimal("60"))
+    first = await lock_cutting_outputs(db_session, style_no=style_no, keys=[(COLOR, SIZE)])
+    assert Decimal(first[(COLOR, SIZE)].output_qty) == Decimal("60"), "前置：先读进 identity map"
+
+    # ⚠️ 用 Core UPDATE 改库：预占 / 结转走的就是这条路（``synchronize_session=False``），
+    #    所以 ORM 对象在事务提交前一直是旧值。
+    await db_session.execute(
+        update(CuttingOutput)
+        .where(CuttingOutput.style_no == style_no, CuttingOutput.color_code == COLOR)
+        .values(reserved_qty=CuttingOutput.reserved_qty + 60)
+        .execution_options(synchronize_session=False)
+    )
+    again = await lock_cutting_outputs(db_session, style_no=style_no, keys=[(COLOR, SIZE)])
+    assert Decimal(again[(COLOR, SIZE)].reserved_qty) == Decimal("60"), (
+        "加锁读必须刷新已加载对象，否则拿旧值算可用量（这一行是 L-110 的最小复现）"
+    )
+
+
+async def test_submit_uses_fresh_available_qty_after_same_session_core_update(
+    db_session, bundling_world
+) -> None:
+    """L-110 端到端：同 session 先读结转行、再 Core UPDATE 追加结转、然后 ``submit`` 必须成功。
+
+    ⚠️ 这是缺陷的**用户可见形态**：``_reserve`` 的第一层按 identity map 里的旧
+    ``available_qty`` 判不足，报出与真实余量**不符**的 ``30002``（真实余量 120，消息里写
+    「当前 60.000」）—— 而条件 UPDATE 那一层本来会放行，权威判定被旧值抢先否掉了。
+    ⚠️ 走真实的「先读 → Core UPDATE → submit」三步（批量 / worker / CLI 的日常形态），
+    不是手工构造对象状态：手搓出来的状态会让断言在缺陷修没修之间都绿。
+    """
+    world = bundling_world
+    style_no = world["style"].style_no
+    service = BundlingOrderService(db_session)
+    await _make_output(db_session, world, Decimal("60"))
+    loaded = await lock_cutting_outputs(db_session, style_no=style_no, keys=[(COLOR, SIZE)])
+    assert Decimal(loaded[(COLOR, SIZE)].output_qty) == Decimal("60"), "前置：先读进 identity map"
+
+    # 审核裁剪追加结转：走 Core UPDATE（结转/预占同款），ORM 对象停在 60
+    await db_session.execute(
+        update(CuttingOutput)
+        .where(CuttingOutput.style_no == style_no, CuttingOutput.color_code == COLOR)
+        .values(output_qty=CuttingOutput.output_qty + 60)
+        .execution_options(synchronize_session=False)
+    )
+    size_line = next(row for row in world["cutting_size_lines"] if row.size_code == SIZE)
+    size_line.hands = 2
+    size_line.output_qty = 120
+    await db_session.flush()
+
+    order = await _create(db_session, world, lines=[_line(world, hands=2)])
+    await service.submit(order.id, OPERATOR_ID, ctx())
+
+    assert await _status(db_session, order.id) is DocumentStatus.SUBMITTED
+    assert await read_reserved(db_session, style_no, size_code=SIZE) == Decimal("120"), (
+        "真实余量 120：预占必须成功（旧值会把它误判成 30002）"
+    )

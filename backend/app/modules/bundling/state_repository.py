@@ -77,6 +77,14 @@ async def lock_cutting_outputs(
         发 500 条 ``FOR UPDATE``。
     :returns: 查不到的键**不返回**而不是返回空行 —— 「没有结转行」与
         「结转行可用量为 0」在提交时是同一个错（``30002``），不必让调用方区分。
+
+    ⚠️ ``populate_existing=True`` **不是可选项**（T-BUND-008f 补，闭环 L-110）：
+    ``FOR UPDATE`` 只在数据库侧拿行锁，**不刷新** identity map 里已加载的 ORM 对象。
+    而预占 / 结转 / 释放全走 Core UPDATE（``synchronize_session=False``），同一 session
+    内 object 上的值就是旧值 —— 于是 :func:`~app.modules.bundling.state_guard.
+    StateGuardMixin._reserve` 的「先查可用量」按旧值判不足，报出与真实余量**不符**的
+    ``30002``。生产每请求一个 session 碰不到；worker / CLI / 批量任务（最容易「先查后写」）
+    必踩。与 :func:`lock_order_for_transition` 同一口径，不允许两处各写一种。
     """
     if not keys:
         return {}
@@ -85,6 +93,7 @@ async def lock_cutting_outputs(
         .where(CuttingOutput.style_no == style_no, CuttingOutput.deleted_at.is_(None))
         .where(tuple_(CuttingOutput.color_code, CuttingOutput.size_code).in_(list(keys)))
         .order_by(CuttingOutput.color_code, CuttingOutput.size_code)
+        .execution_options(populate_existing=True, synchronize_session=False)
         .with_for_update()
     )
     rows = (await session.execute(stmt)).scalars().all()

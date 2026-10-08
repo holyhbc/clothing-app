@@ -421,6 +421,12 @@ async def _purge_persisted_world(
     ⚠️ 用**迁移账号**：``erp_app`` 被 REVOKE 了全部 DELETE（docs/04 §6.2.1）。
     ⚠️ 尺码明细/行内颜色**没有** ``style_no`` 列（靠 ``doc_id`` / ``line_id`` 关联），
     所以只能从 ``cutting_orders.style_no`` 反查，顺序不能颠倒（先子后父）。
+    ⚠️ **日志按 ``doc_id`` 精确删，不按 ``doc_no``**（T-BUND-008f 补，闭环 L-111）：
+    打菲 ``document_logs`` 的 ``doc_no`` 是 ``BD-…``，与这里传入的款号**永不相等**，
+    按 ``doc_no`` 删的条件恒删 0 行 —— 于是每跑一次并发用例就往共享库留一批日志，
+    而 ``test_document_logs`` / ``test_stock_views_and_grants`` 有全库计数断言，
+    失败点与真因隔三层。口径与 ``tests.factories.bundling_concurrency.purge_side_effects``
+    一致（那里就是为了补这个漏才单写的）。
     """
     engine = create_async_engine(migration_url, pool_pre_ping=True)
     # ⚠️ 按**精确** style_no 清理（不按前缀）：前缀会连别的用例仍在用的持久化 world 一起删。
@@ -430,8 +436,9 @@ async def _purge_persisted_world(
     try:
         async with engine.begin() as conn:
             stmts = [
-                # ⓪ 日志（无 FK 指向它，先清最省事）
-                "DELETE FROM document_logs WHERE doc_no = '{style_no}'",
+                # ⓪ 日志（无 FK 指向它，先清最省事）。⚠️ 按 doc_id 定位，见上面 docstring
+                "DELETE FROM document_logs WHERE doc_type = 'BundlingOrder' AND doc_id IN "  # noqa: S608
+                f"(SELECT id FROM bundling_orders WHERE style_no {style_like})",
                 # ① 打菲侧（子 → 父）。⚠️ ``bundles`` 必须在 ``bundling_order_lines``
                 #    **之前**删：``fk_bundles_line`` 是 ``ON DELETE RESTRICT``，而审核
                 #    （T-BUND-005b）之后每张单都带码行，先删明细会撞外键。

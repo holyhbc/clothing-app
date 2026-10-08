@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | bundling（+ `core/idempotency.py`、`tests/conftest.py`） |
 | 负责人 | backend-dev |
-| 状态 | `todo` |
+| 状态 | `done` |
 | 优先级 | **P1**（L-108 挡住 P1 出口的幂等承诺） |
 | 依赖 | T-BUND-008（缺陷由其 TC-12 / TC-BC-04 暴露） |
 | 被依赖 | T-BUND-010（E2E 要验幂等「只生效一次」） |
@@ -68,11 +68,11 @@ T-BUND-008 补并发用例时抓到三个**真缺陷**（不是测试写错）�
 ## 范围
 
 **要做**：
-- [ ] ① `core/idempotency.py`：原子占位 + TTL + 同键同 body/异 body 分流 + 等待上限
-- [ ] ② `state_repository.py`（或对应文件）：`lock_cutting_outputs` 补 `populate_existing=True`
-- [ ] ③ `tests/conftest.py`：`_purge_persisted_world` 按 `doc_id` 删日志
-- [ ] 三条回归用例（每条都要**先红后绿**：先写断言、跑出红，再改实现）
-- [ ] `docs/05 §5`：把幂等的并发语义写进规范（当前只写了串行语义）
+- [x] ① `core/idempotency.py`：原子占位 + TTL + 同键同 body/异 body 分流 + 等待上限
+- [x] ② `state_repository.py`（或对应文件）：`lock_cutting_outputs` 补 `populate_existing=True`
+- [x] ③ `tests/conftest.py`：`_purge_persisted_world` 按 `doc_id` 删日志
+- [x] 三条回归用例（每条都要**先红后绿**：先写断言、跑出红，再改实现）
+- [x] `docs/05 §5`：把幂等的并发语义写进规范（当前只写了串行语义）
 
 **不做**：
 - **L-109**（`31006` 零抛出点、`03 §2 B23` 与 TC-28①② 落不了地）—— **需业务拍板**：
@@ -82,31 +82,65 @@ T-BUND-008 补并发用例时抓到三个**真缺陷**（不是测试写错）�
 
 ## 验收标准
 
-- [ ] `uv run pytest -q tests/modules/test_idempotency.py tests/modules/test_bundling_concurrency*.py` 全通过
-- [ ] **20 并发同幂等键 → 恰好 1 次执行、19 次回首次结果**（不是 19 个 `409`）
-- [ ] 同键**不同** body → `10002`
-- [ ] 执行中途崩溃留下的占位**有 TTL**，TTL 过后同键可重新执行（有测试证明）
-- [ ] 等待首次结果有**超时上限**，超时报明确错误码
-- [ ] 同 session 先读 `cutting_outputs` 再 `submit` → **成功**（当前会红）
-- [ ] **连跑两次**并发用例后 `document_logs` 残留 **0 行**
-- [ ] `docs/05 §5` 已写明并发语义
-- [ ] 单文件 ≤400 行；闸门 1-4 通过
+- [x] `uv run pytest -q tests/modules/test_idempotency.py tests/modules/test_bundling_concurrency*.py` 全通过（13 passed）
+- [x] **20 并发同幂等键 → 恰好 1 次执行、19 次回首次结果**（不是 19 个 `409`）
+- [x] 同键**不同** body → `10002`（且**立即**返回，不进等待循环）
+- [x] 执行中途崩溃留下的占位**有 TTL**（直读 Redis `TTL` > 0），TTL 过后同键可重新执行
+- [x] 等待首次结果有**超时上限 5s**，超时报 `10003` / HTTP 409，且超时不销毁占位
+- [x] 同 session 先读 `cutting_outputs` 再 `submit` → **成功**（repository 层 + service 层两条）
+- [x] **连跑两次**并发用例后 `document_logs` 残留 **0 行**（先清掉历史 235 条孤儿日志再验）
+- [x] `docs/05 §5` 已写明并发语义（§5.1 并发语义 / §5.2 降级 / §5.3 验收口径）
+- [x] 单文件 ≤400 行；闸门 1-4 通过（全量 965 passed）
+
+### 关键取值与理由
+
+| 常量 | 取值 | 理由 |
+| --- | --- | --- |
+| `PLACEHOLDER_TTL_SECONDS` | **30s** | 结果只在**成功**时写；崩在执行中途没人清占位 → 无 TTL 则该键永久不可用。必须 ≫ 等待上限（否则等一次就把占位等过期，然后自己重新执行），也要 ≫ 最慢写操作（2000 手审核 ≈ 秒级） |
+| `WAIT_TIMEOUT_SECONDS` | **5.0s** | ≪ nginx `proxy_read_timeout 30s`（否则先被网关掐断，客户端拿 502 而不是错误码）；≫ 最慢写操作；等满 5s 基本等价于「首次已崩在中途」，继续等只是白占一个 worker 与一条 DB 连接 |
+| `POLL_INTERVAL_SECONDS` | **0.05s** | 20 并发重试 × 20 次 GET 是 Redis 能轻松吃下的量 |
+| 等待超时的错误码 | **`10003`**（409「同一请求正在处理中，请稍后重试」） | **不发明新码**：`docs/12` L-108 的处置建议①已登记这个用法，且 `10003` 的客户端动作本就是「刷新后重试」。非 `99999`：这不是服务端故障 |
+
+### ⚠️ 唯一一处改既有断言（必须留在案）
+
+`tests/modules/test_bundling_concurrency.py` 的 **TC-BC-01** 由「1 个 200 + 19 个 `{10003,30001}`」
+改成「**20 个 200 且 `data` 逐字相同** + 只执行一次」。原断言编码的正是 L-108 缺陷本身
+——该文件原 docstring 自己写明「这是实现缺陷不是用例问题，本卡不改实现、也不把断言改成
+『19 次 200』」。`load_idempotent` 修好后 19 个请求会**等到首次结果并原样返回**，
+「19 个 409」变成假红。**唯一执行**的四条证据（1 条 `APPROVE` 日志 / 恰好 1 批码 /
+手号 `1..N` / 无 `IntegrityError` 漏成 500）**一条未弱化**。
 
 ## 实际改动（完成后回填）
 
-| 文件 | 行数 | 说明 |
+手写代码 **+392 / −53 行**（`git diff --numstat`，不含新文件），新文件 `test_idempotency.py` **290 行**。
+合计手写 **+682 / −53 行**，**≤1200 软上限**；**单文件最大 473 行**（`tests/conftest.py`，**超线是既有问题**，
+见 L-115；本卡 +7 行不是成因）。
+
+| 文件 | +/− | 说明 |
 | --- | --- | --- |
-| 待回填 | | |
+| `backend/app/core/cache.py` | +28 / −1 | 新增 `redis_claim_json`（`SET NX EX`，**三态** `True`/`False`/`None`） |
+| `backend/app/core/idempotency.py` | +142 / −29 | 原子占位 + TTL + 异 body 分流 + 等待上限；**签名与返回形状未动**（auth/base/bundling 三模块在用） |
+| `backend/app/modules/bundling/state_repository.py` | +9 / −0 | `lock_cutting_outputs` 补 `populate_existing=True`（L-110） |
+| `backend/tests/conftest.py` | +9 / −2 | `_purge_persisted_world` 日志清理改按 `doc_id`（L-111） |
+| `backend/tests/modules/test_idempotency.py` | **+290**（新） | L-108 六条：20 并发 / 占位 TTL / 异 body `10002` / 等待上限 / 生产取值边界 / Redis 降级 |
+| `backend/tests/modules/test_bundling_state.py` | +77 / −0 | L-110 两条（repository 层刷新语义 + service 层 `submit` 误报 `30002`） |
+| `backend/tests/modules/test_bundling_concurrency.py` | +80 / −21 | L-111 残留探针 + TC-BC-01 断言按修正后语义更新 |
+| `docs/05-接口设计规范.md` | +51 / −0 | §5.1 并发语义 / §5.2 降级 / §5.3 验收口径 |
+| `docs/12-文档与变更归档规范.md` | +5 / −0 | §2 新增 `0124`；§5 新登记 L-113 / L-114 / L-115 |
+| `docs/tasks/T-BUND-008f-*.md` | 本文件 | 状态 / 改动表 / 验收勾选回填 |
 
 **提交记录**：
-- `<hash>` fix(bundling): 幂等原子占位 + 锁刷新 + 并发日志清理（L-108/L-110/L-111）
+- `0e6f2c4` fix(bundling): 幂等原子占位 + 锁刷新 + 并发日志隔离（L-108/L-110/L-111）
 
 ## 遗留问题
 
 | # | 问题 | 登记到 |
 | --- | --- | --- |
-| L-109 | `31006` 零抛出点；审核后改手数的迁移路径**待业务拍板** | `03 §12` / `docs/12` |
+| L-109 | `31006` 零抛出点；审核后改手数的迁移路径**待业务拍板**（本卡按卡面**明确不做**） | `03 §12` / `docs/12` |
 | L-096 | `piecework_logs` 属 P2，`32001` 完整路径不可实现 | P2 |
+| **L-113**（新） | **业务失败时不释放占位** —— router 层无 `except` 钩子，期间同键重试等满 5s 报 `10003`（登录输错口令最易命中） | `docs/12 §5` |
+| **L-114**（新） | `base/router/style_child_router.py` 幂等命中分支 `return idempotent.cached` **漏取 `['response']`**，重试恒返回 `data=null`（另三处 router 都对） | `docs/12 §5` |
+| **L-115**（新） | `tests/conftest.py` 473 行**超 ADR-0030 的 400 行硬线**（既有问题，本卡 +7 行），需单开拆卡 | `docs/12 §5` |
 
 ## 自检清单
 
@@ -117,3 +151,4 @@ T-BUND-008 补并发用例时抓到三个**真缺陷**（不是测试写错）�
 | 日期 | 变更内容 | 操作人 |
 | --- | --- | --- |
 | 2026-10-08 | 初版：修 T-BUND-008 暴露的三个可修缺陷；L-109 留待业务拍板 | AI |
+| 2026-10-08 | 三个缺陷全部修复（先红后绿）；`docs/05 §5` 补并发语义；TC-BC-01 断言随语义更新；新登记 L-113 / L-114 / L-115 | AI |
