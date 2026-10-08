@@ -40,16 +40,18 @@ from app.modules.bundling.schemas import (
 )
 from app.modules.bundling.service.approve_mixin import ApproveMixin
 from app.modules.bundling.service.common import CommonMixin
+from app.modules.bundling.service.label import LabelMixin
 from app.modules.bundling.service.numbering import next_doc_no
 from app.modules.bundling.service.preview import PreviewMixin
 from app.modules.cutting.models import CuttingOrderSizeLine
 
 
-class BundlingOrderService(CommonMixin, ApproveMixin, PreviewMixin):
+class BundlingOrderService(CommonMixin, ApproveMixin, PreviewMixin, LabelMixin):
     """打菲单草稿态服务 + 状态迁移 + 只读预演。**写路径的事务边界唯一入口**（docs/03 §1.4）。
 
-    ⚠️ :class:`PreviewMixin` 里的方法**不开事务**（只读，见其模块 docstring），与其余
-    Mixin 的写路径相反 —— 组装顺序不影响这一点，各方法各自管理边界。
+    ⚠️ :class:`PreviewMixin` 与 :class:`LabelMixin` 的**只读**方法（``preview_split`` /
+    ``export_labels``）**不开事务**（见其模块 docstring），与其余 Mixin 的写路径相反 ——
+    组装顺序不影响这一点，各方法各自管理边界。
     """
 
     def __init__(self, session: AsyncSession) -> None:

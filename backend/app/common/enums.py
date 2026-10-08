@@ -128,3 +128,21 @@ class DocumentAction(StrEnum):
     WITHDRAW = "WITHDRAW"
     REVERSE = "REVERSE"
     CANCEL = "CANCEL"
+    #: 打菲标签打印 / 重打（T-BUND-006）。⚠️ **不改单据状态**，只写留痕与累计张数，
+    #: 所以它是「动作」而不是「迁移」：``from_status == to_status``（B15 要求重打必留日志，
+    #: 而日志表只有 ``action`` 这一处能区分首打与重打）。
+    PRINT = "PRINT"
+    REPRINT = "REPRINT"
+
+
+class LabelExportFormat(StrEnum):
+    """标签导出的**响应形态**（modules/03 §6 的 ``format``）。
+
+    ⚠️ **只有两种**：``data``（数据数组，给浏览器打印模板）与 ``csv``（给标签软件导入）。
+    ``modules/03 §6`` 原文写的是 ``format=html|csv``，而 html 是**前端的事** ——
+    06 §4 要求「``@media print`` + 尺寸标签页」由浏览器渲染，后端出 html 就等于把
+    打印模板复制一份到后端，两边迟早分叉。差异登记在 docs/12 §5（需规范维护者确认）。
+    """
+
+    DATA = "data"
+    CSV = "csv"
