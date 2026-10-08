@@ -15,7 +15,7 @@ import asyncio
 from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import func, select, update
@@ -28,64 +28,31 @@ from app.core.numbering import BUSINESS_TZ
 from app.modules.bundling.models import Bundle, BundlingOrder
 from app.modules.bundling.schemas import CancelIn, RejectIn
 from app.modules.bundling.service import BundlingOrderService
-from app.modules.bundling.service.state_guard import MAX_HANDS_PER_SIZE_LINE
 from app.modules.cutting.models import CuttingOrderSizeLine, CuttingOutput
 from tests.factories.bundling import attach_output, ctx, payload, read_reserved
+from tests.factories.bundling_state import (
+    SIZE,
+    ZERO,
+)
+from tests.factories.bundling_state import (
+    create as _create,
+)
+from tests.factories.bundling_state import (
+    line as _line,
+)
+from tests.factories.bundling_state import (
+    logs as _logs,
+)
+from tests.factories.bundling_state import (
+    make_output as _make_output,
+)
+from tests.factories.bundling_state import (
+    status as _status,
+)
+from tests.factories.bundling_state import (
+    submitted as _submitted,
+)
 from tests.factories.user import OPERATOR_ID
-
-ZERO = Decimal("0")
-SIZE = "S"  # factory.build_world 的第一条尺码明细行（hands=1, qty_per_hand=60）
-COLOR = "WHT"
-
-
-# ------------------------------------------------------------------ 助手
-async def _status(db_session, order_id: UUID) -> DocumentStatus:
-    row = await db_session.scalar(
-        select(BundlingOrder.status)
-        .where(BundlingOrder.id == order_id)
-        .execution_options(populate_existing=True)
-    )
-    return DocumentStatus(row)
-
-
-async def _logs(db_session, order_id: UUID) -> list[DocumentLog]:
-    return list(
-        (
-            await db_session.scalars(
-                select(DocumentLog).where(
-                    DocumentLog.doc_type == "BundlingOrder", DocumentLog.doc_id == order_id
-                )
-            )
-        ).all()
-    )
-
-
-async def _make_output(db_session, world, qty: Decimal) -> None:
-    await attach_output(
-        db_session,
-        world["style"].id,
-        world["style"].style_no,
-        world["workshop"].id,
-        size_code=SIZE,
-        output_qty=qty,
-    )
-
-
-def _line(world, *, size_code: str = SIZE, **extra) -> dict:
-    size_line = next(sl for sl in world["cutting_size_lines"] if sl.size_code == size_code)
-    return {"cutting_size_line_id": size_line.id, "size_code": size_code, **extra}
-
-
-async def _create(db_session, world, **overrides) -> BundlingOrder:
-    return await BundlingOrderService(db_session).create(payload(world, **overrides), OPERATOR_ID)
-
-
-async def _submitted(db_session, world) -> tuple[BundlingOrder, BundlingOrderService]:
-    await _make_output(db_session, world, Decimal("60"))
-    order = await _create(db_session, world)
-    service = BundlingOrderService(db_session)
-    await service.submit(order.id, OPERATOR_ID, ctx())
-    return order, service
 
 
 # ------------------------------------------------------------------ TC-ST-01
@@ -213,101 +180,6 @@ async def test_cancel_is_terminal_and_logged(db_session, bundling_world) -> None
     with pytest.raises(BusinessError) as caught:  # 终态不可再迁移（08 R6）
         await service.cancel(order.id, CancelIn(cancelled_reason="再来一次"), OPERATOR_ID, ctx())
     assert caught.value.code is ErrorCode.CUTTING_STATUS_NOT_ALLOWED
-
-
-# ------------------------------------------------------------------ 非法迁移 + 提交预检
-async def test_illegal_transitions(db_session, bundling_world) -> None:
-    """非法迁移一律 ``30001``：重复提交 / 已审核再提交 / 已审核再驳回 / 已审核再撤回。"""
-    order, service = await _submitted(db_session, bundling_world)
-    with pytest.raises(BusinessError) as repeat:
-        await service.submit(order.id, OPERATOR_ID, ctx())
-    assert repeat.value.code is ErrorCode.CUTTING_STATUS_NOT_ALLOWED
-
-    order.status = DocumentStatus.APPROVED  # 已审核：禁止再提交（03 §4.1）
-    await db_session.flush()
-    for call in (
-        service.submit(order.id, OPERATOR_ID, ctx()),
-        service.reject(order.id, RejectIn(reason="x"), OPERATOR_ID, ctx()),
-        service.withdraw(order.id, OPERATOR_ID, ctx()),
-    ):
-        with pytest.raises(BusinessError) as caught:
-            await call
-        assert caught.value.code is ErrorCode.CUTTING_STATUS_NOT_ALLOWED
-
-
-async def test_submit_prechecks_hands_and_conflicts(db_session, bundling_world) -> None:
-    """§4 ⑤ **超打** → ``31004``（``details`` 回传两侧手数，2026-10-06 口径：防超打，少打允许）；
-    §4 ⑥ 手序号冲突 → ``31005``（B22）。"""
-    world = bundling_world
-    style_no = world["style"].style_no
-    service = BundlingOrderService(db_session)
-    await _make_output(db_session, world, Decimal("600"))
-
-    mismatch = await _create(db_session, world, lines=[_line(world, hands=2)])
-    with pytest.raises(BusinessError) as caught:
-        await service.submit(mismatch.id, OPERATOR_ID, ctx())
-    assert caught.value.code is ErrorCode.BUNDLE_HANDS_MISMATCH
-    assert (caught.value.details["planned_hands"], caught.value.details["cutting_hands"]) == (2, 1)
-    assert await read_reserved(db_session, style_no, size_code=SIZE) == ZERO
-
-    order = await _create(db_session, world)
-    size_line = next(sl for sl in world["cutting_size_lines"] if sl.size_code == SIZE)
-    bundle_no = f"{order.doc_no}-{SIZE}01-0001"
-    db_session.add(
-        Bundle(
-            doc_id=order.id,
-            line_id=order.lines[0].id,
-            bundle_no=bundle_no,
-            hands=1,
-            style_no=order.style_no,
-            color_code=COLOR,
-            size_code=SIZE,
-            operation_no="OP01",
-            cutting_size_line_id=size_line.id,
-            bundle_qty=Decimal("60"),
-            qr_content=bundle_no,
-            created_by=OPERATOR_ID,
-            updated_by=OPERATOR_ID,
-        )
-    )
-    await db_session.flush()
-    with pytest.raises(BusinessError) as caught:
-        await service.submit(order.id, OPERATOR_ID, ctx())
-    assert caught.value.code is ErrorCode.BUNDLE_HAND_DUPLICATED
-    assert caught.value.details["existing_bundle_no"] == bundle_no
-    assert await read_reserved(db_session, style_no, size_code=SIZE) == ZERO
-
-
-async def test_submit_allows_under_production_and_caps_hands_at_99(
-    db_session, bundling_world
-) -> None:
-    """2026-10-06 业务确认的两条口径：
-
-    ① **少打允许**（防超打而非强制相等）——打菲行的 ``hands`` 是主管另填的，
-       少打几手是常态、分批打（ADR-0017 一对多）也天然要求「≤」。
-    ② **单尺码手数上限 99** —— ``bundle_no`` 的手序号只有 2 位且与 1~3 位尺码码之间
-       没有分隔符，超过就会生成「能过 DB CHECK 却解析成别的尺码第 0 手」的静默损坏码。
-    """
-    world = bundling_world
-    service = BundlingOrderService(db_session)
-    await _make_output(db_session, world, Decimal("600"))
-
-    # ① 少打（裁剪 1 手、打 0 手不合规因为 hands>0；这里用「裁剪多手、打少手」）
-    #    world 的尺码明细行 hands=1，所以「少打」用一行 hands 缺省（=1）即打满；
-    #    真正验证「≤ 允许」的是下一段：把裁剪侧 hands 抬到 3、打 1 → 少打但必须放行。
-    cutting_line = next(sl for sl in world["cutting_size_lines"] if sl.size_code == SIZE)
-    cutting_line.hands = 3
-    await db_session.flush()
-    under = await _create(db_session, world, lines=[_line(world, hands=1)])
-    await service.submit(under.id, OPERATOR_ID, ctx())  # 少打（1 < 3）不再被拦
-
-    # ② 超过 99 手 → 10001（手序号只有 2 位）
-    too_many = await _create(db_session, world, lines=[_line(world, hands=100)])
-    with pytest.raises(BusinessError) as caught:
-        await service.submit(too_many.id, OPERATOR_ID, ctx())
-    assert caught.value.code is ErrorCode.PARAM_INVALID
-    assert caught.value.details["max"] == MAX_HANDS_PER_SIZE_LINE
-    assert caught.value.details["hands"] == 100
 
 
 # ------------------------------------------------------------------ TC-ST-07
