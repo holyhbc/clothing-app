@@ -154,7 +154,7 @@ buffer / 75 个 heap block）。
 补上默认排除后全绿。
 
 **提交记录**：
-- `<hash>` feat(bundling): bundles 增加 counted 过滤 + /hands 端点归并（T-BUND-007c）
+- `1598e31` feat(bundling): bundles 增加 counted 过滤 + /hands 端点归并（T-BUND-007c）
 
 ## 自检清单
 
