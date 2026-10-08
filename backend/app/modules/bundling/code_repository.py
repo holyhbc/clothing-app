@@ -11,7 +11,11 @@
 所以列表与统计都走 :func:`~app.core.scope.apply_data_scope` 的 ``via`` 机制 ——
 join 与 ``where`` 都由 scope 层加，本文件**不自己拼** ``workshop_id in (...)``。
 详情 / 作废两条走「先取行、再对父单 ``assert_in_scope``」（越权报 ``12002``、
-不存在报 ``31001``，两个码不能混）。``via.model`` 与本文件 import 的父单模型必须一致，
+不存在报 ``31001``，两个码不能混）。
+
+⚠️ **作废的写路径（``FOR UPDATE`` + 条件 UPDATE）在** :mod:`.code_void_repository` ——
+本文件已到 400 行硬线（ADR-0030），按 ADR-0031「按主题分文件」拆开，纯搬运、
+零行为变化。``via.model`` 与本文件 import 的父单模型必须一致，
 由 ``test_scope.py`` 的守卫钉住。
 """
 
@@ -23,7 +27,7 @@ from decimal import Decimal
 from typing import Any, Final, NamedTuple, cast
 from uuid import UUID
 
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
@@ -81,16 +85,6 @@ class BundleRow(NamedTuple):
     print_records: tuple[PrintRecordRow, ...] = ()
 
 
-class VoidTargetRow(NamedTuple):
-    """被 ``FOR UPDATE`` 锁住、正准备作废的那个码（只要判定与乐观锁要用的列）。"""
-
-    id: UUID
-    doc_id: UUID
-    version: int
-    status: str
-    counted_at: datetime | None
-
-
 class StatRow(NamedTuple):
     """一行统计（款号 × 尺码，**只数 ACTIVE 码**，理由见 ``schemas/stat_schemas``）。"""
 
@@ -137,7 +131,14 @@ class BundleListQuery:
             )
 
     def filters(self) -> tuple[ColumnElement[bool], ...]:
-        """筛选条件。**列表与计数共用**（07 §3.2 铁律 3 的同源要求）。"""
+        """筛选条件。**列表与计数共用**（07 §3.2 铁律 3 的同源要求）。
+
+        ⚠️ ``counted=false`` 的谓词是 ``deleted_at IS NULL AND status='ACTIVE' AND
+        counted_at IS NULL``，而 ``idx_bundles_counted_pending`` 的 ``indexpred`` 正是
+        这三条 —— **三者齐全规划器才认得出这个部分索引可用**（TC-30 明写「命中该索引」）。
+        少了上面那条默认排除，PG 只能把 ``counted_at IS NULL`` 降级成 Filter 挂在别的
+        索引上，索引名就不会出现在计划里。
+        """
         conditions: list[ColumnElement[bool]] = []
         if self.bundle_no:
             conditions.append(Bundle.bundle_no.startswith(self.bundle_no))
@@ -149,11 +150,20 @@ class BundleListQuery:
             conditions.append(Bundle.size_code == self.size_code)
         if self.operation_no:
             conditions.append(Bundle.operation_no == self.operation_no)
+        # ⚠️ **默认排除 ``VOIDED``**（modules/03 §6；T-BUND-007c 口径）：``VOIDED``
+        #    既不是「已计件」也不是「未计件」—— 算进任何一边都会让「本单手数 = 已计 + 未计」
+        #    对不上（与统计只数 ACTIVE 码同一条理由，L-105 ③）。要取作废码得显式
+        #    ``status=VOIDED``。
+        #    这一行**同时**是 ``counted=false`` 能走索引的前提（见下）。
         if self.status:
             conditions.append(Bundle.status == BundleStatus(self.status))
+        else:
+            conditions.append(Bundle.status == BundleStatus.ACTIVE)
         if self.counted is not None:
-            # ⚠️ 判「未计件」看 ``counted_at IS NULL``，不看 ``counted_qty``
-            # （部分生产时 counted_qty < bundle_qty 仍算已计件，03 §3.3）
+            # ⚠️ 判「未计件」看 ``counted_at IS NULL``，**不看** ``counted_qty``（03 §3.3）：
+            #    只做了 28 件的那一手（``counted_qty=28 < bundle_qty=60``）是**已计件**的手
+            #    —— 它已进过计件流水、已算过工钱，列进「还没开始做的手」会让主管重复安排
+            #    同一批活，而症状是「未计件手清单越查越长，而那批手早就在流水里了」。
             conditions.append(
                 Bundle.counted_at.is_not(None) if self.counted else Bundle.counted_at.is_(None)
             )
@@ -273,59 +283,6 @@ async def get_bundle_by_no(session: AsyncSession, bundle_no: str) -> BundleRow |
     return rows[0] if rows else None
 
 
-async def lock_bundle_for_void(session: AsyncSession, bundle_no: str) -> VoidTargetRow | None:
-    """``FOR UPDATE`` 锁住这个码（03 §7：作废前先锁码，与计件侧串行）。
-
-    ⚠️ **先锁再判 ``counted_at``**：否则会出现「判完没计件、紧接着另一个事务扫码写上
-    ``counted_at``、本事务把码作废」。
-    """
-    stmt = (
-        select(Bundle.id, Bundle.doc_id, Bundle.version, Bundle.status, Bundle.counted_at)
-        .where(Bundle.bundle_no == bundle_no, Bundle.deleted_at.is_(None))
-        .with_for_update()
-        # ⚠️ ``populate_existing`` **不可省**：同一个 session 里这条码可能已经被读过
-        # （列表 / 详情），而 SQLAlchemy 默认**不覆盖**已加载对象的属性 —— 那会让
-        # 「锁住之后判 counted_at」拿到旧值，把已计件的码放过去作废。
-        .execution_options(populate_existing=True)
-    )
-    row = (await session.execute(stmt)).one_or_none()
-    return None if row is None else VoidTargetRow(*row)
-
-
-async def mark_bundle_voided(
-    session: AsyncSession,
-    *,
-    bundle_id: UUID,
-    expected_version: int,
-    reason: str,
-    operator_id: UUID,
-) -> bool:
-    """条件 UPDATE：这个码置 ``VOIDED``（**行保留**，B12）。
-
-    ⚠️ 条件是 ``version + status='ACTIVE'``（08 §1.2 R3）：并发两次作废只有一个生效，
-    另一个拿到 ``False`` 并被 service 翻译成「已作废」。
-    ⚠️ **不删行、不软删**：作废的码仍要被扫码枪查到并回报「已作废（31002）」。
-    """
-    stmt = (
-        update(Bundle)
-        .where(
-            Bundle.id == bundle_id,
-            Bundle.version == expected_version,
-            Bundle.status == BundleStatus.ACTIVE,
-        )
-        .values(
-            status=BundleStatus.VOIDED,
-            voided_at=func.now(),
-            void_reason=reason,
-            version=Bundle.version + 1,
-            updated_by=operator_id,
-        )
-        .returning(Bundle.id)
-        .execution_options(synchronize_session=False)
-    )
-    return len((await session.execute(stmt)).all()) > 0
-
-
 async def aggregate_bundle_stats(
     session: AsyncSession, ctx: AuthContext, q: StatQuery
 ) -> list[StatRow]:
@@ -375,11 +332,8 @@ __all__ = [
     "BundleRow",
     "StatQuery",
     "StatRow",
-    "VoidTargetRow",
     "aggregate_bundle_stats",
     "count_bundles",
     "get_bundle_by_no",
     "list_bundles",
-    "lock_bundle_for_void",
-    "mark_bundle_voided",
 ]

@@ -52,9 +52,8 @@ from app.modules.bundling.code_repository import (
     count_bundles,
     get_bundle_by_no,
     list_bundles,
-    lock_bundle_for_void,
-    mark_bundle_voided,
 )
+from app.modules.bundling.code_void_repository import lock_bundle_for_void, mark_bundle_voided
 from app.modules.bundling.label_repository import hand_total_by_size, list_print_records
 from app.modules.bundling.models import BundleStatus, BundlingOrder
 from app.modules.bundling.repository import get_order_for_update, get_order_with_lines
