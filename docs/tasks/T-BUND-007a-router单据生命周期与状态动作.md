@@ -116,7 +116,7 @@ T-BUND-006（标签）与 T-BUND-007b（预演/码/统计导出）不在本卡�
 | `frontend/packages/shared/src/api/schema.d.ts`（生成物） | +1349/−40 | 同上（`permissions.ts` / `baseDictFields.ts` 无 diff） |
 
 **提交记录**：
-- `<hash>` feat(bundling): 打菲单 router 与六状态动作（T-BUND-007a）
+- `bd11eb2` feat(bundling): 打菲单 router 与六状态动作（T-BUND-007a）
 
 ## 遗留问题
 
