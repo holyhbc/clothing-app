@@ -93,8 +93,8 @@
 **拆分理由**：ADR-0030 的 400 行硬线（`schemas.py` 已 398、`test_scope.py` 已 370）+ 八个端点各自要带契约级 docstring。
 
 **提交记录**：
-- `<hash1>` feat(bundling): 码查询/单码作废/统计导出与辅助端点（T-BUND-007b）
-- `<hash2>` docs(bundling): 回填 T-BUND-007b 提交 hash（沿用 007a 的两次提交惯例）
+- `9f5393c` feat(bundling): 码查询/单码作废/统计导出与辅助端点（T-BUND-007b）
+- `<本卡 docs 提交>` docs(bundling): 回填 T-BUND-007b 提交 hash（沿用 T-BUND-007a 的两次提交惯例）
 
 ## 遗留问题
 
@@ -125,4 +125,4 @@
 | 日期 | 变更内容 | 操作人 |
 | --- | --- | --- |
 | 2026-10-07 | 初版：接 007a 拆出的辅助能力端点 + 补 service 缺口 | AI |
-| 2026-10-08 | 实现完成：8 端点 + service 缺口 + `schemas.py` 拆包（L-102）+ `ScopeVia`；新增遗留 L-104 / L-105，更新 L-096 | AI |
+| 2026-10-08 | 实现完成：8 端点 + service 缺口 + `schemas.py` 拆包（L-102）+ `ScopeVia`；新增遗留 L-104 / L-105 / L-106，更新 L-096 | AI |
