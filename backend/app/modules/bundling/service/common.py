@@ -25,6 +25,12 @@ from app.modules.bundling.repository import get_order_for_update, get_order_with
 from app.modules.bundling.schemas import LineIn
 from app.modules.cutting.models import CuttingOrder, CuttingOrderSizeLine
 
+#: ``document_logs.doc_type``（docs/08 §1.1 的单据类型名）。**只有这里写这个字面量** ——
+#: 写日志的（:meth:`CommonMixin._write_log`）与读日志的（``list_logs`` 查历史）必须同值，
+#: 两处各写一份的话，改了一处就会得到「日志写得进、查不出来」，而那个现象在界面上是
+#: 变更历史永远空白。
+DOC_TYPE_BUNDLING_ORDER = "BundlingOrder"
+
 
 class CommonMixin:
     """打菲单 service 的私有助手集合（由 :class:`BundlingOrderService` 组装）。"""
@@ -219,7 +225,7 @@ class CommonMixin:
         from app.common.models import DocumentLog
 
         log = DocumentLog(
-            doc_type="BundlingOrder",
+            doc_type=DOC_TYPE_BUNDLING_ORDER,
             doc_id=order.id,
             doc_no=order.doc_no,
             action=action,

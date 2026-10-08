@@ -24,7 +24,10 @@ from app.core.db import unit_of_work
 from app.core.errors import BusinessError, ErrorCode
 from app.core.numbering import BUSINESS_TZ
 from app.core.permissions import AuthContext
+from app.core.responses import PageData
 from app.core.scope import assert_in_scope
+from app.modules.base.document_logs import list_document_logs_by_doc
+from app.modules.base.schemas import DocumentLogOut
 from app.modules.bundling.models import BundlingOrder, BundlingOrderLine
 from app.modules.bundling.repository import (
     BundlingOrderListQuery,
@@ -39,7 +42,7 @@ from app.modules.bundling.schemas import (
     PutLinesIn,
 )
 from app.modules.bundling.service.approve_mixin import ApproveMixin
-from app.modules.bundling.service.common import CommonMixin
+from app.modules.bundling.service.common import DOC_TYPE_BUNDLING_ORDER, CommonMixin
 from app.modules.bundling.service.label import LabelMixin
 from app.modules.bundling.service.numbering import next_doc_no
 from app.modules.bundling.service.preview import PreviewMixin
@@ -232,11 +235,30 @@ class BundlingOrderService(CommonMixin, ApproveMixin, PreviewMixin, LabelMixin):
             # 插新行
             lines = await self._insert_lines(order, payload.items, operator_id)
 
+            # ⚠️ **必须 flush 后才能重读**：会话是 ``autoflush=False``（core/db.py），
+            # 而明细行只 ``add`` 进 session。没 flush 时下面那次 SELECT 看不见它们，
+            # 响应里 ``lines`` 会是空数组 —— 前端把响应灌进编辑器就变成「保存一次，
+            # 明细凭空全没了」。service 单测曾长期测不出来：它的 ``_reload`` 助手用
+            # ``session.refresh()``，那个调用会**顺带触发 autoflush**，把问题盖住了。
+            await self.session.flush()
+
             # 重算表头汇总
             self._recalc_header(order, lines)
 
-            # bump header 版本
-            await self._bump_header(order_id, payload.version, operator_id)
+            # ⚠️ **重算结果必须进 UPDATE**：`_bump_header` 是 Core UPDATE，而 Core UPDATE
+            # 只写 SET 里列出的列 —— 只在 Python 里改 `order.hands_total` 的话它活不过
+            # 这一条语句（症状：明细已经换成 2 手，表头汇总仍是旧的 1 手，而
+            # 「申请 2000 手、实得 1998 个码」正是审核断言要抓的那种不一致）。
+            await self._bump_header(
+                order_id,
+                payload.version,
+                operator_id,
+                {
+                    "hands_total": order.hands_total,
+                    "output_qty": order.output_qty,
+                    "balance_qty": order.balance_qty,
+                },
+            )
 
             # ⚠️ 必须重读
             order = await self._reloaded(order_id)
@@ -264,3 +286,18 @@ class BundlingOrderService(CommonMixin, ApproveMixin, PreviewMixin, LabelMixin):
         rows = await list_orders(self.session, ctx, query)
         total = await count_orders(self.session, ctx, query)
         return rows, total
+
+    async def list_logs(
+        self, order_id: UUID, ctx: AuthContext, *, page: int = 1, size: int = 20
+    ) -> PageData[DocumentLogOut]:
+        """本单的操作日志（``GET /bundling-orders/{id}/logs``，modules/03 §6）。
+
+        ⚠️ **范围校验复用 :meth:`get`**（而不是另写一遍）：越权与不存在要报**不同的码**，
+        而两份实现迟早会漂移 —— 表现是「列表看不到别人的单，但按 ID 能拉到别人的日志」。
+        审计表本身没有归属列（``document_logs`` 只有 ``doc_type`` + ``doc_id``），
+        范围只能由单据反查，这一点决定了这里必须先取单据。
+        """
+        order = await self.get(order_id, ctx)
+        return await list_document_logs_by_doc(
+            self.session, doc_type=DOC_TYPE_BUNDLING_ORDER, doc_id=order.id, page=page, size=size
+        )

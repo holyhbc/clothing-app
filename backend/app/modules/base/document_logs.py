@@ -20,6 +20,7 @@ created_at DESC)` 都是**照着详情页的查询形态**建的 —— 但没�
 """
 
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -101,6 +102,53 @@ async def list_document_logs(
         DocumentLog.doc_type == doc_type,
         DocumentLog.doc_no == doc_no,
     )
+    total = int(
+        (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    )
+    rows: list[Any] = list(
+        (
+            await session.execute(
+                stmt.order_by(DocumentLog.created_at.desc(), DocumentLog.id.desc())
+                .offset((page - 1) * size)
+                .limit(size)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return PageData(
+        items=[DocumentLogOut.model_validate(row).model_dump(mode="json") for row in rows],
+        total=total,
+        page=page,
+        page_size=size,
+    )
+
+
+async def list_document_logs_by_doc(
+    session: AsyncSession,
+    *,
+    doc_type: str,
+    doc_id: UUID,
+    page: int = 1,
+    size: int = 20,
+) -> PageData[DocumentLogOut]:
+    """按 ``(doc_type, doc_id)`` 查某一张单据的变更历史（详情页抽屉的分页版）。
+
+    ⚠️ **刻意不判数据范围**，与上面那个按 ``doc_no`` 查的变体相反 —— 那是刻意的分工：
+
+    - ``doc_no`` 版是**通用入口**（``base:read`` + 只有款号可反查），范围只能在这里判；
+    - 本函数是**从单据详情页调进来的**，归属单据本身已被 service 的
+      ``assert_in_scope`` 验过（07 §3.2 铁律 2），再判一次只会逼着调用方拼一个假的
+      ``is_factory_scoped`` —— 那才是把权限判定漏到 router 的老毛病。
+
+    :raises BusinessError: 分页参数不合法 → ``10001``（与列表端点同一口径）
+    """
+    if page < 1 or size < 1 or size > MAX_PAGE_SIZE:
+        raise BusinessError(
+            ErrorCode.PARAM_INVALID,
+            f"page_size 必须在 1~{MAX_PAGE_SIZE} 之间，收到 {size}",
+        )
+    stmt = select(DocumentLog).where(DocumentLog.doc_type == doc_type, DocumentLog.doc_id == doc_id)
     total = int(
         (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     )

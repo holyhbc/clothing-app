@@ -128,6 +128,17 @@ class PutLinesIn(BaseModel):
 # ------------------------------------------------------------------ 状态动作入参（T-BUND-005a）
 
 
+class ApproveIn(BaseModel):
+    """审核入参（``POST .../approvals``）：**只有可选 ``remark``**。
+
+    ⚠️ 刻意不接任何数量 / 手数（03 §4.1 审核是「重算 + 断言」）：传了得到 ``10001``。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    remark: str | None = Field(default=None, max_length=MAX_REASON, description="审核备注（可选）")
+
+
 class RejectIn(BaseModel):
     """驳回入参（``POST .../rejections``；08 §1.1：**必填原因**）。
 
@@ -157,6 +168,24 @@ class CancelIn(BaseModel):
 
     cancelled_reason: Annotated[
         str, Field(min_length=1, max_length=MAX_REASON, description="作废原因（必填，≤500 字）")
+    ]
+
+
+class ReverseIn(BaseModel):
+    """反审核入参（``POST .../reversals``；08 §1.1：**必填原因**）。
+
+    ⚠️ **本模型是 docs/12 L-098 的闭环**：此前 ``reverse`` 收裸 ``str``，必填校验只在
+    service（``require_reason``），而 05 §3 要求它落在 **schema 层** —— 否则 OpenAPI 上
+    看不出「reason 必填」，前端无从做必填提示。
+
+    ⚠️ ``min_length=1`` 挡不住全空白（``"   "``），service 里那次 ``10002`` 校验不是
+    重复：schema 管「有没有」，service 管「有没有认真填」（与 :class:`RejectIn` 同款）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: Annotated[
+        str, Field(min_length=1, max_length=MAX_REASON, description="反审核原因（必填，≤500 字）")
     ]
 
 
@@ -234,6 +263,22 @@ class BundlingOrderListOut(BaseModel):
     status: str
     version: int
     created_at: Any
+
+
+class AvailableOutputOut(BaseModel):
+    """可打菲来源出参（``GET .../available-outputs``，modules/03 §6）。
+
+    ⚠️ 三列数量**一律字符串**（05 §3）；``hands`` 是计数 / 序号，用 ``int``（同 ``hands_total``）。
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    cutting_size_line_id: UUID = Field(description="★ 建明细行时引用它（件数权威来源）")
+    size_code: str
+    hands: Annotated[int, Field(description="裁剪侧该尺码总手数（防超打基准）")]
+    qty_per_hand: Str = Field(description="每手件数（裁剪尺码明细 qty_per_hand）")
+    output_qty: Str = Field(description="裁剪侧该尺码出数")
+    available_qty: Str = Field(description="还能打多少（余量 0 也在列表里，不被过滤掉）")
 
 
 # ------------------------------------------------------------------ 标签（T-BUND-006）

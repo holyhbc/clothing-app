@@ -127,6 +127,299 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bundling-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 打菲单列表（省掉明细；默认按单据日期倒序）
+         * @description 单据列表。
+         *
+         *     ⚠️ ``workshop_id`` 传了也只是**再过滤一次**，**不能放大范围**（``07 §3.2`` 铁律 1）：
+         *     车间主管传别的车间 id 依然查不到，由 service 里的 ``apply_data_scope`` 保证。
+         */
+        get: operations["list_bundling_orders_api_v1_bundling_orders_get"];
+        put?: never;
+        /**
+         * 新建打菲单（草稿态，表头 + 明细一次提交）
+         * @description 建单。响应含**表头汇总**（``hands_total`` / ``output_qty`` / ``balance_qty``）。
+         *
+         *     ⚠️ **汇总不接受传入**（03 §4）：入参里**连字段都没有**，传了会得到 ``10001`` ——
+         *     而不是「悄悄被忽略」。**能被忽略的入参是最坏的一种**：前端以为设的值生效了。
+         *     ⚠️ **每行必带 ``cutting_size_line_id``**（B26）：件数与手数的权威来源是裁剪尺码明细行，
+         *     由服务端据此重算 ``planned_qty``。
+         */
+        post: operations["create_bundling_order_api_v1_bundling_orders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bundling-orders/{order_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 打菲单详情（表头 + 明细）
+         * @description 详情。数据范围在 service 的 ``assert_in_scope`` 里强制（``07 §3.2`` 铁律 2）。
+         *
+         *     ⚠️ 详情按 ID 直查是越权的经典入口：列表有过滤，按 ID 直查没有。
+         */
+        get: operations["get_bundling_order_api_v1_bundling_orders__order_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * 改表头（仅 DRAFT / REJECTED）
+         * @description 只改表头（``doc_date`` / ``bundle_qty`` / ``remark``）。
+         *
+         *     ⚠️ ``version`` **必传**（``docs/05 §4``）：缺失 → ``10001``，不匹配 → ``10003``。
+         *     前端必须把读到的版本号带回来，否则两个人同时改会互相覆盖。
+         *     ⚠️ 响应里的 ``version`` 是**新值** —— 紧接着的动作（提交/审核）要拿它继续传。
+         */
+        patch: operations["patch_bundling_order_api_v1_bundling_orders__order_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/bundling-orders/{order_id}/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 审核（SUBMITTED → APPROVED，★ 按手批量生成打菲码；支持 Idempotency-Key）
+         * @description 审核（``SUBMITTED`` → ``APPROVED``）。**03 §4.1 六步，顺序不可调换**：
+         *
+         *     ```
+         *     ① 按手生成 bundle_no（一码一手，手序号内嵌到码里）—— 展开在 service 的纯函数里
+         *     ② 每手件数 = 裁剪尺码明细的 qty_per_hand（直接取，不 floor；Q-B15）
+         *     ③ 打菲手数不得超打裁剪手数，否则 31004（少打允许，B21）
+         *     ④ 手序号重复 → 31005（预检 + DB 唯一索引双层）
+         *     ⑤ UNIQUE(doc_id, color_code, size_code, hands) 兜底
+         *     ⑥ 更新裁剪结转：bundled_qty += 本单件数，reserved_qty 释放
+         *     ```
+         *
+         *     ⚠️ **「码数 = 手数」断言（§5.3 四条之一）**：审核事务内比对
+         *     ``count(bundles WHERE doc_id=?) == Σ明细 hands``，不等即整事务回滚 ——
+         *     「单据写 2000 手、码只有 1998 个」这种半成品**不许出现**。
+         *
+         *     ⚠️ **批量生成用 ``INSERT ... SELECT ... generate_series()``，禁止逐条 INSERT**：
+         *     语句数 = 明细行数，与手数无关；2000 手逐条插就是 2000 次往返，行锁在 2C VPS 上会到秒级。
+         *
+         *     ⚠️ **制单人 ≠ 审核人**（``10005``），且不接受前端传入 ``hands`` / ``bundle_qty``。
+         *
+         *     ⚠️ **``Idempotency-Key``**（``05 §5``）：同键同 body → HTTP 200 且返回**首次结果**
+         *     （不报错）；同键不同 body → ``10002``。不传也能安全重入 —— 状态机保证第二次审核报
+         *     ``30001``，不会生成第二批码。
+         */
+        post: operations["approve_bundling_order_api_v1_bundling_orders__order_id__approvals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bundling-orders/{order_id}/available-outputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 可打菲来源明细（裁剪侧手数 + 现在还能打多少）
+         * @description 来源裁剪单该色下**每个尺码**的手数与可用量（打菲录入辅助，modules/03 §6）。
+         *
+         *     ⚠️ **款号不接受传入**：一律取本单的 ``style_no`` —— 可用量按 (款号 + 色码 + 尺码)
+         *     定位，让前端传款号就等于让它指定口径，而那个口径服务端并不认。
+         *     ⚠️ 余量为 0 的尺码**也在列表里**（不是被过滤掉）：主管要看见「这个尺码一件都打不了」。
+         */
+        get: operations["list_available_outputs_api_v1_bundling_orders__order_id__available_outputs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bundling-orders/{order_id}/cancellations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 作废（DRAFT/REJECTED → CANCELLED，终态 + 必填原因）
+         * @description 作废。**``cancelled_reason`` 必填**（缺失 → ``10001``，全空白 → ``10002``）。
+         *
+         *     ⚠️ **无库存副作用**：只能从 ``DRAFT`` / ``REJECTED`` 进，这两个状态下本单手里没有任何
+         *     预占（``REJECTED`` 的预占已在驳回时释放）。已审核的单要走 ``reverse``。
+         */
+        post: operations["cancel_bundling_order_api_v1_bundling_orders__order_id__cancellations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bundling-orders/{order_id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 明细全量替换（软删旧行 + 插新行 + 重算汇总）
+         * @description 明细**全量替换**（≤ 500 行，modules/03 §6）。
+         *
+         *     ⚠️ 全量替换 = 软删不在 ``items`` 里的旧行。「删掉某一行」与「改某一行」因此走同一个
+         *     接口 —— 前端只需把页面上现有的行原样带上再改要改的那几个。
+         *     ⚠️ 每一行都要重算，包括没被改动的那几行（汇总不是增量）。
+         */
+        put: operations["put_bundling_order_lines_api_v1_bundling_orders__order_id__lines_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bundling-orders/{order_id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 本单操作日志（变更历史抽屉，08 §1.2 R2 的读取侧）
+         * @description 本单的操作日志（谁、何时、从什么状态到什么状态、为什么）。
+         *
+         *     ⚠️ **按 id 查日志同样要过数据范围** —— 日志是单据的一部分，看不到单据的人不该看到
+         *     「这张单被谁驳回过」。范围由 service 的 ``list_logs``（复用详情那条）强制。
+         */
+        get: operations["list_bundling_order_logs_api_v1_bundling_orders__order_id__logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bundling-orders/{order_id}/rejections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 驳回（SUBMITTED → REJECTED，★ 必填原因 + 释放预占）
+         * @description 驳回。**``reason`` 必填**（缺失 → ``10001``，全空白 → ``10002``，``03 §9``）。
+         *
+         *     ⚠️ 释放预占与状态变更**同事务**：只改状态不释放，这张单会永久占着裁剪余量，
+         *     而界面上它已经是「被打回的草稿」，谁都看不出余量去哪了。
+         */
+        post: operations["reject_bundling_order_api_v1_bundling_orders__order_id__rejections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bundling-orders/{order_id}/reversals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 反审核（APPROVED → SUBMITTED，★ 必填原因 + 全链路反向）
+         * @description 反审核。**``reason`` 必填**（缺失 → ``10001``，全空白 → ``10002``）。
+         *
+         *     ⚠️ 与审核**严格对称**：本单全部 ACTIVE 码置 ``VOIDED``（**行保留**，B12 不可恢复）、
+         *     ``bundled_qty`` 减回、``reserved_qty`` 重新预占。漏掉任何一半，结转再也回不到原点。
+         *     ⚠️ 已有计件的码 → ``32003``（先在计件模块红冲 + 补录）。
+         */
+        post: operations["reverse_bundling_order_api_v1_bundling_orders__order_id__reversals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bundling-orders/{order_id}/submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 提交（DRAFT/REJECTED → SUBMITTED，预占裁剪可用量）
+         * @description 提交。**无请求体**。
+         *
+         *     ⚠️ 提交会**预占** ``cutting_outputs.reserved_qty``（条件 UPDATE 保证不超发），驳回 /
+         *     撤回 / 作废各自释放 —— 成对副作用，漏一条就永久占着裁剪余量。
+         *     ⚠️ **重复提交不幂等**（报 ``30001``）：``SUBMITTED → SUBMITTED`` 不在迁移表里，
+         *     而本动作**不生成码**，所以没有「重试会多生成一批码」的风险，不需要幂等键。
+         */
+        post: operations["submit_bundling_order_api_v1_bundling_orders__order_id__submissions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bundling-orders/{order_id}/withdrawals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 撤回（SUBMITTED → DRAFT，★ 撤回人 = 制单人 + 释放预占）
+         * @description 撤回。**无请求体**。
+         *
+         *     ⚠️ **只有制单人本人能撤回**（08 §1.1）：service 比 ``created_by``，不在本层判。
+         *     ⚠️ 撤回是「我把刚才提交的单收回来」，不是「拒绝」—— 状态回到 ``DRAFT``，可以继续改。
+         */
+        post: operations["withdraw_bundling_order_api_v1_bundling_orders__order_id__withdrawals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/colors": {
         parameters: {
             query?: never;
@@ -2414,6 +2707,35 @@ export interface components {
              */
             request_id?: string | null;
         };
+        /** ApiResponse[BundlingOrderOut] */
+        ApiResponse_BundlingOrderOut_: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["BundlingOrderOut"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
         /** ApiResponse[CuttingOrderOut] */
         ApiResponse_CuttingOrderOut_: {
             /**
@@ -2659,6 +2981,35 @@ export interface components {
             code: number;
             /** @description 业务数据；失败时为 null */
             data?: components["schemas"]["OperationRateSetOut"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
+        /** ApiResponse[PageData[BundlingOrderListOut]] */
+        ApiResponse_PageData_BundlingOrderListOut__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["PageData_BundlingOrderListOut_"] | null;
             /**
              * Details
              * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
@@ -3244,6 +3595,38 @@ export interface components {
              */
             request_id?: string | null;
         };
+        /** ApiResponse[list[AvailableOutputOut]] */
+        ApiResponse_list_AvailableOutputOut__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /**
+             * Data
+             * @description 业务数据；失败时为 null
+             */
+            data?: components["schemas"]["AvailableOutputOut"][] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
         /** ApiResponse[list[OptionOut]] */
         ApiResponse_list_OptionOut__: {
             /**
@@ -3533,11 +3916,60 @@ export interface components {
             request_id?: string | null;
         };
         /**
+         * ApproveIn
+         * @description 审核入参（``POST .../approvals``）：**只有可选 ``remark``**。
+         *
+         *     ⚠️ 刻意不接任何数量 / 手数（03 §4.1 审核是「重算 + 断言」）：传了得到 ``10001``。
+         */
+        ApproveIn: {
+            /**
+             * Remark
+             * @description 审核备注（可选）
+             */
+            remark?: string | null;
+        };
+        /**
          * AuthChannel
          * @description 认证渠道（docs/07-认证与权限规范.md §1.1 / §1.2）。
          * @enum {string}
          */
         AuthChannel: "PC" | "H5_SMS" | "H5_WECOM" | "H5_WECHAT_MP";
+        /**
+         * AvailableOutputOut
+         * @description 可打菲来源出参（``GET .../available-outputs``，modules/03 §6）。
+         *
+         *     ⚠️ 三列数量**一律字符串**（05 §3）；``hands`` 是计数 / 序号，用 ``int``（同 ``hands_total``）。
+         */
+        AvailableOutputOut: {
+            /**
+             * Available Qty
+             * @description 还能打多少（余量 0 也在列表里，不被过滤掉）
+             */
+            available_qty: string;
+            /**
+             * Cutting Size Line Id
+             * Format: uuid
+             * @description ★ 建明细行时引用它（件数权威来源）
+             */
+            cutting_size_line_id: string;
+            /**
+             * Hands
+             * @description 裁剪侧该尺码总手数（防超打基准）
+             */
+            hands: number;
+            /**
+             * Output Qty
+             * @description 裁剪侧该尺码出数
+             */
+            output_qty: string;
+            /**
+             * Qty Per Hand
+             * @description 每手件数（裁剪尺码明细 qty_per_hand）
+             */
+            qty_per_hand: string;
+            /** Size Code */
+            size_code: string;
+        };
         /**
          * BuiltinMissingOut
          * @description 缺失（被真删且未恢复）的内置项清单。
@@ -3613,6 +4045,231 @@ export interface components {
              * @default false
              */
             roles: boolean;
+        };
+        /**
+         * BundlingOrderCreateIn
+         * @description 建打菲单入参（表头 + 明细一次提交，modules/03 §4 `create`）。
+         *
+         *     ⚠️ **表头汇总不接受传入**（`hands_total` / `output_qty` / `balance_qty` / `planned_qty`）：
+         *     modules/03 §4 明确「差异由 service 重算并覆盖入参，不信任前端」。
+         */
+        BundlingOrderCreateIn: {
+            /**
+             * Bundle Qty
+             * @description 一扎几件（录入参考值，审核后不作权威，Q-B11）
+             */
+            bundle_qty: number;
+            /**
+             * Color Code
+             * @description 色码（B2/B3：一码一色）
+             */
+            color_code: string;
+            /**
+             * Color Group
+             * @description 色组
+             */
+            color_group: string;
+            /**
+             * Doc Date
+             * Format: date
+             * @description 单据日期，决定所属期间
+             */
+            doc_date: string;
+            /**
+             * Lines
+             * @description 明细行（每行必带 cutting_size_line_id）
+             */
+            lines: components["schemas"]["LineIn"][];
+            /**
+             * Operation No
+             * @description 工序号（B9：不同工序必开不同单）
+             */
+            operation_no: string;
+            /** Remark */
+            remark?: string | null;
+            /**
+             * Source Cutting Order Id
+             * Format: uuid
+             * @description 来源裁剪单，必须 APPROVED（B8）
+             */
+            source_cutting_order_id: string;
+            /**
+             * Style No
+             * @description 款号
+             */
+            style_no: string;
+            /**
+             * Workshop Id
+             * Format: uuid
+             * @description 车间（数据范围过滤依据 INV-8）
+             */
+            workshop_id: string;
+        };
+        /**
+         * BundlingOrderListOut
+         * @description 列表行（省掉明细 —— 列表页不需要它们）。
+         */
+        BundlingOrderListOut: {
+            /** Balance Qty */
+            balance_qty: string;
+            /** Color Code */
+            color_code: string;
+            /** Created At */
+            created_at: unknown;
+            /**
+             * Doc Date
+             * Format: date
+             */
+            doc_date: string;
+            /** Doc No */
+            doc_no: string;
+            /** Hands Total */
+            hands_total: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Operation No */
+            operation_no: string;
+            /** Output Qty */
+            output_qty: string;
+            /** Status */
+            status: string;
+            /** Style No */
+            style_no: string;
+            /** Version */
+            version: number;
+            /**
+             * Workshop Id
+             * Format: uuid
+             */
+            workshop_id: string;
+        };
+        /**
+         * BundlingOrderOut
+         * @description 打菲单出参（详情 = 表头 + 明细；列表 = 明细为空）。
+         */
+        BundlingOrderOut: {
+            /** Approved At */
+            approved_at?: unknown | null;
+            /** Approved By */
+            approved_by?: string | null;
+            /**
+             * Balance Qty
+             * @description 本单余数（仅裁剪侧人工指定出数时产生）
+             */
+            balance_qty: string;
+            /**
+             * Bundle Qty
+             * @description 一扎几件（录入参考值，审核后不作权威）
+             */
+            bundle_qty: number;
+            /** Cancelled Reason */
+            cancelled_reason?: string | null;
+            /** Color Code */
+            color_code: string;
+            /** Color Group */
+            color_group: string;
+            /** Created At */
+            created_at: unknown;
+            /**
+             * Doc Date
+             * Format: date
+             */
+            doc_date: string;
+            /**
+             * Doc No
+             * @description BD-YYYYMMDD-6 位（B1）
+             */
+            doc_no: string;
+            /**
+             * Hands Total
+             * @description = Σ明细 hands = 生成码数（B21）
+             */
+            hands_total: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Label Print Qty */
+            label_print_qty: number;
+            /** Lines */
+            lines?: components["schemas"]["LineOut"][];
+            /** Operation No */
+            operation_no: string;
+            /**
+             * Output Qty
+             * @description = Σ bundles.bundle_qty（手数 × 每手件数）
+             */
+            output_qty: string;
+            /** Rejected Reason */
+            rejected_reason?: string | null;
+            /** Remark */
+            remark?: string | null;
+            /**
+             * Source Cutting Order Id
+             * Format: uuid
+             */
+            source_cutting_order_id: string;
+            /**
+             * Status
+             * @description DRAFT / SUBMITTED / APPROVED / REJECTED / CANCELLED
+             */
+            status: string;
+            /** Style No */
+            style_no: string;
+            /** Updated At */
+            updated_at: unknown;
+            /** Version */
+            version: number;
+            /**
+             * Workshop Id
+             * Format: uuid
+             */
+            workshop_id: string;
+        };
+        /**
+         * BundlingOrderPatchIn
+         * @description 改表头（``PATCH /bundling-orders/{id}``，modules/03 §4 `update`）。
+         *
+         *     ⚠️ **明细不在这里**：改明细必须走 ``PUT /lines``（全量替换，各自带锁 + 各自重算）。
+         *     混进 PATCH 会让「改个备注」也要锁住整张单的明细。
+         */
+        BundlingOrderPatchIn: {
+            /**
+             * Bundle Qty
+             * @description 一扎几件（参考值）
+             */
+            bundle_qty?: number | null;
+            /**
+             * Doc Date
+             * @description 单据日期
+             */
+            doc_date?: string | null;
+            /** Remark */
+            remark?: string | null;
+            /**
+             * Version
+             * @description 乐观锁版本号
+             */
+            version: number;
+        };
+        /**
+         * CancelIn
+         * @description 作废入参（``POST .../cancellations``；08 §1.1：必填原因，终态）。
+         *
+         *     ⚠️ 字段名是 ``cancelled_reason`` 而不是 ``reason``：表列同名，而
+         *     ``reason`` 会被误当成通用原因字段，将来反审核（``reverse``，也要必填原因）
+         *     接手时就出现「两个字段都是原因」的歧义。
+         */
+        CancelIn: {
+            /**
+             * Cancelled Reason
+             * @description 作废原因（必填，≤500 字）
+             */
+            cancelled_reason: string;
         };
         /**
          * ChangePasswordRequest
@@ -4283,6 +4940,114 @@ export interface components {
             uniform_qty?: string | null;
         };
         /**
+         * LineIn
+         * @description 打菲明细入参（按尺码，每行必带 `cutting_size_line_id`）。
+         *
+         *     ⚠️ ``size_code`` 允许同尺码多行（同尺码可来自裁剪的多个布批 / 多条尺码明细行，
+         *     ADR-0017 §4）；唯一键是 ``(doc_id, line_no)``。
+         *
+         *     ⚠️ ``cutting_size_line_id`` 是每行**必填**（B26）—— 它是件数与手数的权威来源，
+         *     `size_code` / `color_code` 为冗余快照。
+         */
+        LineIn: {
+            /**
+             * Color Code
+             * @description 色码（与表头一致）
+             */
+            color_code: string;
+            /**
+             * Cutting Size Line Id
+             * Format: uuid
+             * @description ★ 引用裁剪的尺码明细行（件数与手数权威来源）
+             */
+            cutting_size_line_id: string;
+            /**
+             * Group No
+             * @description 派给的车间组别
+             */
+            group_no?: string | null;
+            /**
+             * Hands
+             * @description ★ 本行手数（整数，ADR-0020）
+             */
+            hands: number;
+            /**
+             * Line No
+             * @description 1 起；UNIQUE (doc_id, line_no)
+             */
+            line_no: number;
+            /**
+             * Operation No
+             * @description 工序号（行级冗余，与表头一致）
+             */
+            operation_no: string;
+            /**
+             * Planned Qty
+             * @description 预览用，服务端重算
+             */
+            planned_qty?: number | null;
+            /** Remark */
+            remark?: string | null;
+            /**
+             * Size Code
+             * @description 尺码码
+             */
+            size_code: string;
+            /**
+             * Workstation No
+             * @description 工位号
+             */
+            workstation_no?: string | null;
+        };
+        /**
+         * LineOut
+         * @description 打菲明细出参。
+         */
+        LineOut: {
+            /**
+             * Available Qty Before
+             * @description 提交时从 cutting_outputs 读到的可用量快照
+             */
+            available_qty_before: string;
+            /** Color Code */
+            color_code: string;
+            /** Created At */
+            created_at: unknown;
+            /**
+             * Cutting Size Line Id
+             * Format: uuid
+             */
+            cutting_size_line_id: string;
+            /** Group No */
+            group_no?: string | null;
+            /** Hands */
+            hands: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Line No */
+            line_no: number;
+            /** Operation No */
+            operation_no: string;
+            /**
+             * Planned Qty
+             * @description = hands × qty_per_hand（精确整数，service 重算）
+             */
+            planned_qty: string;
+            /** Remark */
+            remark?: string | null;
+            /** Size Code */
+            size_code: string;
+            /** Updated At */
+            updated_at: unknown;
+            /** Version */
+            version: number;
+            /** Workstation No */
+            workstation_no?: string | null;
+        };
+        /**
          * LoginRequest
          * @description ``POST /auth/login`` 请求体。
          * @example {
@@ -4671,6 +5436,37 @@ export interface components {
             width_cm?: string | null;
         };
         /**
+         * PageData[BundlingOrderListOut]
+         * @example {
+         *       "items": [],
+         *       "page": 1,
+         *       "page_size": 20,
+         *       "total": 0
+         *     }
+         */
+        PageData_BundlingOrderListOut_: {
+            /**
+             * Items
+             * @description 当前页数据
+             */
+            items: components["schemas"]["BundlingOrderListOut"][];
+            /**
+             * Page
+             * @description 当前页码，从 1 起
+             */
+            page: number;
+            /**
+             * Page Size
+             * @description 每页条数，上限 200
+             */
+            page_size: number;
+            /**
+             * Total
+             * @description 总条数（用于分页器）
+             */
+            total: number;
+        };
+        /**
          * PageData[CuttingOrderListOut]
          * @example {
          *       "items": [],
@@ -4885,26 +5681,6 @@ export interface components {
              * @description 行内颜色（全量）
              */
             items: components["schemas"]["LineColorIn"][];
-            /**
-             * Version
-             * @description 裁剪单表头 version（聚合行乐观锁，不匹配 → 10003）
-             */
-            version: number;
-        };
-        /**
-         * PutLinesIn
-         * @description 布批行**全量替换**（``PUT /cutting-orders/{id}/lines``）。
-         *
-         *     ⚠️ 全量替换意味着不在 ``items`` 里的旧行被**软删**（连同其颜色与尺码明细）。
-         *     「删掉某一行」与「改某一行」因此走同一个接口 —— 前端只需把页面上现有的行
-         *     原样带上再改要改的那几个。
-         */
-        PutLinesIn: {
-            /**
-             * Items
-             * @description 布批行（全量）
-             */
-            items: components["schemas"]["OrderLineIn"][];
             /**
              * Version
              * @description 裁剪单表头 version（聚合行乐观锁，不匹配 → 10003）
@@ -5128,6 +5904,22 @@ export interface components {
             token_type: string;
         };
         /**
+         * RejectIn
+         * @description 驳回入参（``POST .../rejections``；08 §1.1：**必填原因**）。
+         *
+         *     ⚠️ ``reason`` 落**两处**：``bundling_orders.rejected_reason`` 与
+         *     ``document_logs.reason`` —— 只落后者的话，单据上看不到「为什么被驳回」。
+         *     ⚠️ ``min_length=1`` 挡不住全空白（``"   "``），所以 service 里还有一次
+         *     空白校验并报 ``10002``（03 §9：缺原因 → ``10002`` 弹原因输入框）。
+         */
+        RejectIn: {
+            /**
+             * Reason
+             * @description 驳回原因（必填，≤500 字）
+             */
+            reason: string;
+        };
+        /**
          * ReplacePermissionsRequest
          * @description 整体替换角色的权限点集合。
          */
@@ -5136,6 +5928,24 @@ export interface components {
             permission_codes: string[];
             /** Version */
             version: number;
+        };
+        /**
+         * ReverseIn
+         * @description 反审核入参（``POST .../reversals``；08 §1.1：**必填原因**）。
+         *
+         *     ⚠️ **本模型是 docs/12 L-098 的闭环**：此前 ``reverse`` 收裸 ``str``，必填校验只在
+         *     service（``require_reason``），而 05 §3 要求它落在 **schema 层** —— 否则 OpenAPI 上
+         *     看不出「reason 必填」，前端无从做必填提示。
+         *
+         *     ⚠️ ``min_length=1`` 挡不住全空白（``"   "``），service 里那次 ``10002`` 校验不是
+         *     重复：schema 管「有没有」，service 管「有没有认真填」（与 :class:`RejectIn` 同款）。
+         */
+        ReverseIn: {
+            /**
+             * Reason
+             * @description 反审核原因（必填，≤500 字）
+             */
+            reason: string;
         };
         /**
          * RoleBrief
@@ -6269,6 +7079,46 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /**
+         * PutLinesIn
+         * @description 明细**全量替换**（``PUT /bundling-orders/{id}/lines``，modules/03 §4 `put_lines`）。
+         *
+         *     ⚠️ **全量替换语义**：不在 ``items`` 里的旧行被**软删**。这是刻意的 ——
+         *     「按比例带出」需要能整组替换掉，而增删改混合的语义每次都要重新推导
+         *     「哪些是新增、哪些是删除」，出错时静默留下一半旧数据。
+         */
+        app__modules__bundling__schemas__PutLinesIn: {
+            /**
+             * Items
+             * @description 明细行（全量）
+             */
+            items: components["schemas"]["LineIn"][];
+            /**
+             * Version
+             * @description 乐观锁版本号
+             */
+            version: number;
+        };
+        /**
+         * PutLinesIn
+         * @description 布批行**全量替换**（``PUT /cutting-orders/{id}/lines``）。
+         *
+         *     ⚠️ 全量替换意味着不在 ``items`` 里的旧行被**软删**（连同其颜色与尺码明细）。
+         *     「删掉某一行」与「改某一行」因此走同一个接口 —— 前端只需把页面上现有的行
+         *     原样带上再改要改的那几个。
+         */
+        app__modules__cutting__schemas__maintenance_schemas__PutLinesIn: {
+            /**
+             * Items
+             * @description 布批行（全量）
+             */
+            items: components["schemas"]["OrderLineIn"][];
+            /**
+             * Version
+             * @description 裁剪单表头 version（聚合行乐观锁，不匹配 → 10003）
+             */
+            version: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -6431,6 +7281,465 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_NoneType_"];
+                };
+            };
+        };
+    };
+    list_bundling_orders_api_v1_bundling_orders_get: {
+        parameters: {
+            query?: {
+                /** @description DRAFT/SUBMITTED/APPROVED/… */
+                status?: string | null;
+                style_no?: string | null;
+                operation_no?: string | null;
+                color_code?: string | null;
+                workshop_id?: string | null;
+                /** @description 起始日期（含） */
+                doc_date_from?: string | null;
+                /** @description 结束日期（含） */
+                doc_date_to?: string | null;
+                page?: number;
+                size?: number;
+                sort_by?: string | null;
+                sort_order?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PageData_BundlingOrderListOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_bundling_order_api_v1_bundling_orders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BundlingOrderCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BundlingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_bundling_order_api_v1_bundling_orders__order_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 打菲单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BundlingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_bundling_order_api_v1_bundling_orders__order_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 打菲单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BundlingOrderPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BundlingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_bundling_order_api_v1_bundling_orders__order_id__approvals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 打菲单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApproveIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BundlingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_available_outputs_api_v1_bundling_orders__order_id__available_outputs_get: {
+        parameters: {
+            query?: {
+                /** @description 不传则用本单色码（ADR-0016 一码一色） */
+                color_code?: string | null;
+            };
+            header?: never;
+            path: {
+                /** @description 打菲单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_AvailableOutputOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_bundling_order_api_v1_bundling_orders__order_id__cancellations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 打菲单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BundlingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_bundling_order_lines_api_v1_bundling_orders__order_id__lines_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 打菲单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app__modules__bundling__schemas__PutLinesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BundlingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_bundling_order_logs_api_v1_bundling_orders__order_id__logs_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 打菲单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PageData_DocumentLogOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_bundling_order_api_v1_bundling_orders__order_id__rejections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 打菲单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BundlingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reverse_bundling_order_api_v1_bundling_orders__order_id__reversals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 打菲单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReverseIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BundlingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_bundling_order_api_v1_bundling_orders__order_id__submissions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 打菲单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BundlingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_bundling_order_api_v1_bundling_orders__order_id__withdrawals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 打菲单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BundlingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -7231,7 +8540,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PutLinesIn"];
+                "application/json": components["schemas"]["app__modules__cutting__schemas__maintenance_schemas__PutLinesIn"];
             };
         };
         responses: {
