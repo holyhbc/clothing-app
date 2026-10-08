@@ -90,6 +90,16 @@ class ErrorCode(IntEnum):
     #: 码已打印，不可静默重建，需作废后重打（ADR-0021；T-BUND-006）
     BUNDLE_ALREADY_PRINTED = 31007
 
+    # ---- 32xxx 计件 ----
+    #: ⚠️ **整段随 T-BUND-007b 登记**：打菲侧的反向动作（单码作废 / 反审核）要报
+    #: ``32003``（03 §7 + TC-08 / TC-10：``counted_at`` 非空的码不可作废、不可反审核），
+    #: 而该码此前在 ``05 §4`` 登记了却**整个 32 段都没进 Python 枚举** —— 于是
+    #: 「已计件的码被作废」这条最贵的防线在 P2 之前根本无法表达。
+    #: 同段其余五个码仍归 P2 计件模块，守卫名单见
+    #: ``tests/test_errors_registry.py::DEFERRED_CODES``。
+    #: 计件已结算 / 已计件，不可修改（单码作废与反审核共用这一个判定）
+    PIECEWORK_SETTLED = 32003
+
     # ---- 40xxx 库存 ----
     STOCK_INSUFFICIENT = 40001
     #: 布批可用库存不足（ADR-0022：裁剪领料 > 可用量）
@@ -141,6 +151,7 @@ HTTP_STATUS_BY_CODE: dict[ErrorCode, int] = {
     ErrorCode.BUNDLE_HAND_DUPLICATED: HTTPStatus.CONFLICT,
     ErrorCode.BUNDLE_COUNTED_HAND_LOCKED: HTTPStatus.CONFLICT,
     ErrorCode.BUNDLE_ALREADY_PRINTED: HTTPStatus.CONFLICT,
+    ErrorCode.PIECEWORK_SETTLED: HTTPStatus.CONFLICT,
     ErrorCode.STOCK_INSUFFICIENT: HTTPStatus.CONFLICT,
     ErrorCode.BATCH_STOCK_INSUFFICIENT: HTTPStatus.CONFLICT,
     ErrorCode.INTERNAL: HTTPStatus.INTERNAL_SERVER_ERROR,

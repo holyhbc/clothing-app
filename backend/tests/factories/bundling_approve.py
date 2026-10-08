@@ -10,9 +10,10 @@
 """
 
 from dataclasses import replace
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, NamedTuple
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -252,6 +253,7 @@ __all__ = [
     "CodeRow",
     "approve_order",
     "ensure_sizes",
+    "mark_code_counted",
     "order_codes",
     "order_logs",
     "order_status",
@@ -261,3 +263,31 @@ __all__ = [
     "reviewer_ctx",
     "set_size_hands",
 ]
+
+
+# ====================================================================== 计件痕迹（模拟）
+
+
+async def mark_code_counted(db_session, doc_id, hands: int) -> None:
+    """把某一手标成**已计件**（模拟计件模块回写 ``counted_at``）。
+
+    ⚠️ ``piecework_logs`` 属 P2（还没建表，L-096），所以这里直接写 ``counted_at``
+    —— 那正是它将来的回写结果，而 ``32003`` 的判定只看它。
+
+    ⚠️ ``synchronize_session="fetch"`` 不能省：Core UPDATE 默认**不刷新** identity map
+    里的行，而同一个 session 里那条码早就被 ``order_codes`` 读进来了 —— 不刷新的话
+    service 后面那次 ``SELECT ... FOR UPDATE`` 拿到的还是「没计件」的旧值，
+    ``32003`` 就不触发，症状是「用例断言 409 却拿到 200」（与 ``read_bundled`` 的
+    ``populate_existing`` 同一个理由）。
+    """
+    from sqlalchemy import update
+
+    from app.modules.bundling.models import Bundle
+
+    await db_session.execute(
+        update(Bundle)
+        .where(Bundle.doc_id == doc_id, Bundle.hands == hands)
+        .values(counted_qty=1, counted_at=datetime.now(tz=UTC), counted_by=uuid4())
+        .execution_options(synchronize_session="fetch")
+    )
+    await db_session.flush()

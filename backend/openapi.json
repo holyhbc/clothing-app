@@ -109,6 +109,60 @@
         "title": "ApiResponse[BuiltinRestoreOut]",
         "type": "object"
       },
+      "ApiResponse_BundleDetailOut_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BundleDetailOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[BundleDetailOut]",
+        "type": "object"
+      },
       "ApiResponse_BundlingOrderOut_": {
         "properties": {
           "code": {
@@ -379,6 +433,114 @@
         "title": "ApiResponse[DisableOut]",
         "type": "object"
       },
+      "ApiResponse_LabelExportOut_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabelExportOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[LabelExportOut]",
+        "type": "object"
+      },
+      "ApiResponse_LabelPrintOut_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabelPrintOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[LabelPrintOut]",
+        "type": "object"
+      },
       "ApiResponse_LoginResponse_": {
         "properties": {
           "code": {
@@ -641,6 +803,60 @@
           }
         },
         "title": "ApiResponse[OperationRateSetOut]",
+        "type": "object"
+      },
+      "ApiResponse_PageData_BundleListOut__": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageData_BundleListOut_"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[PageData[BundleListOut]]",
         "type": "object"
       },
       "ApiResponse_PageData_BundlingOrderListOut__": {
@@ -1183,6 +1399,114 @@
         "title": "ApiResponse[RoleOut]",
         "type": "object"
       },
+      "ApiResponse_SplitPreviewOut_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SplitPreviewOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[SplitPreviewOut]",
+        "type": "object"
+      },
+      "ApiResponse_StatisticsOut_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StatisticsOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[StatisticsOut]",
+        "type": "object"
+      },
       "ApiResponse_StyleDetailOut_": {
         "properties": {
           "code": {
@@ -1559,6 +1883,60 @@
           }
         },
         "title": "ApiResponse[UserOut]",
+        "type": "object"
+      },
+      "ApiResponse_VoidCodeOut_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VoidCodeOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[VoidCodeOut]",
         "type": "object"
       },
       "ApiResponse_dict_str__Any__": {
@@ -2499,6 +2877,274 @@
           }
         },
         "title": "BuiltinRestoreRequest",
+        "type": "object"
+      },
+      "BundleDetailOut": {
+        "description": "单码详情（``GET /bundles/{bundle_no}``，modules/03 §6 + ADR-0016 §6）。\n\n⚠️ 比列表多三组字段，且**都是现场真会问的**：\n    ① ``cutting_size_line_id`` + ``dye_lot_no`` / ``bolt_no``（**回查裁剪来源**：\n    「这手是从哪缸哪匹布裁出来的」是车间与跟单最高频的追溯问句）\n    ② ``voided_at`` / ``void_reason``（作废是终态，扫码枪要能显示「为什么作废」）\n    ③ ``print_records``（B15：重打要能逐次追溯，「印过几次」靠它）",
+        "properties": {
+          "bolt_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "★ 来源匹号（09 §1.2，与缸号共同构成批次身份）",
+            "title": "Bolt No"
+          },
+          "bundle_no": {
+            "title": "Bundle No",
+            "type": "string"
+          },
+          "bundle_qty": {
+            "description": "该手件数",
+            "title": "Bundle Qty",
+            "type": "string"
+          },
+          "color_code": {
+            "title": "Color Code",
+            "type": "string"
+          },
+          "counted_at": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "description": "计件时间（判「未计件」看它是否为空）",
+            "title": "Counted At"
+          },
+          "counted_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "计件人姓名（未计件为空）",
+            "title": "Counted By Name"
+          },
+          "counted_qty": {
+            "description": "已计件数（部分生产时小于 bundle_qty）",
+            "title": "Counted Qty",
+            "type": "string"
+          },
+          "cutting_size_line_id": {
+            "description": "★ 引用裁剪尺码明细行（件数权威来源）",
+            "format": "uuid",
+            "title": "Cutting Size Line Id",
+            "type": "string"
+          },
+          "doc_id": {
+            "format": "uuid",
+            "title": "Doc Id",
+            "type": "string"
+          },
+          "dye_lot_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "★ 来源缸号（回查 cutting_order_lines）",
+            "title": "Dye Lot No"
+          },
+          "hands": {
+            "description": "★ 手序号（第 N 手）",
+            "title": "Hands",
+            "type": "integer"
+          },
+          "hands_total_of_size": {
+            "description": "★ 共 M 手（该尺码总手数）",
+            "title": "Hands Total Of Size",
+            "type": "integer"
+          },
+          "line_id": {
+            "format": "uuid",
+            "title": "Line Id",
+            "type": "string"
+          },
+          "operation_no": {
+            "title": "Operation No",
+            "type": "string"
+          },
+          "print_records": {
+            "description": "打印留痕（按打印时间倒序，append-only）",
+            "items": {
+              "$ref": "#/components/schemas/LabelPrintRecordOut"
+            },
+            "title": "Print Records",
+            "type": "array"
+          },
+          "qr_content": {
+            "title": "Qr Content",
+            "type": "string"
+          },
+          "size_code": {
+            "title": "Size Code",
+            "type": "string"
+          },
+          "status": {
+            "description": "ACTIVE / VOIDED",
+            "title": "Status",
+            "type": "string"
+          },
+          "style_no": {
+            "title": "Style No",
+            "type": "string"
+          },
+          "void_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Void Reason"
+          },
+          "voided_at": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "description": "作废时间（未作废为空）",
+            "title": "Voided At"
+          }
+        },
+        "required": [
+          "bundle_no",
+          "doc_id",
+          "line_id",
+          "hands",
+          "hands_total_of_size",
+          "style_no",
+          "color_code",
+          "size_code",
+          "operation_no",
+          "bundle_qty",
+          "counted_qty",
+          "counted_by_name",
+          "status",
+          "qr_content",
+          "cutting_size_line_id"
+        ],
+        "title": "BundleDetailOut",
+        "type": "object"
+      },
+      "BundleListOut": {
+        "description": "码列表行（``GET /bundles``，modules/03 §6）。\n\n⚠️ **带 ``hands_total_of_size``（共 M 手）**：列表页要能直接显示「第 N 手 / 共 M 手」\n（03 §11.5.2 的单内「按手列表」），而前端做这个拼接需要每一行的分母。\n⚠️ 数量（``bundle_qty`` / ``counted_qty``）是 ``Str``，序号与计数（``hands`` /\n``hands_total_of_size``）是 ``int`` —— 与既有出参同口径（05 §3）。",
+        "properties": {
+          "bundle_no": {
+            "title": "Bundle No",
+            "type": "string"
+          },
+          "bundle_qty": {
+            "description": "该手件数",
+            "title": "Bundle Qty",
+            "type": "string"
+          },
+          "color_code": {
+            "title": "Color Code",
+            "type": "string"
+          },
+          "counted_at": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "description": "计件时间（判「未计件」看它是否为空）",
+            "title": "Counted At"
+          },
+          "counted_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "计件人姓名（未计件为空）",
+            "title": "Counted By Name"
+          },
+          "counted_qty": {
+            "description": "已计件数（部分生产时小于 bundle_qty）",
+            "title": "Counted Qty",
+            "type": "string"
+          },
+          "doc_id": {
+            "format": "uuid",
+            "title": "Doc Id",
+            "type": "string"
+          },
+          "hands": {
+            "description": "★ 手序号（第 N 手）",
+            "title": "Hands",
+            "type": "integer"
+          },
+          "hands_total_of_size": {
+            "description": "★ 共 M 手（该尺码总手数）",
+            "title": "Hands Total Of Size",
+            "type": "integer"
+          },
+          "line_id": {
+            "format": "uuid",
+            "title": "Line Id",
+            "type": "string"
+          },
+          "operation_no": {
+            "title": "Operation No",
+            "type": "string"
+          },
+          "qr_content": {
+            "title": "Qr Content",
+            "type": "string"
+          },
+          "size_code": {
+            "title": "Size Code",
+            "type": "string"
+          },
+          "status": {
+            "description": "ACTIVE / VOIDED",
+            "title": "Status",
+            "type": "string"
+          },
+          "style_no": {
+            "title": "Style No",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle_no",
+          "doc_id",
+          "line_id",
+          "hands",
+          "hands_total_of_size",
+          "style_no",
+          "color_code",
+          "size_code",
+          "operation_no",
+          "bundle_qty",
+          "counted_qty",
+          "counted_by_name",
+          "status",
+          "qr_content"
+        ],
+        "title": "BundleListOut",
         "type": "object"
       },
       "BundlingOrderCreateIn": {
@@ -3950,6 +4596,410 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HandConflictOut": {
+        "description": "一个手序号冲突（提交 / 审核时会变成 ``31005``，预演**展示而不报错**）。",
+        "properties": {
+          "bundle_no": {
+            "description": "预演将生成的码",
+            "title": "Bundle No",
+            "type": "string"
+          },
+          "code": {
+            "description": "冲突错误码（恒为 31005）",
+            "title": "Code",
+            "type": "string"
+          },
+          "color_code": {
+            "title": "Color Code",
+            "type": "string"
+          },
+          "existing_bundle_no": {
+            "description": "库里已存在的 ACTIVE 码",
+            "title": "Existing Bundle No",
+            "type": "string"
+          },
+          "hands": {
+            "title": "Hands",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "size_code": {
+            "title": "Size Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "color_code",
+          "size_code",
+          "hands",
+          "bundle_no",
+          "existing_bundle_no",
+          "message"
+        ],
+        "title": "HandConflictOut",
+        "type": "object"
+      },
+      "LabelExportFormat": {
+        "description": "标签导出的**响应形态**（modules/03 §6 的 ``format``）。\n\n⚠️ **只有两种**：``data``（数据数组，给浏览器打印模板）与 ``csv``（给标签软件导入）。\n``modules/03 §6`` 原文写的是 ``format=html|csv``，而 html 是**前端的事** ——\n06 §4 要求「``@media print`` + 尺寸标签页」由浏览器渲染，后端出 html 就等于把\n打印模板复制一份到后端，两边迟早分叉。差异登记在 docs/12 §5（需规范维护者确认）。",
+        "enum": [
+          "data",
+          "csv"
+        ],
+        "title": "LabelExportFormat",
+        "type": "string"
+      },
+      "LabelExportOut": {
+        "description": "标签导出响应（03 §6）。",
+        "properties": {
+          "csv_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "仅 format=csv 时有值（表头 1 行 + 每手 1 行）",
+            "title": "Csv Text"
+          },
+          "doc_no": {
+            "title": "Doc No",
+            "type": "string"
+          },
+          "hands_count": {
+            "description": "本次导出的手数 = items 行数",
+            "title": "Hands Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LabelItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "size_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Code"
+          },
+          "total_qty": {
+            "description": "本次导出的件数合计",
+            "title": "Total Qty",
+            "type": "string"
+          }
+        },
+        "required": [
+          "doc_no",
+          "hands_count",
+          "total_qty",
+          "items"
+        ],
+        "title": "LabelExportOut",
+        "type": "object"
+      },
+      "LabelItemOut": {
+        "description": "**一手**的标签数据（03 §5.4 标签内容清单）。\n\n⚠️ ``bundle_qty`` 是 ``Str``（05 §3「数量一律字符串」）；而 ``hands_seq`` /\n``hands_total_of_size`` 是**序号与计数**，与既有出参（``hands_total`` /\n``label_print_qty``）同口径用 ``int`` —— 标成字符串会让前端算「共 M 手」时做字符串拼接。",
+        "properties": {
+          "barcode_content": {
+            "description": "条码内容（Code128，同 qr_content，B6）",
+            "title": "Barcode Content",
+            "type": "string"
+          },
+          "bundle_no": {
+            "title": "Bundle No",
+            "type": "string"
+          },
+          "bundle_qty": {
+            "description": "★ 该手件数（= bundles.bundle_qty）",
+            "title": "Bundle Qty",
+            "type": "string"
+          },
+          "color_code": {
+            "title": "Color Code",
+            "type": "string"
+          },
+          "hands_seq": {
+            "description": "★ 第 N 手",
+            "title": "Hands Seq",
+            "type": "integer"
+          },
+          "hands_text": {
+            "description": "★ 「第 N 手 / 共 M 手」成品文案（B25 必印）",
+            "title": "Hands Text",
+            "type": "string"
+          },
+          "hands_total_of_size": {
+            "description": "★ 共 M 手（该尺码总手数）",
+            "title": "Hands Total Of Size",
+            "type": "integer"
+          },
+          "operation_no": {
+            "title": "Operation No",
+            "type": "string"
+          },
+          "qr_content": {
+            "description": "二维码内容（恒等于 bundle_no，ADR-0004）",
+            "title": "Qr Content",
+            "type": "string"
+          },
+          "size_code": {
+            "title": "Size Code",
+            "type": "string"
+          },
+          "style_no": {
+            "title": "Style No",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle_no",
+          "style_no",
+          "color_code",
+          "size_code",
+          "operation_no",
+          "hands_seq",
+          "hands_total_of_size",
+          "bundle_qty",
+          "hands_text",
+          "qr_content",
+          "barcode_content"
+        ],
+        "title": "LabelItemOut",
+        "type": "object"
+      },
+      "LabelPrintIn": {
+        "additionalProperties": false,
+        "description": "打印登记入参（``POST /bundling-orders/{id}/label-prints``，modules/03 §6 / B15）。\n\n⚠️ ``hands_seq`` **必传但允许为缺省**：缺省由 service 报 ``10002``（03 §6 明列的码），\n而不是让 pydantic 先报 ``10001`` —— 少一个必填业务参数的码与少一个非法参数是不同的提示。\n⚠️ ``size_code`` 是本卡补的：手号是**每个尺码各自**编号的，不带尺码时「第 3 手」\n根本指不到具体哪一手（同单多尺码时）。默认 ``None`` = 本单全部尺码。",
+        "properties": {
+          "from_hands": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "区间起点；不传=取 hands_seq",
+            "title": "From Hands"
+          },
+          "hands_seq": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "★ 本次打印第几手（必传，缺失 10002）",
+            "title": "Hands Seq"
+          },
+          "hands_total_of_size": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "共 M 手快照（与服务端权威值核对）",
+            "title": "Hands Total Of Size"
+          },
+          "is_reprint": {
+            "default": false,
+            "description": "是否重打（B15）",
+            "title": "Is Reprint",
+            "type": "boolean"
+          },
+          "print_seq": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "重打批次序号（重打必填）",
+            "title": "Print Seq"
+          },
+          "printed_qty": {
+            "default": 1,
+            "description": "每手本次打印张数（多打备用时 >1）",
+            "minimum": 1.0,
+            "title": "Printed Qty",
+            "type": "integer"
+          },
+          "size_code": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "只登记某个尺码；不传=全部",
+            "title": "Size Code"
+          },
+          "to_hands": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "区间终点；不传=单手",
+            "title": "To Hands"
+          }
+        },
+        "title": "LabelPrintIn",
+        "type": "object"
+      },
+      "LabelPrintOut": {
+        "description": "打印登记响应（03 §6 的 ``print_id`` / ``printed_count``）。\n\n⚠️ ``print_id`` 改为 ``print_ids`` **列表**：一次登记按手**逐行**留痕\n（哪一手印过要能逐行追溯），多手时不存在单一的 id。",
+        "properties": {
+          "doc_no": {
+            "title": "Doc No",
+            "type": "string"
+          },
+          "hands_total": {
+            "description": "本次登记的手数",
+            "title": "Hands Total",
+            "type": "integer"
+          },
+          "is_reprint": {
+            "title": "Is Reprint",
+            "type": "boolean"
+          },
+          "label_print_qty": {
+            "description": "本单累计打印张数（重打也累加）",
+            "title": "Label Print Qty",
+            "type": "integer"
+          },
+          "print_ids": {
+            "description": "本次追加的留痕行 id（每手一行）",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Print Ids",
+            "type": "array"
+          },
+          "print_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Print Seq"
+          },
+          "printed_count": {
+            "description": "本次打印张数 = 每手张数 × 手数",
+            "title": "Printed Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "doc_no",
+          "print_ids",
+          "printed_count",
+          "hands_total",
+          "label_print_qty",
+          "is_reprint"
+        ],
+        "title": "LabelPrintOut",
+        "type": "object"
+      },
+      "LabelPrintRecordOut": {
+        "description": "一行打印留痕（码详情里的「打印记录列表」，append-only，B15）。",
+        "properties": {
+          "hands_seq": {
+            "description": "打印时记下的手序号快照",
+            "title": "Hands Seq",
+            "type": "integer"
+          },
+          "hands_total_of_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hands Total Of Size"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_reprint": {
+            "title": "Is Reprint",
+            "type": "boolean"
+          },
+          "print_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Print Seq"
+          },
+          "printed_at": {
+            "title": "Printed At"
+          },
+          "printed_by": {
+            "format": "uuid",
+            "title": "Printed By",
+            "type": "string"
+          },
+          "printed_qty": {
+            "description": "本次打印张数",
+            "title": "Printed Qty",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "hands_seq",
+          "printed_qty",
+          "is_reprint",
+          "printed_by",
+          "printed_at"
+        ],
+        "title": "LabelPrintRecordOut",
+        "type": "object"
+      },
       "LineColorIn": {
         "additionalProperties": false,
         "description": "行内颜色入参（第 2 层，ADR-0017）。\n\n⚠️ ``UNIQUE (line_id, color_code)`` —— 同一匹布上同一颜色只能一行，\n但**一行可以 N 个颜色**（C32）。",
@@ -5026,6 +6076,51 @@
           "balance_qty"
         ],
         "title": "OrderLineOut",
+        "type": "object"
+      },
+      "PageData_BundleListOut_": {
+        "example": {
+          "items": [],
+          "page": 1,
+          "page_size": 20,
+          "total": 0
+        },
+        "properties": {
+          "items": {
+            "description": "当前页数据",
+            "items": {
+              "$ref": "#/components/schemas/BundleListOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "description": "当前页码，从 1 起",
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "description": "每页条数，上限 200",
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "description": "总条数（用于分页器）",
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "PageData[BundleListOut]",
         "type": "object"
       },
       "PageData_BundlingOrderListOut_": {
@@ -6214,6 +7309,289 @@
           "balance_qty"
         ],
         "title": "SizeLineOut",
+        "type": "object"
+      },
+      "SplitBundleOut": {
+        "description": "预演出的**一手**（modules/03 §5.5 的 ``bundles[]``）。",
+        "properties": {
+          "bundle_no": {
+            "title": "Bundle No",
+            "type": "string"
+          },
+          "bundle_qty": {
+            "description": "该手件数（= 裁剪尺码明细 qty_per_hand）",
+            "title": "Bundle Qty",
+            "type": "string"
+          },
+          "hands": {
+            "description": "手序号（第 N 手）",
+            "title": "Hands",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bundle_no",
+          "hands",
+          "bundle_qty"
+        ],
+        "title": "SplitBundleOut",
+        "type": "object"
+      },
+      "SplitLineIn": {
+        "additionalProperties": false,
+        "description": "预演的一行（modules/03 §5.5 的 ``{size_code, hands, cutting_size_line_id}``）。\n\n⚠️ ``cutting_size_line_id`` 必带：每手件数取**那条裁剪尺码明细**的 ``qty_per_hand``\n（Q-B15），不传就等于让服务端猜「这一手几件」。",
+        "properties": {
+          "cutting_size_line_id": {
+            "description": "★ 引用裁剪尺码明细行（每手件数的权威来源）",
+            "format": "uuid",
+            "title": "Cutting Size Line Id",
+            "type": "string"
+          },
+          "hands": {
+            "description": "★ 本行手数（= 码数），必须 > 0",
+            "minimum": 1.0,
+            "title": "Hands",
+            "type": "integer"
+          },
+          "size_code": {
+            "description": "尺码码",
+            "maxLength": 16,
+            "title": "Size Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "size_code",
+          "hands",
+          "cutting_size_line_id"
+        ],
+        "title": "SplitLineIn",
+        "type": "object"
+      },
+      "SplitPreviewIn": {
+        "additionalProperties": false,
+        "description": "预演入参（``POST /bundling-orders/{id}/split``，**整个 body 可省**）。\n\n⚠️ **不传 body = 用当前单据的行**（modules/03 §5.5）：主管想核对的是「这张单会打成\n什么样」，而绝大多数时候这个问题的答案就在单据本身。传 ``lines`` 才是「我改了手数，\n先看看会变成什么样」的试算。\n⚠️ ``color_code`` **不在入参里**：色码一律取本单（ADR-0016 一码一色），让前端指定\n色码等于让它挑一个服务端不认的口径。",
+        "properties": {
+          "lines": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SplitLineIn"
+                },
+                "maxItems": 500,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "不传 = 用本单当前明细",
+            "title": "Lines"
+          }
+        },
+        "title": "SplitPreviewIn",
+        "type": "object"
+      },
+      "SplitPreviewLineOut": {
+        "description": "一个尺码的预演结果（modules/03 §5.5 的 ``previews[]``）。",
+        "properties": {
+          "bundle_qty": {
+            "description": "该手件数",
+            "title": "Bundle Qty",
+            "type": "string"
+          },
+          "bundles": {
+            "items": {
+              "$ref": "#/components/schemas/SplitBundleOut"
+            },
+            "title": "Bundles",
+            "type": "array"
+          },
+          "color_code": {
+            "title": "Color Code",
+            "type": "string"
+          },
+          "cutting_size_line_id": {
+            "format": "uuid",
+            "title": "Cutting Size Line Id",
+            "type": "string"
+          },
+          "hands": {
+            "description": "本行手数 = 码数",
+            "title": "Hands",
+            "type": "integer"
+          },
+          "remainder_qty": {
+            "description": "余数（整件口径下恒为 0，尾数不出码）",
+            "title": "Remainder Qty",
+            "type": "string"
+          },
+          "size_code": {
+            "title": "Size Code",
+            "type": "string"
+          },
+          "start_hand_seq": {
+            "description": "本行第一手的序号（Q-B13 跨行接着编）",
+            "title": "Start Hand Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "color_code",
+          "size_code",
+          "cutting_size_line_id",
+          "hands",
+          "bundle_qty",
+          "remainder_qty",
+          "start_hand_seq",
+          "bundles"
+        ],
+        "title": "SplitPreviewLineOut",
+        "type": "object"
+      },
+      "SplitPreviewOut": {
+        "description": "预演响应（modules/03 §5.5；**只读不落库**，不预占、不写日志）。",
+        "properties": {
+          "balance_qty": {
+            "description": "合计余数（整件口径恒为 0）",
+            "title": "Balance Qty",
+            "type": "string"
+          },
+          "conflicts": {
+            "description": "手序号与库内已有 ACTIVE 码冲突的清单（提交后会报 31005）",
+            "items": {
+              "$ref": "#/components/schemas/HandConflictOut"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "hands_total": {
+            "description": "合计手数（= 将生成的码数）",
+            "title": "Hands Total",
+            "type": "integer"
+          },
+          "planned_qty": {
+            "description": "合计件数",
+            "title": "Planned Qty",
+            "type": "string"
+          },
+          "previews": {
+            "description": "逐尺码的拆分预览",
+            "items": {
+              "$ref": "#/components/schemas/SplitPreviewLineOut"
+            },
+            "title": "Previews",
+            "type": "array"
+          }
+        },
+        "required": [
+          "previews",
+          "hands_total",
+          "planned_qty",
+          "balance_qty",
+          "conflicts"
+        ],
+        "title": "SplitPreviewOut",
+        "type": "object"
+      },
+      "StatItemOut": {
+        "description": "一行统计（一个款号 × 一个尺码）。",
+        "properties": {
+          "counted_hands": {
+            "description": "已计件手数（counted_at 非空）",
+            "title": "Counted Hands",
+            "type": "integer"
+          },
+          "hands": {
+            "description": "手数（= 码数）",
+            "title": "Hands",
+            "type": "integer"
+          },
+          "qty": {
+            "description": "件数合计（各码 bundle_qty 之和）",
+            "title": "Qty",
+            "type": "string"
+          },
+          "size_code": {
+            "title": "Size Code",
+            "type": "string"
+          },
+          "style_no": {
+            "title": "Style No",
+            "type": "string"
+          },
+          "uncounted_hands": {
+            "description": "未计件手数（counted_at 为空）",
+            "title": "Uncounted Hands",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "style_no",
+          "size_code",
+          "hands",
+          "qty",
+          "counted_hands",
+          "uncounted_hands"
+        ],
+        "title": "StatItemOut",
+        "type": "object"
+      },
+      "StatTotalsOut": {
+        "description": "合计行（**与 items 同口径**，不是另一套算法）。",
+        "properties": {
+          "counted_hands": {
+            "description": "已计件手数合计",
+            "title": "Counted Hands",
+            "type": "integer"
+          },
+          "hands": {
+            "description": "手数合计",
+            "title": "Hands",
+            "type": "integer"
+          },
+          "qty": {
+            "description": "件数合计",
+            "title": "Qty",
+            "type": "string"
+          },
+          "uncounted_hands": {
+            "description": "未计件手数合计",
+            "title": "Uncounted Hands",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hands",
+          "qty",
+          "counted_hands",
+          "uncounted_hands"
+        ],
+        "title": "StatTotalsOut",
+        "type": "object"
+      },
+      "StatisticsOut": {
+        "description": "统计响应（``GET /bundling-orders/statistics``）。\n\n⚠️ 数据范围由 service 的 ``apply_data_scope`` 强制：车间主管统计到的只有本车间，\n且**不能靠传 ``workshop_id`` 放大范围**（07 §3.2 铁律 1）。",
+        "properties": {
+          "items": {
+            "description": "按款号 × 尺码聚合的明细",
+            "items": {
+              "$ref": "#/components/schemas/StatItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/StatTotalsOut",
+            "description": "合计行（前端表尾直接用，不要自己再算一遍）"
+          }
+        },
+        "required": [
+          "items",
+          "totals"
+        ],
+        "title": "StatisticsOut",
         "type": "object"
       },
       "StockBatchOptionOut": {
@@ -8040,7 +9418,59 @@
         "title": "ValidationError",
         "type": "object"
       },
-      "app__modules__bundling__schemas__PutLinesIn": {
+      "VoidCodeIn": {
+        "additionalProperties": false,
+        "description": "作废单码入参（``POST /bundles/{bundle_no}/voids``，modules/03 §6 + 08 §2.2）。\n\n⚠️ ``void_reason`` **必填**（08 §2.2「作废码必填原因」）：``min_length=1`` 挡得住\n「没传」，挡不住全空白（``\"   \"``），所以 service 里还有一次 ``require_reason`` 报\n``10002`` —— 两层不是重复，一个管「有没有」，一个管「有没有认真填」。",
+        "properties": {
+          "void_reason": {
+            "description": "作废原因（必填，≤500 字）",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Void Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "void_reason"
+        ],
+        "title": "VoidCodeIn",
+        "type": "object"
+      },
+      "VoidCodeOut": {
+        "description": "作废单码响应。\n\n⚠️ **不含**结转数字：单码作废**不动** ``cutting_outputs``（08 §2.2「作废码写\n``voided_at`` + ``void_reason``」），所以响应里给出任何结转相关的数都会让前端\n以为结转变了 —— 而那正是「结转与实际码数长期不一致」的起点。",
+        "properties": {
+          "bundle_no": {
+            "title": "Bundle No",
+            "type": "string"
+          },
+          "doc_no": {
+            "title": "Doc No",
+            "type": "string"
+          },
+          "status": {
+            "description": "恒为 VOIDED（B12 不可恢复，行保留）",
+            "title": "Status",
+            "type": "string"
+          },
+          "void_reason": {
+            "title": "Void Reason",
+            "type": "string"
+          },
+          "voided_at": {
+            "title": "Voided At"
+          }
+        },
+        "required": [
+          "bundle_no",
+          "doc_no",
+          "status",
+          "voided_at",
+          "void_reason"
+        ],
+        "title": "VoidCodeOut",
+        "type": "object"
+      },
+      "app__modules__bundling__schemas__order_schemas__PutLinesIn": {
         "additionalProperties": false,
         "description": "明细**全量替换**（``PUT /bundling-orders/{id}/lines``，modules/03 §4 `put_lines`）。\n\n⚠️ **全量替换语义**：不在 ``items`` 里的旧行被**软删**。这是刻意的 ——\n「按比例带出」需要能整组替换掉，而增删改混合的语义每次都要重新推导\n「哪些是新增、哪些是删除」，出错时静默留下一半旧数据。",
         "properties": {
@@ -8326,6 +9756,347 @@
         ]
       }
     },
+    "/api/v1/bundles": {
+      "get": {
+        "description": "码列表。\n\n⚠️ **数据范围经 ``bundling_orders.workshop_id`` 回查**（``bundles`` 没有车间列）：\nservice 的 ``apply_data_scope`` 带 ``via`` 强制注入，越权的码压根不进结果集 ——\n「返回空列表」而不是报错，正是车间主管看到别人车间时应有的表现。\n⚠️ 每行带**共 M 手**：列表页要直接显示「第 N 手 / 共 M 手」（03 §11.5.2）。\n⚠️ ``bundle_no`` 是**前缀**搜索：扫码枪输错一位时给候选，而不是「查无此码」。",
+        "operationId": "list_bundles_api_v1_bundles_get",
+        "parameters": [
+          {
+            "description": "前缀搜索",
+            "in": "query",
+            "name": "bundle_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "前缀搜索",
+              "title": "Bundle No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "style_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Style No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "color_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Color Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Size Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "operation_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Operation No"
+            }
+          },
+          {
+            "description": "ACTIVE / VOIDED",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ACTIVE / VOIDED",
+              "title": "Status"
+            }
+          },
+          {
+            "description": "按已计件过滤",
+            "in": "query",
+            "name": "counted",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按已计件过滤",
+              "title": "Counted"
+            }
+          },
+          {
+            "description": "手序号（第 N 手）",
+            "in": "query",
+            "name": "hands",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "手序号（第 N 手）",
+              "title": "Hands"
+            }
+          },
+          {
+            "in": "query",
+            "name": "doc_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Doc Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PageData_BundleListOut__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "打菲码列表（一码一手：第 N 手 / 共 M 手 / 件数 / 计件状态）",
+        "tags": [
+          "打菲",
+          "打菲"
+        ],
+        "x-permission": "bundling:read"
+      }
+    },
+    "/api/v1/bundles/{bundle_no}": {
+      "get": {
+        "description": "单码详情。\n\n⚠️ **越权 → ``12002``，查无此码 → ``31001``**（两个码不能混）：车间主管拿别人的码\n只会看到「查无此码」的话，会去核对码有没有输错，而真正的原因是权限。\n⚠️ ``cutting_size_line_id`` + ``dye_lot_no`` / ``bolt_no`` 是**回查裁剪来源**：\n「这手是从哪缸哪匹布裁出来的」是车间与跟单最高频的追溯问句。\n⚠️ 响应体可直接显示「XL 第 2 手 · 60 件」（ADR-0016 §6 工位机反馈）。",
+        "operationId": "get_bundle_api_v1_bundles__bundle_no__get",
+        "parameters": [
+          {
+            "description": "打菲号",
+            "in": "path",
+            "name": "bundle_no",
+            "required": true,
+            "schema": {
+              "description": "打菲号",
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Bundle No",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_BundleDetailOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "单码详情（★ 手号/共 M 手/该手件数 + 来源缸号匹号 + 计件 + 打印记录）",
+        "tags": [
+          "打菲",
+          "打菲"
+        ],
+        "x-permission": "bundling:read"
+      }
+    },
+    "/api/v1/bundles/{bundle_no}/voids": {
+      "post": {
+        "description": "作废**一个**码（``void_reason`` 必填）。\n\n⚠️ **单码作废 ≠ 整单反审核**：它**不碰** ``cutting_outputs`` 结转，也**不改**单据状态。\n结转只随整单 ``approve`` / ``reverse`` 动（见 service 的对照表）—— 混淆两者的后果是\n「作废 10 手之后结转少 10 件」，而没有任何表能验出这个差。\n⚠️ **已计件 → ``32003``**：先在计件模块红冲 + 补录（判定复用反审核那一处，P2 建表后只改一处）。\n⚠️ **行保留**（B12 不可恢复）：码仍在库里、仍占着手号，仍能被扫码枪查到并回报\n「已作废（31002）」。\n⚠️ ``Idempotency-Key``：重复点击只生效一次，第二次返回**首次结果**（05 §5）——\n没有它，第二次会撞 ``31002``，而连点不该看到错误。",
+        "operationId": "void_bundle_code_api_v1_bundles__bundle_no__voids_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_no",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Bundle No",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoidCodeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_VoidCodeOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "作废单码（★ 行保留不可恢复；已计件 → 32003；不动裁剪结转）",
+        "tags": [
+          "打菲",
+          "打菲"
+        ],
+        "x-idempotency-key": true,
+        "x-permission": "bundling:code:void"
+      }
+    },
     "/api/v1/bundling-orders": {
       "get": {
         "description": "单据列表。\n\n⚠️ ``workshop_id`` 传了也只是**再过滤一次**，**不能放大范围**（``07 §3.2`` 铁律 1）：\n车间主管传别的车间 id 依然查不到，由 service 里的 ``apply_data_scope`` 保证。",
@@ -8588,6 +10359,242 @@
           "打菲"
         ],
         "x-permission": "bundling:create"
+      }
+    },
+    "/api/v1/bundling-orders/exports": {
+      "get": {
+        "description": "导出打菲单（CSV，``text/csv; charset=utf-8-sig``）。\n\n⚠️ **必须要求 ``bundling:export``**：导出是绕过界面直接拿数据的地方，比界面更容易\n泄露（07 §3.2 铁律 3）。数据范围与列表完全一致，**不导出范围之外的单据**。\n⚠️ **复用列表 service**（铁律 3）：另写一条查询的话，「列表看到的」与「导出的」会不一致，\n而那只有对账时才发现。\n⚠️ 超过单次上限 → ``11011``，**不截断**（截断出来的 CSV 会被当完整数据入账）。",
+        "operationId": "export_bundling_orders_api_v1_bundling_orders_exports_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "style_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Style No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "operation_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Operation No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "color_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Color Code"
+            }
+          },
+          {
+            "description": "起始日期（含）",
+            "in": "query",
+            "name": "doc_date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "起始日期（含）",
+              "title": "Doc Date From"
+            }
+          },
+          {
+            "description": "结束日期（含）",
+            "in": "query",
+            "name": "doc_date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "结束日期（含）",
+              "title": "Doc Date To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "导出打菲单 CSV（与单据列表同一套筛选与数据范围）",
+        "tags": [
+          "打菲",
+          "打菲"
+        ],
+        "x-permission": "bundling:export"
+      }
+    },
+    "/api/v1/bundling-orders/statistics": {
+      "get": {
+        "description": "统计。**维度只有款号 × 尺码**（modules/03 §6），不自行发明别的分组。\n\n⚠️ **只数 ACTIVE 码**：``VOIDED`` 既不是「已计件」也不是「未计件」（03 §3.3），\n算进任何一边都会让「手数 = 已计 + 未计」对不上。\n⚠️ **日期按单据日期**：码本身没有日期；按入库时间算，审核分批会把同一个月裂成两段。\n⚠️ 数据范围在 service 强制：车间主管只统计得到本车间（``workshop_id`` 传了也不能放大）。",
+        "operationId": "bundling_statistics_api_v1_bundling_orders_statistics_get",
+        "parameters": [
+          {
+            "description": "起始单据日期（含）",
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "起始单据日期（含）",
+              "title": "Date From"
+            }
+          },
+          {
+            "description": "结束单据日期（含）",
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "结束单据日期（含）",
+              "title": "Date To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "style_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Style No"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_StatisticsOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "打菲统计（按款号 × 尺码：手数 / 件数 / 已计手数 / 未计件手数）",
+        "tags": [
+          "打菲",
+          "打菲"
+        ],
+        "x-permission": "bundling:read"
       }
     },
     "/api/v1/bundling-orders/{order_id}": {
@@ -8910,6 +10917,189 @@
         "x-permission": "bundling:cancel"
       }
     },
+    "/api/v1/bundling-orders/{order_id}/label-prints": {
+      "post": {
+        "description": "打印登记。**只写痕迹**，不生成码、不改单据状态。\n\n⚠️ 与「标签导出」**不合并**（03 §6）：实物标签是**先印后核**的 —— 导出 5 手可能只印了\n3 手（卡纸 / 只补两手），合并之后「导出了 5 手」会被记成「打印了 5 手」，\n而车间实物只有 3 张：留痕一旦与实物不符，它就不再是对账证据。\n⚠️ ``hands_seq`` 必传（缺失 → ``10002``）、``size_code`` 必传口径是「每尺码各自编号」，\n重打必带 ``print_seq``（否则与首次打印无从区分 → ``10008``）。\n⚠️ ``Idempotency-Key``：同键同 body → 200 + 首次结果；同键不同 body → ``10002``（05 §5）。",
+        "operationId": "register_label_prints_api_v1_bundling_orders__order_id__label_prints_post",
+        "parameters": [
+          {
+            "description": "打菲单 id",
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "description": "打菲单 id",
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelPrintIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_LabelPrintOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "批量打印登记（★ 一手一行留痕；重打必带 print_seq；支持 Idempotency-Key）",
+        "tags": [
+          "打菲",
+          "打菲"
+        ],
+        "x-idempotency-key": true,
+        "x-permission": "bundling:print"
+      }
+    },
+    "/api/v1/bundling-orders/{order_id}/labels": {
+      "get": {
+        "description": "标签导出。\n\n⚠️ **必须单已 ``APPROVED``**（``30001``）：没码就没标签；反审核后码全 ``VOIDED``，\n拿不到码时返回空数组会让人误判「这单没有手」（03 §6 第五批修订第 ② 条）。\n⚠️ **手号区间在每个尺码内各自成立**（Q-B13）：``from_hands=1&to_hands=2`` 命中的是\n每个尺码的 1、2 手，不是全单的前两手。\n⚠️ ``format=csv`` 时**不返回文件**而是把 ``csv_text`` 放在响应里：标签软件导入走前端\n一次请求，而「下载文件」会把浏览器的中文文件名与 BOM 处理引进来。\n⚠️ 单次手数上限 1 万，超限 ``10001``。",
+        "operationId": "export_labels_api_v1_bundling_orders__order_id__labels_get",
+        "parameters": [
+          {
+            "description": "打菲单 id",
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "description": "打菲单 id",
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "起始手号（含，每尺码各自）",
+            "in": "query",
+            "name": "from_hands",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "起始手号（含，每尺码各自）",
+              "title": "From Hands"
+            }
+          },
+          {
+            "description": "结束手号（含，每尺码各自）",
+            "in": "query",
+            "name": "to_hands",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "结束手号（含，每尺码各自）",
+              "title": "To Hands"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Size Code"
+            }
+          },
+          {
+            "description": "data = 数据数组；csv = 带 csv_text",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/LabelExportFormat",
+              "default": "data",
+              "description": "data = 数据数组；csv = 带 csv_text"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_LabelExportOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "标签导出（一手一张：款号/色/码/工序/第 N 手 / 共 M 手/该手件数/二维码）",
+        "tags": [
+          "打菲",
+          "打菲"
+        ],
+        "x-permission": "bundling:print"
+      }
+    },
     "/api/v1/bundling-orders/{order_id}/lines": {
       "put": {
         "description": "明细**全量替换**（≤ 500 行，modules/03 §6）。\n\n⚠️ 全量替换 = 软删不在 ``items`` 里的旧行。「删掉某一行」与「改某一行」因此走同一个\n接口 —— 前端只需把页面上现有的行原样带上再改要改的那几个。\n⚠️ 每一行都要重算，包括没被改动的那几行（汇总不是增量）。",
@@ -8932,7 +11122,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__modules__bundling__schemas__PutLinesIn"
+                "$ref": "#/components/schemas/app__modules__bundling__schemas__order_schemas__PutLinesIn"
               }
             }
           },
@@ -9173,6 +11363,76 @@
           "打菲"
         ],
         "x-permission": "bundling:reverse"
+      }
+    },
+    "/api/v1/bundling-orders/{order_id}/split": {
+      "post": {
+        "description": "预演。**不传 body = 用当前单据的行**（modules/03 §5.5）。\n\n⚠️ **只读**：不写库、不预占、不写日志。所以权限点是 ``bundling:read`` 而不是\n``bundling:approve`` —— 它不改任何东西。\n⚠️ **预演结果不作为审核依据**：审核事务内**重算一遍**并跑 §5.3 的四条断言（TOCTOU）。\n⚠️ ``conflicts[]`` **返回而不报错**：那是给主管看的清单（手序号与库内已有 ACTIVE 码冲突），\n真正拦截发生在 submit / approve（那里有唯一索引兜底 → ``31005``）。",
+        "operationId": "preview_bundling_split_api_v1_bundling_orders__order_id__split_post",
+        "parameters": [
+          {
+            "description": "打菲单 id",
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "description": "打菲单 id",
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SplitPreviewIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SplitPreviewOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "拆分预演（★ 只读不落库：这张单会生成哪些码、各几件、余数多少）",
+        "tags": [
+          "打菲",
+          "打菲"
+        ],
+        "x-permission": "bundling:read"
       }
     },
     "/api/v1/bundling-orders/{order_id}/submissions": {

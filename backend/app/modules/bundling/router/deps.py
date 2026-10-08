@@ -14,15 +14,17 @@
    「前端隐藏不是安全」）。``openapi_extra`` 只是文档。
 """
 
+from datetime import datetime
 from enum import Enum
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, Path
+from fastapi import Depends, Path, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.errors import BusinessError, ErrorCode
+from app.core.numbering import BUSINESS_TZ
 from app.core.permissions import AuthContext, get_auth_context
 from app.core.responses import ok
 from app.modules.bundling.models import BundlingOrder
@@ -67,3 +69,22 @@ def _order_payload(order: BundlingOrder) -> dict[str, object]:
     这类列的暴露口径（数量转字符串）由 :class:`BundlingOrderOut` 定死。
     """
     return ok(BundlingOrderOut.model_validate(order).model_dump(mode="json"))
+
+
+def _csv_response(text: str, resource: str) -> Response:
+    """CSV 下载（``text/csv; charset=utf-8-sig``）。
+
+    ⚠️ **BOM 必须真写进字节里**：Excel 不看 ``charset`` 参数去猜编码，没 BOM 就按 GBK
+    打开 → 中文全是乱码，而「生成命令成功、下载下来打不开」排查起来极贵。
+    ⚠️ 文件名带时间戳（05 §9.1 ``{资源}_{筛选摘要}_{YYYYMMDD_HHmm}``）：同一份 CSV
+    下载两次，浏览器会命中缓存，于是「重导了一次」看到的还是旧文件。
+    """
+    stamp = datetime.now(tz=BUSINESS_TZ).strftime("%Y%m%d-%H%M")
+    return Response(
+        content=text.encode("utf-8-sig"),
+        media_type="text/csv; charset=utf-8-sig",
+        headers={
+            "Content-Disposition": f'attachment; filename="{resource}-{stamp}.csv"',
+            "X-Row-Count": str(text.count("\n") - 1),
+        },
+    )

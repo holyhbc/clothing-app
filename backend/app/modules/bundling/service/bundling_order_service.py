@@ -42,19 +42,27 @@ from app.modules.bundling.schemas import (
     PutLinesIn,
 )
 from app.modules.bundling.service.approve_mixin import ApproveMixin
+from app.modules.bundling.service.code import CodeMixin
 from app.modules.bundling.service.common import DOC_TYPE_BUNDLING_ORDER, CommonMixin
 from app.modules.bundling.service.label import LabelMixin
 from app.modules.bundling.service.numbering import next_doc_no
 from app.modules.bundling.service.preview import PreviewMixin
+from app.modules.bundling.service.stat import StatMixin
 from app.modules.cutting.models import CuttingOrderSizeLine
 
 
-class BundlingOrderService(CommonMixin, ApproveMixin, PreviewMixin, LabelMixin):
-    """打菲单草稿态服务 + 状态迁移 + 只读预演。**写路径的事务边界唯一入口**（docs/03 §1.4）。
+class BundlingOrderService(
+    CommonMixin, ApproveMixin, PreviewMixin, LabelMixin, CodeMixin, StatMixin
+):
+    """打菲单草稿态服务 + 状态迁移 + 只读预演 + 码与报表。**写路径的事务边界唯一入口**。
 
-    ⚠️ :class:`PreviewMixin` 与 :class:`LabelMixin` 的**只读**方法（``preview_split`` /
-    ``export_labels``）**不开事务**（见其模块 docstring），与其余 Mixin 的写路径相反 ——
+    ⚠️ :class:`PreviewMixin` / :class:`LabelMixin` / :class:`StatMixin` 的**只读**方法
+    （``preview_split`` / ``export_labels`` / ``statistics`` / ``export_orders``）
+    **不开事务**（见各 Mixin 的模块 docstring），与其余 Mixin 的写路径相反 ——
     组装顺序不影响这一点，各方法各自管理边界。
+    ⚠️ 组装顺序**只影响方法解析**：``CodeMixin.void_code`` 依赖 ``ApproveAssertMixin``
+    的 ``_assert_hands_not_counted``，而 ``ApproveMixin`` 声明在前 —— 删掉这一行的顺序
+    约束不会立刻报错，只会让作废不再拦已计件的码（P2 落地后）。
     """
 
     def __init__(self, session: AsyncSession) -> None:

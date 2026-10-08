@@ -360,8 +360,16 @@ export type SizeLineIn = ApiModel<'SizeLineIn'>
 /** 改表头（`PATCH /api/v1/cutting-orders/{id}`，仅草稿 / 已驳回）。 */
 export type CuttingOrderPatchIn = ApiModel<'CuttingOrderPatchIn'>
 
-/** 布批行全量替换（`PUT /api/v1/cutting-orders/{id}/lines`）。 */
-export type PutLinesIn = ApiModel<'PutLinesIn'>
+/**
+ * 布批行全量替换（`PUT /api/v1/cutting-orders/{id}/lines`）。
+ *
+ * ⚠️ **组件名带模块前缀是必须的，不是笔误**：打菲的明细全量替换也叫 `PutLinesIn`
+ * （`PUT /bundling-orders/{id}/lines`），pydantic 生成 OpenAPI 时按「模块路径 + 类名」
+ * 消歧，**裸名 `PutLinesIn` 在 schema 里根本不存在**。这里写裸名的话，
+ * `pnpm build` 会报 TS2344，而报错指向 `types/index.ts`、真因在生成器消歧规则上。
+ */
+export type PutLinesIn =
+  ApiModel<'app__modules__cutting__schemas__maintenance_schemas__PutLinesIn'>
 
 /** 行内颜色全量替换（`PUT /api/v1/cutting-orders/{id}/lines/{line_id}/colors`）。 */
 export type PutColorsIn = ApiModel<'PutColorsIn'>

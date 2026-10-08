@@ -24,6 +24,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from typing import Final
 from uuid import UUID
@@ -52,6 +55,19 @@ from app.modules.cutting.models import CuttingOutput
 logger = logging.getLogger("app.bundling")
 
 ZERO: Final[Decimal] = Decimal("0")
+
+
+@dataclass(frozen=True, slots=True)
+class CountedHand:
+    """判「已计件」所需的**最小**信息。
+
+    ⚠️ 刻意只带这两列：反审核判的是**一批**码（整单），单码作废判的是**一个**码，
+    而这两条都必须走同一个判定（否则 P2 建表后要改两处，而漏掉一处就是「作废掉已计件
+    的码」—— 数据错了且不可恢复，B12）。
+    """
+
+    bundle_no: str
+    counted_at: datetime | None
 
 
 class ApproveAssertMixin(StateGuardMixin):
@@ -287,17 +303,54 @@ class ApproveAssertMixin(StateGuardMixin):
     async def _assert_not_counted(self, order: BundlingOrder) -> None:
         """08 §2.2 反审核第 ① 条：**已有计件流水 → 拒绝**（``32003``）。
 
-        ⚠️ **P2 建表后只改这一处**：``piecework_logs`` 尚未建立（属计件模块 P2），当前**无计件
-        流水可查 → 放行**。判据本应是「本单任一码有未红冲的计件流水」，而 ``bundles.counted_at``
-        由计件模块回写、当前恒为 ``NULL``，拿它当判据等于一个「看起来在拦、实际拦不住任何东西」
-        的假阳性守卫 —— 宁可明确留空并登记，也不要那样写。
-
         反审核**先锁码再判**（:func:`lock_active_bundle_hands` 带 ``FOR UPDATE``）与计件侧串行
         （03 §7）：否则会出现「判完没计件、紧接着另一个事务扫码写上 ``counted_at``、本事务把码
-        作废」。P2 落地后这里补一条流水查询即可，调用方无需改。
+        作废」。判定本身委托 :meth:`_assert_hands_not_counted`（**全仓唯一**那一处）。
         """
-        await lock_active_bundle_hands(self.session, order.id)
-        # TODO(P2: piecework_logs 建表) 查本单未红冲的计件流水，有则抛 32003
+        hands = await lock_active_bundle_hands(self.session, order.id)
+        await self._assert_hands_not_counted(
+            [CountedHand(hand.bundle_no, hand.counted_at) for hand in hands],
+            scope=f"打菲单 {order.doc_no}",
+        )
+
+    async def _assert_hands_not_counted(self, hands: Sequence[CountedHand], *, scope: str) -> None:
+        """**全仓唯一**的「这批码是不是已计件」判定点（``32003``）。
+
+        调用方两条：反审核（整单码集，:meth:`_assert_not_counted`）与**单码作废**
+        （T-BUND-007b 的 ``void_code``）。它们必须共用同一个方法 —— P2 建表后只改这里一处。
+
+        ⚠️ **当前恒放行，且这是刻意的**：``piecework_logs`` 尚未建立（属计件模块 P2，L-096），
+        所以**无流水可查**。判据本应是「有没有未红冲的计件流水」，而 ``bundles.counted_at``
+        由计件模块回写、当前恒为 ``NULL``；拿它当判据等于一个「看起来在拦、实际拦不住任何东西」
+        的假阳性守卫 —— 宁可明确留空并登记，也不要那样写。
+
+        两条判据（**都在这一个方法里**，P2 落地后也只改这里）：
+
+        1. ``bundles.counted_at`` 非空 → ``32003``（``03 §7``「作废 / 反审核 / 改手数
+           都要先 ``FOR UPDATE`` 锁码再判 ``counted_at``」、``03 §9``、TC-08 / TC-10）。
+           ⚠️ **这一条现在就能判、也必须判**：它是库里唯一的计件痕迹，
+           而「已计件的码被作废 / 被反审核掉」之后**不可恢复**（B12）—— 工资已经按它算过。
+        2. 未红冲的**计件流水** → 同样是 ``32003``，但 ``piecework_logs`` 属 P2、尚未建表
+           （L-096），当前**无表可查 → 放行**。红冲后计件模块会清空 ``counted_at``，
+           所以第 1 条判不出来的那部分（红冲过又重新计件的流水）只能等 P2。
+
+        :param scope: 报错文案里的定位（「打菲单 BD-… 」或「打菲码 BD-…-XL01-0001」），
+            让用户知道该去红冲哪一个。
+        :raises BusinessError: ``32003``（任一判据命中）。
+        """
+        for hand in hands:
+            if hand.counted_at is not None:
+                raise BusinessError(
+                    ErrorCode.PIECEWORK_SETTLED,
+                    f"{scope} 里的打菲码 {hand.bundle_no} 已经计件"
+                    f"（{hand.counted_at:%Y-%m-%d %H:%M}），不可作废 / 反审核；"
+                    "请先在计件模块红冲并补录",
+                    details={
+                        "bundle_no": hand.bundle_no,
+                        "counted_at": hand.counted_at.isoformat(),
+                    },
+                )
+        # TODO(P2: piecework_logs 建表，L-096) 查这些码未红冲的计件流水，有则抛 32003
 
     @staticmethod
     def _assert_voided(order: BundlingOrder, voided: int) -> None:
@@ -315,4 +368,4 @@ class ApproveAssertMixin(StateGuardMixin):
         )
 
 
-__all__ = ["ApproveAssertMixin"]
+__all__ = ["ApproveAssertMixin", "CountedHand"]

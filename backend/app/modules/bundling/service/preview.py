@@ -18,6 +18,7 @@ BundlingOrderService.get` / ``list_orders`` 同款。
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from uuid import UUID
@@ -35,6 +36,7 @@ from app.modules.bundling.repository import (
     list_active_bundle_hands,
     list_available_outputs,
 )
+from app.modules.bundling.schemas import SplitLineIn
 from app.modules.bundling.service.split import (
     OrderSplitPreview,
     SplitLineInput,
@@ -79,19 +81,43 @@ class PreviewMixin:
         assert_in_scope(order, ctx)
         return order
 
-    async def preview_split(self, order_id: UUID, ctx: AuthContext) -> OrderSplitPreview:
+    async def preview_split(
+        self,
+        order_id: UUID,
+        ctx: AuthContext,
+        *,
+        lines: Sequence[SplitLineIn] | None = None,
+    ) -> OrderSplitPreview:
         """预演「这张单提交后会长出哪些码」（**只读**，不落库）。
 
         算法全部委托 :func:`~app.modules.bundling.service.split.preview_order`
         —— 审核复用同一份，本方法只负责把库里的数据喂进去。
 
-        :param ctx: 数据范围按单据的 ``workshop_id`` 判定（07 §3.2）。
+        :param ctx: 数据范围按单据的 ``workshop_id`` 判定（07 §3.2）。**传了 ``lines``
+            也一样**：请求体只影响「算哪几行」，不影响「能看见哪张单」。
+        :param lines: 不传 = 用当前单据的行（modules/03 §5.5）；传了就按这几行试算
+            （「我改了手数，先看看会变成什么样」）。
         :returns: 逐手 ``bundle_no`` / ``hands`` / ``bundle_qty`` + 单据级汇总 +
             ``conflicts[]``（手序号与库内已有 ACTIVE 码冲突，提交后会报 ``31005``）。
-        :raises BusinessError: ``30001`` 单不存在 / ``12002`` 越权；
-            明细本身的非法由 :func:`split_size_line` 报（``10001`` / ``31003``）。
+        :raises BusinessError: ``30001`` 单不存在 / ``12002`` 越权；``20001`` 请求体
+            里的 ``cutting_size_line_id`` 查无此行；明细本身的非法由 :func:`split_size_line`
+            报（``10001`` / ``31003``）。
         """
         order = await self._scoped_order(order_id, ctx)
+        inputs = (
+            await self._inputs_from_order_lines(order)
+            if lines is None
+            else await self._inputs_from_body(order, lines)
+        )
+        existing = await list_active_bundle_hands(self.session, order.id)
+        return preview_order(
+            doc_no=order.doc_no,
+            lines=inputs,
+            existing_hands={(h.color_code, h.size_code, h.hands): h.bundle_no for h in existing},
+        )
+
+    async def _inputs_from_order_lines(self, order: BundlingOrder) -> list[SplitLineInput]:
+        """用**本单当前明细**算（不带 body 的那条路径）。"""
         size_lines = await get_cutting_size_lines_by_ids(
             self.session, [line.cutting_size_line_id for line in order.lines]
         )
@@ -107,13 +133,6 @@ class PreviewMixin:
                         "cutting_size_line_id": str(line.cutting_size_line_id),
                     },
                 )
-            # ⚠️ 每手件数取**裁剪尺码明细**的 qty_per_hand（B20 / Q-B15），不是本行的
-            #    planned_qty 反算 —— 反算等于又引入一份「除不尽」口径。
-            # ⚠️ `output_qty` **刻意不传裁剪侧的值**：那一列是按**裁剪行自己的** hands
-            #    算的，而打菲行的 hands 是主管另行输入的（可以比裁剪行少 —— 少打几手
-            #    是常态）。拿它当基准会把「还没打的裁剪余量」误报成打菲余数，
-            #    hands 更多时甚至会误判成「装不下」。§5.3 明写「打菲不承接裁剪余额」，
-            #    所以本行的出数基准就是 `hands × qty_per_hand`，余数恒为 0。
             inputs.append(
                 SplitLineInput(
                     color_code=line.color_code,
@@ -123,12 +142,41 @@ class PreviewMixin:
                     cutting_size_line_id=line.cutting_size_line_id,
                 )
             )
-        existing = await list_active_bundle_hands(self.session, order.id)
-        return preview_order(
-            doc_no=order.doc_no,
-            lines=inputs,
-            existing_hands={(h.color_code, h.size_code, h.hands): h.bundle_no for h in existing},
+        return inputs
+
+    async def _inputs_from_body(
+        self, order: BundlingOrder, lines: Sequence[SplitLineIn]
+    ) -> list[SplitLineInput]:
+        """用**请求体**的几行算（试算路径）。
+
+        ⚠️ **色码一律取本单**：ADR-0016 一码一色，让前端指定色码等于让它挑一个服务端
+        不认的口径，而预演出来的 ``bundle_no`` 会带着那个假色码。
+        """
+        size_lines = await get_cutting_size_lines_by_ids(
+            self.session, [line.cutting_size_line_id for line in lines]
         )
+        inputs: list[SplitLineInput] = []
+        for index, line in enumerate(lines, start=1):
+            source = size_lines.get(line.cutting_size_line_id)
+            if source is None:
+                raise BusinessError(
+                    ErrorCode.BASE_DATA_NOT_FOUND,
+                    f"预演第 {index} 行的裁剪尺码明细行不存在或已删除",
+                    details={
+                        "line_index": index,
+                        "cutting_size_line_id": str(line.cutting_size_line_id),
+                    },
+                )
+            inputs.append(
+                SplitLineInput(
+                    color_code=order.color_code,
+                    size_code=line.size_code,
+                    hands=line.hands,
+                    qty_per_hand=source.qty_per_hand,
+                    cutting_size_line_id=line.cutting_size_line_id,
+                )
+            )
+        return inputs
 
     async def available_outputs(
         self, order_id: UUID, ctx: AuthContext, *, color_code: str | None = None

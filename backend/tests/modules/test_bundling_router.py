@@ -8,7 +8,9 @@ TC-BD-04                        未实现的路径不在契约里，HTTP 上**�
 TC-BD-05                        无权限点 → **403 ``12001``**（前端隐藏不是安全）
 TC-BD-06                        越权数据范围 → **403 ``12002``**（详情与日志都拦）
 TC-BD-07                        ``/logs`` 只回本单留痕；``available-outputs`` 只读
-TC-BD-08                        静态路由段声明在 ``/{order_id}`` **之前**
+TC-BD-08                        ~~静态路由段声明在 ``/{order_id}`` 之前~~ → 已挪到
+                                ``test_bundling_router2.py``（T-BUND-007b 加了两个顶层
+                                静态段，守卫跟着它们走，见下）
 ======================================  ==========================================
 
 ⚠️ **六个状态动作在** ``test_bundling_router_actions.py``：单文件 400 行硬线（ADR-0030），
@@ -18,8 +20,10 @@ TC-BD-08                        静态路由段声明在 ``/{order_id}`` **之�
 车间主管就能按 ID 打开**别的车间**的打菲单 —— 而列表页看起来一切正常（列表有过滤），
 这类越权从日志里完全看不出来。
 
-⚠️ **TC-BD-08 / TC-BD-04 是一对**：守卫把「静态段先于 ``/{order_id}``」立住，T-BUND-007b
-才能安全地往这个前缀上加 ``/statistics`` 与 ``/exports``。
+⚠️ **TC-BD-08 已挪到 ``test_bundling_router2.py``**：T-BUND-007b 真加上了
+``/statistics`` 与 ``/exports`` 两个顶层静态段，而这条守卫的原写法（比「首段」）会被
+``aux_router`` 里的 ``/bundling-orders/{order_id}/split`` 提前抓到 ``{order_id}`` 而假红 ——
+守卫跟着它要守的那两个端点走，才知道该比「**一段**的路径」。
 """
 
 from decimal import Decimal
@@ -58,18 +62,11 @@ IMPLEMENTED: tuple[str, ...] = (
     *(f"POST {API}/{{order_id}}/{action}" for action in ACTIONS),
 )
 
-#: 归属 T-BUND-007b 的路径：service 侧还没实现，**路由不许存在**。
-NOT_IMPLEMENTED: tuple[tuple[str, str], ...] = (
-    ("POST", f"{API}/{{order_id}}/split"),
-    ("GET", f"{API}/{{order_id}}/hands"),
-    ("GET", f"{API}/{{order_id}}/labels"),
-    ("POST", f"{API}/{{order_id}}/label-prints"),
-    ("GET", "/api/v1/bundles"),
-    ("GET", "/api/v1/bundles/{bundle_no}"),
-    ("POST", "/api/v1/bundles/{bundle_no}/voids"),
-    ("GET", f"{API}/statistics"),
-    ("GET", f"{API}/exports"),
-)
+#: **尚未**实现、**路由不许存在**的路径（T-BUND-007b 已实现其中八个，见
+#: ``test_bundling_router2.py::IMPLEMENTED``）。
+#: ⚠️ 只剩 ``/hands``：按手列表（``03 §6``）在 007b 的范围之外，而 TC-30 依赖它 ——
+#: 该归属已登记在 T-BUND-007b 任务卡的遗留清单里，不要在这里悄悄把它实现掉。
+NOT_IMPLEMENTED: tuple[tuple[str, str], ...] = (("GET", f"{API}/{{order_id}}/hands"),)
 
 
 def _openapi_paths() -> dict[str, dict[str, Any]]:
@@ -201,26 +198,28 @@ async def test_logs_and_available_outputs(
 
 
 def test_contract_has_exactly_thirteen_endpoints() -> None:
-    """TC-BD-03：13 个端点齐，且每个都带 ``tags=打菲`` + ``summary`` + 已登记 ``x-permission``。"""
+    """TC-BD-03：这 13 个单据端点齐，且每个都带 ``tags=打菲`` + ``summary`` + 已登记权限点。
+
+    ⚠️ **逐个查而不是「打菲路径全量相等」**（T-BUND-007b 改）：辅助能力的八个端点
+    （预演 / 标签 / 码 / 统计 / 导出）由 ``test_bundling_router2.py`` 守着，两边各守
+    一半 —— 原来那条「全量相等」在 007b 加端点的当天就会红，而红的原因只是「数量变了」。
+    """
     known = {item.code for item in PERMISSIONS}
-    seen: list[str] = []
-    for path, methods in _openapi_paths().items():
-        if not path.startswith(API):
-            continue
-        for method, op in methods.items():
-            if method not in ("get", "post", "put", "patch", "delete"):
-                continue
-            assert "打菲" in op.get("tags", []), f"{method.upper()} {path} 缺 tags=打菲"
-            assert op.get("summary"), f"{method.upper()} {path} 缺 summary（05 §6）"
-            permission = op.get("x-permission")
-            assert permission, f"{method.upper()} {path} 缺 x-permission"
-            assert permission in known, f"{permission!r} 不在 07 §2.2 登记过"
-            seen.append(f"{method.upper()} {path}")
-    assert sorted(seen) == sorted(IMPLEMENTED), f"端点数 {len(seen)} ≠ {len(IMPLEMENTED)}：{seen}"
+    paths = _openapi_paths()
+    for entry in IMPLEMENTED:
+        method, path = entry.split(" ", 1)
+        assert path in paths, f"{entry} 不在契约里"
+        op = paths[path][method.lower()]
+        assert "打菲" in op.get("tags", []), f"{entry} 缺 tags=打菲"
+        assert op.get("summary"), f"{entry} 缺 summary（05 §6）"
+        permission = op.get("x-permission")
+        assert permission, f"{entry} 缺 x-permission"
+        assert permission in known, f"{permission!r} 不在 07 §2.2 登记过"
+    assert len(IMPLEMENTED) == 13
 
 
 def test_unimplemented_paths_absent_from_contract() -> None:
-    """TC-BD-04：T-BUND-007b 的 9 个路径**不在 OpenAPI 里**（路由不存在，不是占位）。"""
+    """TC-BD-04：未实现的路径**不在 OpenAPI 里**（路由不存在，不是占位）。"""
     paths = set(_openapi_paths())
     for _method, template in NOT_IMPLEMENTED:
         assert resolve(template, ORDER_ID, BUNDLE_NO) not in paths, (
@@ -234,36 +233,14 @@ async def test_unimplemented_endpoint_is_not_501(
 ) -> None:
     """TC-BD-04：未实现的路径 HTTP 上是 404，**绝不 501**。
 
-    ⚠️ 允许 422 的只有**顶层静态段**（``/statistics`` ``/exports``）：它们会被
-    ``/{order_id}`` 抢先匹配上，UUID 解析失败正是「**没有专门的路由**」的证据。
-    真要加这两个端点时必须声明在 ``/{order_id}`` **之前**（TC-BD-08）。
+    ⚠️ 允许 422 的是**顶层静态段**：它们会被 ``/{order_id}`` 抢先匹配上，UUID 解析失败
+    正是「**没有专门的路由**」的证据。真要加这类端点时必须声明在 ``/{order_id}``
+    **之前**（TC-BD-08 / TC-BX-09）。
     """
     headers = await auth_headers(role="super_admin")
     response = await client.request(method, resolve(template, ORDER_ID, BUNDLE_NO), headers=headers)
     assert response.status_code in (404, 422), f"{template} 返回 {response.status_code}"
     assert response.status_code != 501, "不写「501 未实现」占位（占位会让前端以为它存在）"
-
-
-def test_static_routes_precede_the_id_route() -> None:
-    """TC-BD-08：顶层静态段必须排在 ``/{order_id}`` **之前**（T-CUT-001c-1 的教训）。
-
-    ⚠️ FastAPI 按**注册顺序**匹配。``/statistics`` 一旦排在 ``/{order_id}`` 之后，
-    永远被 UUID 解析挡掉（422），而 OpenAPI 里**照样列着它** —— 契约说有、实际调不到，
-    是最难查的一类缺陷。本卡顶层只有空路径（集合根），先把规则立住给 007b 用。
-    """
-    from app.main import create_app
-
-    # 集合根 `/api/v1/bundling-orders` 后面**没有**段，取 ``[len(API):]`` 的首段（空串）
-    segments = [
-        path[len(API) :].strip("/").split("/")[0] if path[len(API) :].strip("/") else ""
-        for path in _route_paths(create_app())
-        if path.startswith(API)
-    ]
-    assert "{order_id}" in segments, "守卫本身失效：没抓到 {order_id} 路由"
-    first_param = segments.index("{order_id}")
-    for i, segment in enumerate(segments):
-        if not segment.startswith("{"):
-            assert i < first_param, f"静态段 {segment} 注册在 {{order_id}} 之后，永远命中不了"
 
 
 # ====================================================================== 权限与数据范围

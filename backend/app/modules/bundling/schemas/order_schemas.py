@@ -1,4 +1,4 @@
-"""打菲单草稿态的入参/出参模型（docs/05 §2、§3 + modules/03 §4/§7）。
+"""打菲单**单据侧**的入参/出参模型（docs/05 §2、§3 + modules/03 §4/§7）。
 
 ⚠️ **表头汇总列不入参**（`hands_total` / `output_qty` / `balance_qty` / `planned_qty`）：
 service 重算并覆盖，不信任前端。所以这几列连字段都没有 —— 传了会被
@@ -9,6 +9,21 @@ service 重算并覆盖，不信任前端。所以这几列连字段都没有 �
 直接从 ORM 构造会报 ``Input should be a valid string [input_value=Decimal('96.000')]``，
 完全看不出根因是「出参类型不能直接从 ORM 构造」。用 :mod:`app.core.pydantic_types.Str`
 统一承接。
+
+## 本文件是 ``schemas`` 包的一部分（T-BUND-007b / ADR-0031 / 闭环 L-102）
+
+拆包理由：单文件已 398 行，而本卡还要加码详情 / 统计 / 导出的出参，一加就顶破
+ADR-0030 的 400 行硬线。与 ``cutting/schemas`` 同一配方：
+
+| 模块 | 装什么 |
+| --- | --- |
+| :mod:`.order_schemas`（本文件） | 建单/改单/明细替换、六个状态动作、单据与可打菲来源出参 |
+| :mod:`.code_schemas` | 拆分预演、标签两接口、**码**（``bundles``）列表/详情/作废 |
+| :mod:`.stat_schemas` | **统计**出参 |
+
+依赖方向单向：``code_schemas → order_schemas``（只为了 ``MAX_REASON``），本文件
+**不反向 import 同包任何模块**。包 ``__init__`` 按序重导出，**对外导入面不变**
+（``from app.modules.bundling.schemas import X`` 照旧可用），OpenAPI 也零变化。
 """
 
 from datetime import date
@@ -17,14 +32,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.common.enums import LabelExportFormat
 from app.core.pydantic_types import Str
 
 #: 单页最大行数。打菲单明细通常 ≤ 20 行（色码 × 尺码），上限留 500 防恶意提交。
 MAX_LINES = 500
 
-#: 状态动作的**原因**最大长度（驳回 / 作废）。与 ``remark`` 同一口径 —— DB 列是
-#: ``text`` 放得下，这里限的是「让人能在列表页一眼看完」的长度，不是存储上限。
+#: 状态动作的**原因**最大长度（驳回 / 作废 / **作废单码**）。与 ``remark`` 同一口径 ——
+#: DB 列是 ``text`` 放得下，这里限的是「让人能在列表页一眼看完」的长度，不是存储上限。
 MAX_REASON = 500
 
 
@@ -279,120 +293,3 @@ class AvailableOutputOut(BaseModel):
     qty_per_hand: Str = Field(description="每手件数（裁剪尺码明细 qty_per_hand）")
     output_qty: Str = Field(description="裁剪侧该尺码出数")
     available_qty: Str = Field(description="还能打多少（余量 0 也在列表里，不被过滤掉）")
-
-
-# ------------------------------------------------------------------ 标签（T-BUND-006）
-
-
-class LabelExportQuery(BaseModel):
-    """标签导出查询条件（``GET /bundling-orders/{id}/labels``，modules/03 §6）。
-
-    ⚠️ **手号区间在每个尺码内各自成立**（Q-B13：同尺码手号连续编到 N），所以
-    ``from_hands=1&to_hands=2`` 命中的是每个尺码的 1、2 手，不是全单的前两手。
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    from_hands: Annotated[
-        int | None, Field(default=None, ge=1, description="起始手号（含，每尺码各自）")
-    ] = None
-    to_hands: Annotated[
-        int | None, Field(default=None, ge=1, description="结束手号（含，每尺码各自）")
-    ] = None
-    size_code: Annotated[
-        str | None, Field(default=None, max_length=16, description="只导某个尺码；不传=全部")
-    ] = None
-    export_format: Annotated[
-        LabelExportFormat, Field(default=LabelExportFormat.DATA, description="data / csv")
-    ] = LabelExportFormat.DATA
-
-
-class LabelItemOut(BaseModel):
-    """**一手**的标签数据（03 §5.4 标签内容清单）。
-
-    ⚠️ ``bundle_qty`` 是 ``Str``（05 §3「数量一律字符串」）；而 ``hands_seq`` /
-    ``hands_total_of_size`` 是**序号与计数**，与既有出参（``hands_total`` /
-    ``label_print_qty``）同口径用 ``int`` —— 标成字符串会让前端算「共 M 手」时做字符串拼接。
-    """
-
-    model_config = ConfigDict(from_attributes=True)
-
-    bundle_no: str
-    style_no: str
-    color_code: str
-    size_code: str
-    operation_no: str
-    hands_seq: Annotated[int, Field(description="★ 第 N 手")]
-    hands_total_of_size: Annotated[int, Field(description="★ 共 M 手（该尺码总手数）")]
-    bundle_qty: Str = Field(description="★ 该手件数（= bundles.bundle_qty）")
-    hands_text: str = Field(description="★ 「第 N 手 / 共 M 手」成品文案（B25 必印）")
-    qr_content: str = Field(description="二维码内容（恒等于 bundle_no，ADR-0004）")
-    barcode_content: str = Field(description="条码内容（Code128，同 qr_content，B6）")
-
-
-class LabelExportOut(BaseModel):
-    """标签导出响应（03 §6）。"""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    doc_no: str
-    size_code: str | None = None
-    hands_count: Annotated[int, Field(description="本次导出的手数 = items 行数")]
-    total_qty: Str = Field(description="本次导出的件数合计")
-    items: list[LabelItemOut]
-    csv_text: Annotated[
-        str | None, Field(default=None, description="仅 format=csv 时有值（表头 1 行 + 每手 1 行）")
-    ] = None
-
-
-class LabelPrintIn(BaseModel):
-    """打印登记入参（``POST /bundling-orders/{id}/label-prints``，modules/03 §6 / B15）。
-
-    ⚠️ ``hands_seq`` **必传但允许为缺省**：缺省由 service 报 ``10002``（03 §6 明列的码），
-    而不是让 pydantic 先报 ``10001`` —— 少一个必填业务参数的码与少一个非法参数是不同的提示。
-    ⚠️ ``size_code`` 是本卡补的：手号是**每个尺码各自**编号的，不带尺码时「第 3 手」
-    根本指不到具体哪一手（同单多尺码时）。默认 ``None`` = 本单全部尺码。
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    hands_seq: Annotated[
-        int | None, Field(default=None, ge=1, description="★ 本次打印第几手（必传，缺失 10002）")
-    ] = None
-    size_code: Annotated[
-        str | None, Field(default=None, max_length=16, description="只登记某个尺码；不传=全部")
-    ] = None
-    hands_total_of_size: Annotated[
-        int | None, Field(default=None, ge=1, description="共 M 手快照（与服务端权威值核对）")
-    ] = None
-    from_hands: Annotated[
-        int | None, Field(default=None, ge=1, description="区间起点；不传=取 hands_seq")
-    ] = None
-    to_hands: Annotated[
-        int | None, Field(default=None, ge=1, description="区间终点；不传=单手")
-    ] = None
-    printed_qty: Annotated[
-        int, Field(default=1, ge=1, description="每手本次打印张数（多打备用时 >1）")
-    ] = 1
-    is_reprint: Annotated[bool, Field(default=False, description="是否重打（B15）")] = False
-    print_seq: Annotated[
-        int | None, Field(default=None, ge=1, description="重打批次序号（重打必填）")
-    ] = None
-
-
-class LabelPrintOut(BaseModel):
-    """打印登记响应（03 §6 的 ``print_id`` / ``printed_count``）。
-
-    ⚠️ ``print_id`` 改为 ``print_ids`` **列表**：一次登记按手**逐行**留痕
-    （哪一手印过要能逐行追溯），多手时不存在单一的 id。
-    """
-
-    model_config = ConfigDict(from_attributes=True)
-
-    doc_no: str
-    print_ids: list[UUID] = Field(description="本次追加的留痕行 id（每手一行）")
-    printed_count: Annotated[int, Field(description="本次打印张数 = 每手张数 × 手数")]
-    hands_total: Annotated[int, Field(description="本次登记的手数")]
-    label_print_qty: Annotated[int, Field(description="本单累计打印张数（重打也累加）")]
-    is_reprint: bool
-    print_seq: int | None = None

@@ -20,6 +20,32 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.common.enums import DataScope
 from app.core.permissions import AuthContext
+from app.modules.bundling.models import Bundle, BundlingOrder
+
+
+@dataclass(frozen=True, slots=True)
+class ScopeVia:
+    """数据范围列落在**关联表**上时的指向（主表自己没有归属列的那些表）。
+
+    ⚠️ **为什么需要它**：``bundles``（打菲码）**没有** ``workshop_id`` —— 车间在
+    ``bundling_orders`` 上（``modules/03 §3.3`` 明确「可从关联取；确需冗余时另议」，
+    而那张表年增数十万行，冗余一列车间是拿写放大换查询方便，不划算）。
+
+    没有这一层时只有两个选择，两个都不好：
+        ① 在 repository 里 ``join`` + 手写 ``where workshop_id in (...)`` ——
+           过滤规则就有**两份**（这里一份、那里一份），INV-8「数据范围只在一处收口」
+           失效，而且没人知道该改哪一处；
+        ② 在 service 里先查一遍可见 ``doc_id`` 再 ``IN`` 过滤 —— 车间多了就是一条
+           超长 ``IN``（年增数十万行），且分页总数会与列表不一致。
+
+    :param model: 有归属列的那张表（例：``BundlingOrder``）
+    :param on: JOIN 条件（例：``BundlingOrder.id == Bundle.doc_id``）。
+        ⚠️ 必须是**内连接**：外连接下父单缺失的码会在 ``workshop_id IS NULL`` 下
+        混进「车间为空即不可见」或「通用行人人可见」这两种语义里，而它其实是无主数据。
+    """
+
+    model: type[Any]
+    on: ColumnElement[bool]
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +78,9 @@ class ScopeSpec:
     group_column: str | None = None
     soft_delete: bool = True
     include_null_workshop: bool = False
+    #: 数据范围列在**关联表**上时的指向（见 :class:`ScopeVia`）。``None`` = 就在本表。
+    #: 设置后 :func:`apply_data_scope` 会自己 ``join``，调用方不必（也不该）再拼 where。
+    via: ScopeVia | None = None
 
 
 def visible_workshops(ctx: AuthContext) -> frozenset[UUID]:
@@ -117,6 +146,16 @@ SCOPE_SPECS: dict[str, ScopeSpec] = {
     ),
     "bundling_orders": ScopeSpec(
         workshop_column="workshop_id", group_column=None, user_column="created_by"
+    ),
+    # 打菲码（``bundles``）：**主表没有车间列**，车间在 ``bundling_orders`` 上，
+    # 故走 ``via``（03 §3.3：「workshop_id / group_no 可从 bundling_orders 关联取」）。
+    # ⚠️ ``via`` 由本层 join —— 不要在 repository 里另写一遍 ``workshop_id in (...)``：
+    #    那会让数据范围出现两份实现，而越权缺陷恰恰是「改了一处、漏了另一处」那种。
+    "bundles": ScopeSpec(
+        workshop_column="workshop_id",
+        group_column=None,
+        user_column="created_by",
+        via=ScopeVia(model=BundlingOrder, on=BundlingOrder.id == Bundle.doc_id),
     ),
     "piecework_logs": ScopeSpec(
         workshop_column="workshop_id", group_column="group_no", user_column="employee_id"
@@ -221,27 +260,46 @@ def apply_data_scope(
     table_name = getattr(model, "__tablename__", "")
     resolved = spec if spec is not None else SCOPE_SPECS.get(table_name)
 
+    # ⚠️ **归属列可能在关联表上**（``bundles`` → ``bundling_orders.workshop_id``）：
+    # 由本层加 join，调用方只管 ``select(Bundle)``。这么定的原因写在 :class:`ScopeVia`。
+    scope_model = model
+    if resolved is not None and resolved.via is not None:
+        stmt = stmt.join(resolved.via.model, resolved.via.on)
+        scope_model = resolved.via.model
+
     if resolved is not None:
         scope = ctx.data_scope
         if scope == DataScope.SELF:
-            stmt = _restrict(stmt, _column(model, resolved.user_column), ctx.user_id)
+            stmt = _restrict(stmt, _column(scope_model, resolved.user_column), ctx.user_id)
         elif scope == DataScope.GROUP:
             # 组别范围必须同时有 workshop_id 与 group_no；缺任一都查不到数据
-            stmt = _restrict(stmt, _column(model, resolved.workshop_column), *_one(ctx.workshop_id))
-            stmt = _restrict(stmt, _column(model, resolved.group_column), *_one(ctx.group_no))
+            stmt = _restrict(
+                stmt, _column(scope_model, resolved.workshop_column), *_one(ctx.workshop_id)
+            )
+            stmt = _restrict(stmt, _column(scope_model, resolved.group_column), *_one(ctx.group_no))
         elif scope == DataScope.WORKSHOP:
-            stmt = _workshop_filter(stmt, model, resolved, ctx)
+            stmt = _workshop_filter(stmt, scope_model, resolved, ctx)
 
     # 软删过滤在此统一附加（INV-7），业务代码不必重复写
     if resolved is None or resolved.soft_delete:
         deleted_at = getattr(model, "deleted_at", None)
         if deleted_at is not None:
             stmt = stmt.where(deleted_at.is_(None))
+        # 关联表也要过滤：软删的打菲单不该还能扫出它的码（码是它的下游事实）
+        if resolved is not None and resolved.via is not None:
+            via_deleted = getattr(resolved.via.model, "deleted_at", None)
+            if via_deleted is not None:
+                stmt = stmt.where(via_deleted.is_(None))
     return stmt
 
 
 def in_scope(obj: object, ctx: AuthContext, *, spec: ScopeSpec | None = None) -> bool:
-    """判断单个对象是否在数据范围内（防越权按 ID 直查，docs/07 §3.2 铁律 2）。"""
+    """判断单个对象是否在数据范围内（防越权按 ID 直查，docs/07 §3.2 铁律 2）。
+
+    ⚠️ **``via`` 资源（``bundles``）不能走本函数**：它的归属列在父表上，父表那一行不在
+    这里。调用方必须先取父单据再 ``assert_in_scope(parent, ctx)`` ——「先判父、后放行子」
+    与列表侧的 ``via`` join 是同一个口径的两种形态。
+    本函数在这种资源上**按最严处理**（读不到归属列 → ``False``），不会误放行。"""
     if ctx.data_scope == DataScope.FACTORY:
         return True
 

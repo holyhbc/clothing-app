@@ -17,11 +17,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from datetime import datetime
 from decimal import Decimal
 from typing import Final, NamedTuple
 from uuid import UUID
 
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.bundling.models import Bundle, BundleLabelPrint, BundleStatus
@@ -44,6 +46,19 @@ _PRINT_COLUMNS: Final[tuple[str, ...]] = (
     "printed_at",
     "created_by",
 )
+
+
+class PrintRecordRow(NamedTuple):
+    """一行打印留痕（append-only，04 §7.16）。"""
+
+    id: UUID
+    hands_seq: int
+    hands_total_of_size: int | None
+    printed_qty: int
+    is_reprint: bool
+    print_seq: int | None
+    printed_by: UUID
+    printed_at: datetime
 
 
 class LabelBundleRow(NamedTuple):
@@ -126,6 +141,49 @@ async def hands_total_by_size(session: AsyncSession, doc_id: UUID) -> dict[tuple
     }
 
 
+async def hand_total_by_size(
+    session: AsyncSession, keys: Sequence[tuple[UUID, str, str]]
+) -> dict[tuple[UUID, str, str], int]:
+    """逐 ``(单, 色, 尺码)`` 的**共 M 手**（``max(hands)``），一条 SQL 拿完。
+
+    ⚠️ **不看 ``status``**：手序号唯一键 ``uq_bundles_hand`` 不看状态，所以单码作废之后
+    那个号**仍然占着**，「共 M 手」也仍然是 M。按 ACTIVE 算的话，作废一个码会让标签上
+    的分母变 M-1（B25：「第 N 手 / 共 M 手」是员工认领依据，印错就是发错料）。
+    ⚠️ **行值 ``IN`` 而不是循环查**：一个分页可能横跨多张单，逐单查就是 N+1 次往返。
+    """
+    if not keys:
+        return {}
+    stmt = (
+        select(Bundle.doc_id, Bundle.color_code, Bundle.size_code, func.max(Bundle.hands))
+        .where(Bundle.deleted_at.is_(None))
+        .where(tuple_(Bundle.doc_id, Bundle.color_code, Bundle.size_code).in_(list(keys)))
+        .group_by(Bundle.doc_id, Bundle.color_code, Bundle.size_code)
+    )
+    return {
+        (doc_id, color_code, size_code): int(total)
+        for doc_id, color_code, size_code, total in (await session.execute(stmt)).all()
+    }
+
+
+async def list_print_records(session: AsyncSession, bundle_no: str) -> list[PrintRecordRow]:
+    """该码的打印留痕（**倒序**，B15：重打要能逐次追溯）。"""
+    stmt = (
+        select(
+            BundleLabelPrint.id,
+            BundleLabelPrint.hands_seq,
+            BundleLabelPrint.hands_total_of_size,
+            BundleLabelPrint.printed_qty,
+            BundleLabelPrint.is_reprint,
+            BundleLabelPrint.print_seq,
+            BundleLabelPrint.printed_by,
+            BundleLabelPrint.printed_at,
+        )
+        .where(BundleLabelPrint.bundle_no == bundle_no)
+        .order_by(BundleLabelPrint.printed_at.desc(), BundleLabelPrint.id.desc())
+    )
+    return [PrintRecordRow(*row) for row in (await session.execute(stmt)).all()]
+
+
 async def existing_print_seq_hands(
     session: AsyncSession, *, doc_id: UUID, bundle_nos: list[str], print_seq: int
 ) -> list[str]:
@@ -182,9 +240,12 @@ async def sum_printed_qty(session: AsyncSession, doc_id: UUID) -> int:
 
 __all__ = [
     "LabelBundleRow",
+    "PrintRecordRow",
     "append_label_prints",
     "existing_print_seq_hands",
+    "hand_total_by_size",
     "hands_total_by_size",
     "list_label_bundles",
+    "list_print_records",
     "sum_printed_qty",
 ]

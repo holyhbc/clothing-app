@@ -133,6 +133,13 @@ class DocumentAction(StrEnum):
     #: 而日志表只有 ``action`` 这一处能区分首打与重打）。
     PRINT = "PRINT"
     REPRINT = "REPRINT"
+    #: 打菲**单码作废**（T-BUND-007b，08 §2.2 动作表里的「作废码」行）。
+    #: ⚠️ 与 ``PRINT`` 同款：**不改单据状态**（作废的是码，不是单；``from_status ==
+    #: to_status``），也**不动裁剪结转** —— 单码作废与整单 ``reverse`` 是两件事，
+    #: 混起来会让结转与实际码数长期不一致（03 §6）。
+    #: ⚠️ 记在**打菲单**的日志里（``document_logs`` 以单据为维度），码号进
+    #: ``changed_fields.bundle_no``：「谁在什么时候作废了哪一手」要能被查出来。
+    VOID_CODE = "VOID_CODE"
 
 
 class LabelExportFormat(StrEnum):

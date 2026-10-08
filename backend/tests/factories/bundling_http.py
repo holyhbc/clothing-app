@@ -12,6 +12,7 @@ from typing import Any
 
 from httpx import AsyncClient
 
+from app.common.enums import DataScope
 from tests.factories.bundling import payload as bundling_payload
 from tests.factories.bundling_approve import ensure_sizes
 
@@ -77,6 +78,49 @@ async def submitted_order(
 __all__ = [
     "API",
     "WRITER_PERMISSIONS",
+    "create_order",
+    "resolve",
+    "submitted_order",
+]
+
+
+async def approved_order(
+    client: AsyncClient,
+    db_session: Any,
+    auth_headers: Any,
+    world: dict[str, Any],
+    *,
+    hands: int = 2,
+    maker_permissions: tuple[str, ...] = WRITER_PERMISSIONS,
+    employee_no: str = "A002",
+) -> dict[str, Any]:
+    """建一张**已审核**（因此已生成码）的单，返回响应体。
+
+    ⚠️ 审核要「制单人 ≠ 审核人」（08 §1.1，自审报 ``10005``），所以这里固定用
+    ``employee_no`` 区分两个 token；审核人还必须是 **FACTORY** 范围 —— 审核 / 码查询
+    都是「别人建的单」，默认 SELF 范围会让用例全部撞 ``12002``，报错指向数据范围、
+    与这条用例想验的东西毫无关系（``test_bundling_router_actions`` 同一个坑）。
+
+    码查询 / 标签 / 统计这些用例都要一张已审核的单，所以这一段「建 → 提交 → 审核」
+    对本卡每个用例都要铺一次，铺在工厂里而不是每条用例里。
+    """
+    maker = await auth_headers(role="custom", permissions=maker_permissions)
+    order = await submitted_order(client, db_session, maker, world, hands=hands)
+    checker = await auth_headers(
+        role="custom",
+        permissions=("bundling:read", "bundling:approve"),
+        data_scope=DataScope.FACTORY,
+        employee_no=employee_no,
+    )
+    response = await client.post(f"{API}/{order['id']}/approvals", headers=checker)
+    assert response.status_code == 200, response.text
+    return dict(response.json()["data"])
+
+
+__all__ = [
+    "API",
+    "WRITER_PERMISSIONS",
+    "approved_order",
     "create_order",
     "resolve",
     "submitted_order",
