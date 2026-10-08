@@ -81,7 +81,7 @@
 | `backend/tests/modules/test_bundling_label.py` | 新增 400 | 24 个用例 |
 
 **提交记录**：
-- `<hash>` feat(bundling): 标签数据导出 + 打印痕迹登记（T-BUND-006）
+- `2a73e76` feat(bundling): 标签数据导出 + 打印痕迹登记（T-BUND-006）
 
 ## 遗留问题
 
