@@ -70,13 +70,16 @@ export const MENU_GROUPS: readonly MenuGroup[] = [
       { key: 'base-operations', title: '工序', permission: PERM.BASE_READ },
     ],
   },
-  // T-CUT-001c-2：裁剪是 P1 的第一条主链路（裁剪 → 打菲）。
-  // ⚠️ 权限点用 `cutting:read`（`cutting:create` 那张建单页要到 T-CUT-001c-3 才落地）——
-  //    菜单与路由用**同一个**判据，不会出现「能进列表但按钮全灰」这种半吊子状态。
+  // T-CUT-001c-2 / T-BUND-009：裁剪与打菲是 P1 的主链路（裁剪 → 打菲）。
+  // ⚠️ 权限点用 `cutting:read` / `bundling:read` —— 菜单与路由用**同一个**判据，
+  //    不会出现「能进列表但按钮全灰」这种半吊子状态。
   {
-    key: 'cutting',
+    key: 'production',
     title: '生产管理',
-    children: [{ key: 'cutting-orders', title: '裁剪单', permission: PERM.CUTTING_READ }],
+    children: [
+      { key: 'cutting-orders', title: '裁剪单', permission: PERM.CUTTING_READ },
+      { key: 'bundling-orders', title: '打菲单', permission: PERM.BUNDLING_READ },
+    ],
   },
   // T-WEB-004 曾把这一组删掉过（后端没有端点，菜单里点进去是 404）；
   // T-AUTH-003 补齐端点后按上面的规矩加回来。

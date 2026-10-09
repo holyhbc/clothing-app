@@ -386,5 +386,60 @@ export type SuggestLinesOut = ApiModel<'SuggestLinesOut'>
 /** 录入模式（A 按比例带出 / B 统一件数 / C 自定义明细，ADR-0014）。 */
 export type CuttingEntryMode = CuttingOrderCreateIn['entry_mode_default']
 
+// ------------------------------------------------------------------ 打菲单
+
+/** 打菲单列表行（`GET /api/v1/bundling-orders`，明细在详情里才有）。 */
+export type BundlingOrderListOut = ApiModel<'BundlingOrderListOut'>
+
+/**
+ * 打菲单详情 = 表头 + 明细（`GET /api/v1/bundling-orders/{id}`）。
+ */
+export type BundlingOrderOut = ApiModel<'BundlingOrderOut'>
+
+/** 打菲明细行（`BundlingOrderOut.lines[]` 的元素）。 */
+export type LineOut = ApiModel<'LineOut'>
+
+/** 建打菲单（`POST /api/v1/bundling-orders`，表头 + 明细一次提交）。 */
+export type BundlingOrderCreateIn = ApiModel<'BundlingOrderCreateIn'>
+
+/** 打菲明细入参（`BundlingOrderCreateIn.lines[]` 的元素）。 */
+export type LineIn = ApiModel<'LineIn'>
+
+/** 改表头（`PATCH /api/v1/bundling-orders/{id}`，仅草稿 / 已驳回）。 */
+export type BundlingOrderPatchIn = ApiModel<'BundlingOrderPatchIn'>
+
+/** 明细全量替换（`PUT /api/v1/bundling-orders/{id}/lines`）。 */
+export type PutBundlingLinesIn = ApiModel<'app__modules__bundling__schemas__order_schemas__PutLinesIn'>
+
+/** 可打菲来源明细（`GET /api/v1/bundling-orders/{id}/available-outputs`）。 */
+export type AvailableOutputOut = ApiModel<'AvailableOutputOut'>
+
+/** 审核后增手入参（`POST /api/v1/bundling-orders/{id}/hand-increments`）。 */
+export type HandIncrementIn = ApiModel<'HandIncrementIn'>
+
+/** 拆分预演出参（`POST /api/v1/bundling-orders/{id}/split`）。 */
+export type SplitPreviewOut = ApiModel<'SplitPreviewOut'>
+
+/** 作废入参（`POST /api/v1/bundling-orders/{id}/cancellations`）。 */
+export type CancelIn = ApiModel<'CancelIn'>
+
+/** 驳回入参（`POST /api/v1/bundling-orders/{id}/rejections`）。 */
+export type RejectIn = ApiModel<'RejectIn'>
+
+/** 反审核入参（`POST /api/v1/bundling-orders/{id}/reversals`）。 */
+export type ReverseIn = ApiModel<'ReverseIn'>
+
+/** 批量打印登记入参（`POST /api/v1/bundling-orders/{id}/label-prints`）。 */
+export type LabelPrintIn = ApiModel<'LabelPrintIn'>
+
+/** 单码详情（`GET /api/v1/bundles/{bundle_no}`）。 */
+export type BundleDetailOut = ApiModel<'BundleDetailOut'>
+
+/** 打菲码列表行（`GET /api/v1/bundles`）。 */
+export type BundleListOut = ApiModel<'BundleListOut'>
+
+/** 打菲统计（`GET /api/v1/bundling-orders/statistics`）。 */
+export type BundlingStatisticsOut = ApiModel<'StatisticsOut'>
+
 export type { components } from '../api/schema.d.ts'
 export type { paths, operations } from '../api/schema.d.ts'

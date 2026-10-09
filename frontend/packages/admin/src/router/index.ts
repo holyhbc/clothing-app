@@ -134,6 +134,26 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/cutting/Edit.vue'),
         meta: { title: '编辑裁剪单', permission: PERM.CUTTING_UPDATE },
       },
+      // 打菲单（T-BUND-009）：#/pc/bundling，菜单在「生产管理」
+      {
+        path: 'bundling/orders',
+        name: 'bundling-orders',
+        component: () => import('@/views/bundling/List.vue'),
+        meta: { title: '打菲单', permission: PERM.BUNDLING_READ },
+      },
+      {
+        path: 'bundling/orders/new',
+        name: 'bundling-orders-new',
+        component: () => import('@/views/bundling/Form.vue'),
+        meta: { title: '新建打菲单', permission: PERM.BUNDLING_CREATE },
+      },
+      {
+        path: 'bundling/orders/:orderId',
+        name: 'bundling-orders-detail',
+        component: () => import('@/views/bundling/Detail.vue'),
+        meta: { title: '打菲单详情', permission: PERM.BUNDLING_READ },
+      },
+      // 打菲单没有单独的编辑页：改明细走 PUT /lines（T-BUND-010），表头改走 PATCH（详情页按钮）
       {
         path: 'system/users',
         name: 'system-users',
