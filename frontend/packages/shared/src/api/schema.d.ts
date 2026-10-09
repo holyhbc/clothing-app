@@ -410,6 +410,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bundling-orders/{order_id}/hand-increments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 审核后增手（APPROVED → 同，★ 只补生成新码；**减手请走 /reversals**）
+         * @description 审核后**增手**（落 ADR-0033）。**只加不减**：``delta_hands`` 必须 ``> 0``。
+         *
+         *     副作用（与状态变更同事务，08 R4）：① ``hands_total += delta``（**只加，不重算**）；
+         *     ② **只生成新增那几手的码**（手号从 ``N+1`` 起，复用审核的 ``generate_series``
+         *     批量路径）；③ ``cutting_outputs.bundled_qty += delta × qty_per_hand``（**不碰**
+         *     ``reserved_qty``）；④ 写日志（改前改后 + **新增手号区间**）。
+         *
+         *     ⚠️ **入参结构上只容得下这一个动作**：``{size_code | line_id, delta_hands, version}``，
+         *     不接受 ``hands`` 全量替换 / ``color_code`` / ``cutting_size_line_id`` 或任何其它字段
+         *     （``extra="forbid"``）—— 「借增手之名改别的」不是靠校验拦住的，是类型上表达不出来。
+         *     ⚠️ **减手一律走 ``reversals``**：减手必然要废掉超出新 N 的那几手码，而码**不可恢复**
+         *     （B12）；``reverse`` 已经把「未打印软删重建 / 已打印置 ``VOIDED``（``31007``）」做对了。
+         *     ⚠️ **重跑防超打**：``hands ≤ 裁剪可打手数`` 是审核时验的，裁剪侧可能在这中间改了产量，
+         *     所以增手必须再验一遍 → ``31004``（**不是**自动成立）。
+         *
+         *     ⚠️ **响应带新的 ``version``**：并发增手时后一个请求必须带前一个返回的版本号，否则撞
+         *     ``10003``（刷新后重试即可 —— 增手是纯增量，重试不会多打一手）。
+         */
+        post: operations["increment_bundling_order_hands_api_v1_bundling_orders__order_id__hand_increments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bundling-orders/{order_id}/label-prints": {
         parameters: {
             query?: never;
@@ -5465,6 +5501,45 @@ export interface components {
             size_code: string;
         };
         /**
+         * HandIncrementIn
+         * @description 增手入参（``POST .../hand-increments``；ADR-0033 / 03 §4.1 的 ``hand-increments`` 行）。
+         *
+         *     ⚠️ **入参在结构上只容得下「某个尺码 + 加几手」这一个动作**（ADR-0033「为什么增手要专用
+         *     端点」）：不接受 ``hands`` 全量替换，不接受 ``color_code`` / ``cutting_size_line_id``
+         *     或任何其它字段 —— 「借增手之名改别的」不是靠 service 的校验拦住的，是**类型上就表达
+         *     不出来**（``extra="forbid"``，多传一个字段就是 ``10001``）。
+         *
+         *     ⚠️ ``delta_hands`` 的 ``ge=1`` 同时挡住「零手」与**减手**：减手必须走 ``reversals``
+         *     （减手必然要废掉超出新 N 的那几手码，而码**不可恢复**，B12）。这一层给 ``10001``
+         *     （422，带字段级明细 → 前端能出行内红字，05 §3），不是 ``30001`` —— 因为被拒的是
+         *     **入参本身**，不是单据状态。
+         *
+         *     ⚠️ ``size_code`` 与 ``line_id`` **恰好给一个**：同尺码可以有多行（跨布批，ADR-0017 §4），
+         *     只给 ``size_code`` 时定位不唯一，service **不猜**（报 ``10001`` 并列出候选行号）。
+         */
+        HandIncrementIn: {
+            /**
+             * Delta Hands
+             * @description ★ 增加手数，必须 > 0；减手请走 /reversals
+             */
+            delta_hands: number;
+            /**
+             * Line Id
+             * @description ★ 明细行 id（同尺码多行时用它定位）
+             */
+            line_id?: string | null;
+            /**
+             * Size Code
+             * @description 尺码码（与 line_id 二选一）
+             */
+            size_code?: string | null;
+            /**
+             * Version
+             * @description 乐观锁版本号（过期 → 10003）
+             */
+            version: number;
+        };
+        /**
          * LabelExportFormat
          * @description 标签导出的**响应形态**（modules/03 §6 的 ``format``）。
          *
@@ -8786,6 +8861,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CancelIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BundlingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    increment_bundling_order_hands_api_v1_bundling_orders__order_id__hand_increments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 打菲单 id */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HandIncrementIn"];
             };
         };
         responses: {

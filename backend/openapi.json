@@ -4643,6 +4643,56 @@
         "title": "HandConflictOut",
         "type": "object"
       },
+      "HandIncrementIn": {
+        "additionalProperties": false,
+        "description": "增手入参（``POST .../hand-increments``；ADR-0033 / 03 §4.1 的 ``hand-increments`` 行）。\n\n⚠️ **入参在结构上只容得下「某个尺码 + 加几手」这一个动作**（ADR-0033「为什么增手要专用\n端点」）：不接受 ``hands`` 全量替换，不接受 ``color_code`` / ``cutting_size_line_id``\n或任何其它字段 —— 「借增手之名改别的」不是靠 service 的校验拦住的，是**类型上就表达\n不出来**（``extra=\"forbid\"``，多传一个字段就是 ``10001``）。\n\n⚠️ ``delta_hands`` 的 ``ge=1`` 同时挡住「零手」与**减手**：减手必须走 ``reversals``\n（减手必然要废掉超出新 N 的那几手码，而码**不可恢复**，B12）。这一层给 ``10001``\n（422，带字段级明细 → 前端能出行内红字，05 §3），不是 ``30001`` —— 因为被拒的是\n**入参本身**，不是单据状态。\n\n⚠️ ``size_code`` 与 ``line_id`` **恰好给一个**：同尺码可以有多行（跨布批，ADR-0017 §4），\n只给 ``size_code`` 时定位不唯一，service **不猜**（报 ``10001`` 并列出候选行号）。",
+        "properties": {
+          "delta_hands": {
+            "description": "★ 增加手数，必须 > 0；减手请走 /reversals",
+            "minimum": 1.0,
+            "title": "Delta Hands",
+            "type": "integer"
+          },
+          "line_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "★ 明细行 id（同尺码多行时用它定位）",
+            "title": "Line Id"
+          },
+          "size_code": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "尺码码（与 line_id 二选一）",
+            "title": "Size Code"
+          },
+          "version": {
+            "description": "乐观锁版本号（过期 → 10003）",
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "delta_hands"
+        ],
+        "title": "HandIncrementIn",
+        "type": "object"
+      },
       "LabelExportFormat": {
         "description": "标签导出的**响应形态**（modules/03 §6 的 ``format``）。\n\n⚠️ **只有两种**：``data``（数据数组，给浏览器打印模板）与 ``csv``（给标签软件导入）。\n``modules/03 §6`` 原文写的是 ``format=html|csv``，而 html 是**前端的事** ——\n06 §4 要求「``@media print`` + 尺寸标签页」由浏览器渲染，后端出 html 就等于把\n打印模板复制一份到后端，两边迟早分叉。差异登记在 docs/12 §5（需规范维护者确认）。",
         "enum": [
@@ -10915,6 +10965,69 @@
           "打菲"
         ],
         "x-permission": "bundling:cancel"
+      }
+    },
+    "/api/v1/bundling-orders/{order_id}/hand-increments": {
+      "post": {
+        "description": "审核后**增手**（落 ADR-0033）。**只加不减**：``delta_hands`` 必须 ``> 0``。\n\n副作用（与状态变更同事务，08 R4）：① ``hands_total += delta``（**只加，不重算**）；\n② **只生成新增那几手的码**（手号从 ``N+1`` 起，复用审核的 ``generate_series``\n批量路径）；③ ``cutting_outputs.bundled_qty += delta × qty_per_hand``（**不碰**\n``reserved_qty``）；④ 写日志（改前改后 + **新增手号区间**）。\n\n⚠️ **入参结构上只容得下这一个动作**：``{size_code | line_id, delta_hands, version}``，\n不接受 ``hands`` 全量替换 / ``color_code`` / ``cutting_size_line_id`` 或任何其它字段\n（``extra=\"forbid\"``）—— 「借增手之名改别的」不是靠校验拦住的，是类型上表达不出来。\n⚠️ **减手一律走 ``reversals``**：减手必然要废掉超出新 N 的那几手码，而码**不可恢复**\n（B12）；``reverse`` 已经把「未打印软删重建 / 已打印置 ``VOIDED``（``31007``）」做对了。\n⚠️ **重跑防超打**：``hands ≤ 裁剪可打手数`` 是审核时验的，裁剪侧可能在这中间改了产量，\n所以增手必须再验一遍 → ``31004``（**不是**自动成立）。\n\n⚠️ **响应带新的 ``version``**：并发增手时后一个请求必须带前一个返回的版本号，否则撞\n``10003``（刷新后重试即可 —— 增手是纯增量，重试不会多打一手）。",
+        "operationId": "increment_bundling_order_hands_api_v1_bundling_orders__order_id__hand_increments_post",
+        "parameters": [
+          {
+            "description": "打菲单 id",
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "description": "打菲单 id",
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandIncrementIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_BundlingOrderOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "审核后增手（APPROVED → 同，★ 只补生成新码；**减手请走 /reversals**）",
+        "tags": [
+          "打菲",
+          "打菲"
+        ],
+        "x-permission": "bundling:update"
       }
     },
     "/api/v1/bundling-orders/{order_id}/label-prints": {

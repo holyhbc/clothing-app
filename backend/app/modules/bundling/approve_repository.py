@@ -2,7 +2,8 @@
 
 ``bundles``（打菲码）审核 / 反审核这条**写路径**的全部查询。
 :mod:`.repository` 定位只读、:mod:`.state_repository` 管 ``cutting_outputs`` 的行锁与
-预占 / 释放 / 结转，本文件管**码本身**。
+预占 / 释放 / 结转，本文件管**码本身**（``approve`` / ``reverse`` 与 T-BUND-011 的
+``hand-increments`` 共用同一份批量生成与手号查询）。
 
 **本文件不判断业务**：条件 UPDATE 不满足时返回 ``None``（翻译成哪个错误码是 service 的
 决定，抄 :mod:`.state_repository` 的约定）；唯一索引冲突**不吞**、原样抛 ``IntegrityError``
@@ -250,6 +251,28 @@ async def sum_bundle_qty_by_key(session: AsyncSession, doc_id: UUID) -> dict[Out
     }
 
 
+async def max_hand_seqs(session: AsyncSession, doc_id: UUID) -> dict[OutputKey, int]:
+    """逐 ``(色码, 尺码)`` 的**已占最大手序号** —— 增手接续的起点（T-BUND-011）。
+
+    ⚠️ **刻意不过滤 ``status``**（连 ``VOIDED`` 一起算）：``uq_bundles_hand`` 也不看
+    ``status``，作废的码**继续占着手号**（B12 / 03 §8「手号重复定位」）。按 ``ACTIVE``
+    取最大值的话，单码作废后立刻增手就会去写一个已被占用的手号 → 撞 ``31005``，
+    而正确行为是接着最大号往后编。
+
+    ⚠️ 这里**只读不锁**：手号的串行化靠「先锁表头再读它」（03 §7 的锁序），不是靠锁码行。
+    锁码行会与 ``reverse`` 的 ``FOR UPDATE`` 争锁顺序，两边不一致就是死锁。
+    """
+    stmt = (
+        select(Bundle.color_code, Bundle.size_code, func.max(Bundle.hands))
+        .where(Bundle.doc_id == doc_id, Bundle.deleted_at.is_(None))
+        .group_by(Bundle.color_code, Bundle.size_code)
+    )
+    return {
+        (color_code, size_code): int(highest)
+        for color_code, size_code, highest in (await session.execute(stmt)).all()
+    }
+
+
 async def hand_spans(session: AsyncSession, doc_id: UUID) -> list[HandSpan]:
     """逐 ``(色码, 尺码)`` 的手号分布（断言 ③：手号恰为 1..N 无缺号）。
 
@@ -282,6 +305,7 @@ __all__ = [
     "hand_spans",
     "insert_bundle_series",
     "lock_active_bundle_hands",
+    "max_hand_seqs",
     "sum_bundle_qty_by_key",
     "sum_doc_bundle_qty",
     "void_active_bundles",

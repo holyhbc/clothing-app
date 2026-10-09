@@ -9,6 +9,9 @@
 | reverse | ``/reversals`` | APPROVED → SUBMITTED | ``bundling:reverse`` |
 | cancel | ``/cancellations`` | DRAFT/REJECTED → CANCELLED | ``bundling:cancel`` |
 
+外加一条**不改状态**的写动作（ADR-0033 / 03 §4.1）：``hand-increment``
+（``/hand-increments``，``APPROVED`` → ``APPROVED``，``bundling:update``）。
+
 ⚠️ **这里只做「HTTP → service」的一层壳**：前置校验、副作用、乐观锁、写日志全在 service 的
 状态迁移方法里（``_assert_transition`` / ``_apply_status``）。Router 里再写一遍「状态机」，
 就会出现两套判定，而两套判定迟早对不上（T-CUT-001b-3 的教训）。
@@ -31,6 +34,7 @@ from app.modules.bundling.schemas import (
     ApproveIn,
     BundlingOrderOut,
     CancelIn,
+    HandIncrementIn,
     RejectIn,
     ReverseIn,
 )
@@ -131,6 +135,45 @@ async def approve_bundling_order(
     if idempotent is not None:
         await store_idempotent(idempotent, response)
     return response
+
+
+# ====================================================================== 增手（不改状态）
+
+
+@router.post(
+    "/bundling-orders/{order_id}/hand-increments",
+    response_model=ApiResponse[BundlingOrderOut],
+    summary="审核后增手（APPROVED → 同，★ 只补生成新码；**减手请走 /reversals**）",
+    openapi_extra={"x-permission": "bundling:update"},
+)
+async def increment_bundling_order_hands(
+    order_id: OrderId,
+    payload: HandIncrementIn,
+    ctx: ContextDep,
+    session: SessionDep,
+) -> dict[str, object]:
+    """审核后**增手**（落 ADR-0033）。**只加不减**：``delta_hands`` 必须 ``> 0``。
+
+    副作用（与状态变更同事务，08 R4）：① ``hands_total += delta``（**只加，不重算**）；
+    ② **只生成新增那几手的码**（手号从 ``N+1`` 起，复用审核的 ``generate_series``
+    批量路径）；③ ``cutting_outputs.bundled_qty += delta × qty_per_hand``（**不碰**
+    ``reserved_qty``）；④ 写日志（改前改后 + **新增手号区间**）。
+
+    ⚠️ **入参结构上只容得下这一个动作**：``{size_code | line_id, delta_hands, version}``，
+    不接受 ``hands`` 全量替换 / ``color_code`` / ``cutting_size_line_id`` 或任何其它字段
+    （``extra="forbid"``）—— 「借增手之名改别的」不是靠校验拦住的，是类型上表达不出来。
+    ⚠️ **减手一律走 ``reversals``**：减手必然要废掉超出新 N 的那几手码，而码**不可恢复**
+    （B12）；``reverse`` 已经把「未打印软删重建 / 已打印置 ``VOIDED``（``31007``）」做对了。
+    ⚠️ **重跑防超打**：``hands ≤ 裁剪可打手数`` 是审核时验的，裁剪侧可能在这中间改了产量，
+    所以增手必须再验一遍 → ``31004``（**不是**自动成立）。
+
+    ⚠️ **响应带新的 ``version``**：并发增手时后一个请求必须带前一个返回的版本号，否则撞
+    ``10003``（刷新后重试即可 —— 增手是纯增量，重试不会多打一手）。
+    """
+    _require(ctx, "bundling:update", "给已审核的打菲单增手")
+    return _order_payload(
+        await _service(session).increment_hands(order_id, payload, ctx.user_id, ctx)
+    )
 
 
 # ====================================================================== 驳回 / 撤回

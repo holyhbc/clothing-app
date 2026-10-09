@@ -30,7 +30,7 @@ from datetime import date
 from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.pydantic_types import Str
 
@@ -201,6 +201,45 @@ class ReverseIn(BaseModel):
     reason: Annotated[
         str, Field(min_length=1, max_length=MAX_REASON, description="反审核原因（必填，≤500 字）")
     ]
+
+
+class HandIncrementIn(BaseModel):
+    """增手入参（``POST .../hand-increments``；ADR-0033 / 03 §4.1 的 ``hand-increments`` 行）。
+
+    ⚠️ **入参在结构上只容得下「某个尺码 + 加几手」这一个动作**（ADR-0033「为什么增手要专用
+    端点」）：不接受 ``hands`` 全量替换，不接受 ``color_code`` / ``cutting_size_line_id``
+    或任何其它字段 —— 「借增手之名改别的」不是靠 service 的校验拦住的，是**类型上就表达
+    不出来**（``extra="forbid"``，多传一个字段就是 ``10001``）。
+
+    ⚠️ ``delta_hands`` 的 ``ge=1`` 同时挡住「零手」与**减手**：减手必须走 ``reversals``
+    （减手必然要废掉超出新 N 的那几手码，而码**不可恢复**，B12）。这一层给 ``10001``
+    （422，带字段级明细 → 前端能出行内红字，05 §3），不是 ``30001`` —— 因为被拒的是
+    **入参本身**，不是单据状态。
+
+    ⚠️ ``size_code`` 与 ``line_id`` **恰好给一个**：同尺码可以有多行（跨布批，ADR-0017 §4），
+    只给 ``size_code`` 时定位不唯一，service **不猜**（报 ``10001`` 并列出候选行号）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: Annotated[int, Field(ge=1, description="乐观锁版本号（过期 → 10003）")]
+    size_code: Annotated[
+        str | None, Field(default=None, max_length=16, description="尺码码（与 line_id 二选一）")
+    ] = None
+    line_id: Annotated[
+        UUID | None, Field(default=None, description="★ 明细行 id（同尺码多行时用它定位）")
+    ] = None
+    delta_hands: Annotated[
+        int, Field(ge=1, description="★ 增加手数，必须 > 0；减手请走 /reversals")
+    ]
+
+    @model_validator(mode="after")
+    def _exactly_one_target(self) -> "HandIncrementIn":
+        if (self.size_code is None) == (self.line_id is None):
+            raise ValueError(
+                "size_code 与 line_id 必须恰好给一个（同尺码跨布批有多行时用 line_id 定位）"
+            )
+        return self
 
 
 # ------------------------------------------------------------------ 出参片段

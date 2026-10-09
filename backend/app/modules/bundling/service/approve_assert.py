@@ -181,7 +181,16 @@ class ApproveAssertMixin(StateGuardMixin):
         ⚠️ 三个数都要对：只看 ``min==1 and max==N and count==N`` 时，``1,1,3`` 能蒙混过关
         （min=1、max=3、count=3）—— 所以额外比 ``count(distinct hands)``。
         """
-        expected = {(s.color_code, s.size_code): s.hands for s in plan.lines}
+        # ⚠️ **必须按 (色码, 尺码) 求和**，不能写成 ``{key: s.hands}`` 字典推导：
+        # ``plan.lines`` 是**逐明细行**的，而同一 (色, 码) 可以有多行（跨布批，ADR-0017 §4），
+        # 字典推导会让后一行覆盖前一行 → 期望值偏小 → 一张完全正常的单被判成「手号不连续」
+        # 而审核不通过（T-BUND-011 的 TC-HI-05 撞出来的）。口径与
+        # :meth:`~app.modules.bundling.service.state_guard.StateGuardMixin._assert_hands_match`
+        # 的分组口径一致。
+        expected: dict[tuple[str, str], int] = {}
+        for split in plan.lines:
+            key = (split.color_code, split.size_code)
+            expected[key] = expected.get(key, 0) + split.hands
         for span in await hand_spans(self.session, order.id):
             key = (span.color_code, span.size_code)
             want = expected.get(key)

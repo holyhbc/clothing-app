@@ -97,6 +97,10 @@ _TRANSITION_BY_ACTION: Final[dict[str, tuple[frozenset[DocumentStatus], Document
         frozenset({DocumentStatus.DRAFT, DocumentStatus.REJECTED}),
         DocumentStatus.CANCELLED,
     ),
+    # ⚠️ 目标状态**也是** ``APPROVED``：增手不改状态（03 §4.1「同（不改状态）」、ADR-0033），
+    #    但仍登记在这里 —— 好处是「非 APPROVED 一律 30001」由状态机统一判、报错里能列出
+    #    该动作允许的起始状态，而不是在 service 里另写一遍 if。
+    "hand-increment": (frozenset({DocumentStatus.APPROVED}), DocumentStatus.APPROVED),
 }
 
 #: ``_lock_for_transition`` 的返回值：已锁表头 / 已锁明细 / 已锁结转行。

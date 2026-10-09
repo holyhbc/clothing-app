@@ -214,6 +214,37 @@ async def roll_back_output_qty(
     )
 
 
+async def add_bundled_output_qty(
+    session: AsyncSession, *, output_id: UUID, qty: Decimal, operator_id: UUID
+) -> OutputBalance | None:
+    """增手的结转（T-BUND-011）：**只加** ``bundled_qty``，``reserved_qty`` 一列都不碰。
+
+    ⚠️ **不能复用 :func:`carry_over_output_qty`**：它同一条 UPDATE 里还会
+    ``reserved_qty -= qty``，而审核时本单那份预占**早已释放** —— 照抄会把**别人**的预占
+    减掉（可打菲余量凭空虚增，INV-6），症状是「全厂该尺码多出几百件可打」。
+    减手不在本函数：ADR-0033 定的是「减手走 ``reverse``，本模块不写第二套」。
+
+    ⚠️ 守卫换成 INV-6 本式（``output - bundled - reserved >= qty``）：条件 UPDATE 才权威，
+    「先查余量再写」之间另一张单能插进来（与 :func:`reserve_output_qty` 同一理由）。
+
+    :returns: 结转后的四列；余量不够（守卫未命中）或结转行已不存在时返回 ``None``，
+        由 service 翻译成 ``30002``（两种故障的措辞分开，见
+        :meth:`~app.modules.bundling.service.approve_assert.ApproveAssertMixin._shift`）。
+    """
+    return await _shift_output_qty(
+        session,
+        output_id=output_id,
+        qty=qty,
+        operator_id=operator_id,
+        bundled_delta=qty,
+        reserved_delta=Decimal("0"),
+        guard_column=cast(
+            "ColumnElement[Decimal]",
+            CuttingOutput.output_qty - CuttingOutput.bundled_qty - CuttingOutput.reserved_qty,
+        ),
+    )
+
+
 async def _shift_output_qty(
     session: AsyncSession,
     *,
@@ -224,7 +255,12 @@ async def _shift_output_qty(
     reserved_delta: Decimal,
     guard_column: ColumnElement[Any],
 ) -> OutputBalance | None:
-    """结转两半的**唯一实现**（审核与反审核共用，见上面两条的 docstring）。"""
+    """结转各半的**唯一实现**（审核 / 反审核 / 增手共用，见上面几条的 docstring）。
+
+    ⚠️ ``guard_column`` 传的是**表达式**而不是列：审核与反审核传「被减的那一列 ≥ qty」，
+    增手传「余量本身 ≥ qty」（:func:`add_bundled_output_qty`）。守卫与 ``bundled_delta`` /
+    ``reserved_delta`` 成对，三者一起改。
+    """
     stmt = (
         update(CuttingOutput)
         .where(CuttingOutput.id == output_id, guard_column >= qty)
@@ -288,6 +324,7 @@ async def snapshot_available_qty_before(
 __all__ = [
     "OutputBalance",
     "OutputKey",
+    "add_bundled_output_qty",
     "available_qty_of",
     "carry_over_output_qty",
     "lock_cutting_outputs",
