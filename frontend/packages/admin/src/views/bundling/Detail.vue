@@ -195,7 +195,7 @@ async function cancel(): Promise<void> {
 
 function print(): void {
   // TODO: T-BUND-010 接入标签打印
-  message.info('标签打印待 T-BUND-010 接入')
+  router.push({ name: 'bundling-orders-print', params: { orderId } })
 }
 
 onMounted(() => {

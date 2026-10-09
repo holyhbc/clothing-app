@@ -431,6 +431,8 @@ export type ReverseIn = ApiModel<'ReverseIn'>
 
 /** 批量打印登记入参（`POST /api/v1/bundling-orders/{id}/label-prints`）。 */
 export type LabelPrintIn = ApiModel<'LabelPrintIn'>
+export type LabelItemOut = ApiModel<'LabelItemOut'>
+export type LabelPrintOut = ApiModel<'LabelPrintOut'>
 
 /** 单码详情（`GET /api/v1/bundles/{bundle_no}`）。 */
 export type BundleDetailOut = ApiModel<'BundleDetailOut'>

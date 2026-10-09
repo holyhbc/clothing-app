@@ -5,7 +5,7 @@
  * 子路径是实现细节，改目录结构时只改这一个文件即可。
  *
  * @example
- * import { client, ApiError, formatMoney, PERM, statusText } from '@garment/shared'
+ * import { client, ApiError, formatMoney, statusText } from '@garment/shared'
  */
 
 // ---- 请求层 ----
@@ -94,7 +94,6 @@ export type {
   BundlingStatisticsOut,
   CancelIn,
   ChangePasswordRequest,
-  ConflictPolicy,
   CopiedPriceOut,
   CuttingEntryMode,
   CuttingOrderCreateIn,
@@ -108,7 +107,9 @@ export type {
   EnableUserRequest,
   EntryModeSwitchIn,
   HandIncrementIn,
+  LabelItemOut,
   LabelPrintIn,
+  LabelPrintOut,
   LineColorIn,
   LineColorOut,
   LineIn,
@@ -150,7 +151,6 @@ export type {
   SizeLineIn,
   SizeLineOut,
   SuggestLinesOut,
-  SplitPreviewOut,
   StockBatchOptionOut,
   StyleColorCreate,
   StyleColorOut,

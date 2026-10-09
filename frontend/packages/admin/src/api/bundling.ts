@@ -1,5 +1,5 @@
 /**
- * 打菲单接口（T-BUND-009）。
+ * 打菲单接口（T-BUND-009 / T-BUND-010）。
  *
  * 类型全部来自 `@garment/shared`（由 `openapi.json` 生成），**不手写 DTO**
  * （`docs/06 §7`）。
@@ -22,6 +22,7 @@ import type {
   ReverseIn,
   LabelPrintIn,
   PageData,
+  BundleListOut,
 } from '@garment/shared'
 import { http } from './http'
 import { searchStyleOptionsById } from '@/api/cutting'
@@ -123,6 +124,21 @@ export function previewSplit(
   payload?: { lines: { size_code: string; hands: number; cutting_size_line_id: string }[] },
 ): Promise<SplitPreviewOut> {
   return http.post<SplitPreviewOut>(`${BASE}/${orderId}/split`, payload ?? {})
+}
+
+/**
+ * 码列表（按打菲单筛选：`GET /bundles?doc_id={orderId}`）。
+ *
+ * 返回每手的 `bundle_no` / `hands` / `hands_total_of_size` / `bundle_qty` / 计件状态。
+ * 用于标签打印页的「按手列表」与预览网格。
+ */
+export function listBundlesByOrder(
+  orderId: string,
+  params?: { size_code?: string; status?: string; counted?: boolean; hands?: number },
+): Promise<{ items: BundleListOut[]; total: number }> {
+  return http.get<PageData<BundleListOut>>('/bundles', {
+    query: { doc_id: orderId, ...params },
+  })
 }
 
 // ------------------------------------------------------------------ 写

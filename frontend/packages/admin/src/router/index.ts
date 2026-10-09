@@ -153,6 +153,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/bundling/Detail.vue'),
         meta: { title: '打菲单详情', permission: PERM.BUNDLING_READ },
       },
+      {
+        path: "bundling/orders/:orderId/print",
+        name: "bundling-orders-print",
+        component: () => import("@/views/bundling/LabelPrint.vue"),
+        meta: { title: "标签打印", permission: PERM.BUNDLING_PRINT },
+      },
       // 打菲单没有单独的编辑页：改明细走 PUT /lines（T-BUND-010），表头改走 PATCH（详情页按钮）
       {
         path: 'system/users',
