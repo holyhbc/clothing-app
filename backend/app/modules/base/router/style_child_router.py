@@ -189,7 +189,14 @@ async def copy_style_template(
     _require_base(ctx, "base:rate_template:manage", "工序单价模板复制")
     idempotent = await load_idempotent(request)
     if idempotent is not None and idempotent.cached is not None:
-        return idempotent.cached
+        # ⚠️ 取的是 ``cached["response"]``，**不是** ``cached`` 本身（闭环 L-114）。
+        # 缓存里存的是 ``{"body_hash":…, "state":…, "response":…}``，直接把整个缓存
+        # 当响应体返回的话，FastAPI 会按 ``ApiResponse`` 校验 → ``data`` 变成 null，
+        # 客户端拿到「复制成功但没有数据」，而**工序单价已经写进库了**。
+        # 症状是「第一次正常、幂等重试拿到空 data」，最难自查的一种不一致。
+        cached_response = idempotent.cached.get("response")
+        if isinstance(cached_response, dict):
+            return dict(cached_response)
     try:
         result = await _style_service(session, ctx).copy_template(
             style_no, source_style_no, payload
