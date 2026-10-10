@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { Spin } from 'ant-design-vue'
 import LabelPrint from './LabelPrint.vue'
 
 // Mock dependencies
@@ -152,7 +153,11 @@ describe('LabelPrint.vue', () => {
         },
       },
     })
-    expect(wrapper.findComponent({ name: 'Spin' }).exists()).toBe(true)
+    // ⚠️ 按**组件引用**查，不按 `{ name: 'Spin' }` 的字符串查：
+    // antd 的 Spin 组件没有 `name` 选项（`es/spin/index.js` 只有 `export default Spin`），
+    // 按名字查会永远返回 false —— 而且组件改名/换库时它是**静默失效**的，
+    // 不会像真断言那样变红，只会一直假绿。
+    expect(wrapper.findComponent(Spin).exists()).toBe(true)
   })
 
   it('loads order and bundles on mount', async () => {
