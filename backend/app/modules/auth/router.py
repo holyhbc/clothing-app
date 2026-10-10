@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.errors import BusinessError, ErrorCode
-from app.core.idempotency import load_idempotent, store_idempotent
+from app.core.idempotency import load_idempotent, mark_idempotent_failed, store_idempotent
 from app.core.permissions import AuthContext, get_auth_context
 from app.core.responses import ApiResponse, ok
 from app.core.scope import visible_workshops
@@ -122,34 +122,41 @@ async def login(
         if isinstance(cached_response, dict):
             return cached_response
 
-    outcome = await AuthService(session).authenticate(
-        employee_no=payload.employee_no,
-        password=payload.password,
-        channel=payload.channel,
-        ip=_client_ip(request),
-        user_agent=request.headers.get("user-agent"),
-        device_id=payload.device_id,
-    )
-    set_refresh_cookie(response, outcome.tokens.refresh_token, max_age=outcome.tokens.expires_in)
-    logger.info(
-        "用户登录成功",
-        extra={
-            "user_id": str(outcome.user.id),
-            "employee_no": outcome.user.employee_no,
-            "channel": payload.channel.value,
-        },
-    )
-    envelope = ok(
-        LoginResponse(
-            access_token=outcome.tokens.access_token,
-            expires_in=outcome.tokens.expires_in,
-            refresh_expires_at=outcome.tokens.refresh_expires_at,
-            user=UserBrief.model_validate(outcome.user),
-        ).model_dump(mode="json")
-    )
-    if idem is not None:
-        await store_idempotent(idem, envelope)
-    return envelope
+    try:
+        outcome = await AuthService(session).authenticate(
+            employee_no=payload.employee_no,
+            password=payload.password,
+            channel=payload.channel,
+            ip=_client_ip(request),
+            user_agent=request.headers.get("user-agent"),
+            device_id=payload.device_id,
+        )
+        set_refresh_cookie(
+            response, outcome.tokens.refresh_token, max_age=outcome.tokens.expires_in
+        )
+        logger.info(
+            "用户登录成功",
+            extra={
+                "user_id": str(outcome.user.id),
+                "employee_no": outcome.user.employee_no,
+                "channel": payload.channel.value,
+            },
+        )
+        envelope = ok(
+            LoginResponse(
+                access_token=outcome.tokens.access_token,
+                expires_in=outcome.tokens.expires_in,
+                refresh_expires_at=outcome.tokens.refresh_expires_at,
+                user=UserBrief.model_validate(outcome.user),
+            ).model_dump(mode="json")
+        )
+        if idem is not None:
+            await store_idempotent(idem, envelope)
+        return envelope
+    except Exception:
+        if idem is not None:
+            await mark_idempotent_failed(idem)
+        raise
 
 
 @router.post(

@@ -39,7 +39,7 @@ from typing import Any
 
 from fastapi import Request
 
-from app.core.cache import redis_claim_json, redis_get_json, redis_set_json
+from app.core.cache import redis_claim_json, redis_delete, redis_get_json, redis_set_json
 from app.core.errors import BusinessError, ErrorCode
 
 logger = logging.getLogger("app.idempotency")
@@ -152,6 +152,41 @@ async def store_idempotent(request: IdempotentRequest, response: dict[str, Any])
     cache_key = f"idem:{request.key}"
     if not await redis_set_json(cache_key, payload, TTL_SECONDS):
         _memory_put(cache_key, payload)
+
+
+async def mark_idempotent_failed(request: IdempotentRequest) -> None:
+    """**释放**本请求占的位（业务失败时由 router 调用，闭环 L-113）。
+
+    ## 为什么需要它
+
+    :func:`load_idempotent` 占位之后，**只有成功路径**才会写结果。而业务失败
+    （``31004`` 超打 / ``12001`` 无权限 / 参数校验不过）会直接抛异常，
+    ``store_idempotent`` 永远不执行 —— 占位就停在 ``PENDING`` 直到 TTL（30s）过期。
+
+    后果：**用户在同一个键上重试会一直等到等满 :data:`WAIT_TIMEOUT_SECONDS` 才拿到
+    ``10003``**，而首次请求其实早就失败了、根本不会有人写结果。最典型的场景是
+    **登录输错口令**：同键重试每次都要等 5 秒才知道「又错了」，且提示是
+    「请求正在处理中」而不是「口令错误」。
+
+    ## 为什么是「删键」而不是「写失败标记」
+
+    失败**不是**一种可缓存的结果 —— 它通常只反映当时的入参（口令错了、这单已被别人审了），
+    用户改完入参就该能用**同一个键**重试。写标记会让「改完再试」继续拿到旧失败，
+    于是用户被迫去点「换个键」—— 而键是客户端生成的，用户没有理由知道要换。
+
+    代价：删键之后**首次请求与重试之间**的那段窗口不再有保护。但那正是我们要的：
+    业务失败说明**没有副作用发生**，重试是安全的。
+    """
+    if request is None or not request.key:
+        return
+    cache_key = f"idem:{request.key}"
+    _memory_drop(cache_key)
+    await redis_delete(cache_key)
+
+
+def _memory_drop(cache_key: str) -> None:
+    """从进程内降级存储删键（与 :func:`_memory_put` / :func:`_memory_get` 成对）。"""
+    _MEMORY_STORE.pop(cache_key, None)
 
 
 def _wait_timeout(key: str) -> BusinessError:

@@ -6,10 +6,14 @@
 每个用例都覆盖异常路径：docs/10 §3 要求正常 + 异常 + 权限拒绝三路齐全。
 """
 
+import time
+from uuid import uuid4
+
 import pytest
 from sqlalchemy import select, update
 
 from app.common.enums import AuthChannel, DataScope
+from app.core import idempotency as idem
 from app.core.idempotency import clear_memory_store
 from app.modules.auth.models import AuthLoginLog, AuthRefreshToken, User
 from tests.factories.user import DEFAULT_PASSWORD, UserFactory, make_login_payload
@@ -428,3 +432,39 @@ async def test_failed_logins_are_counted_only_for_that_employee(client, db_sessi
         )
     b_ok = await client.post(f"{PREFIX}/login", json=make_login_payload(employee_no="BBB001"))
     assert b_ok.json()["code"] == 0
+
+
+async def test_login_failure_does_not_block_retry_with_same_idempotency_key(
+    client, db_session, _clean_redis_namespace
+):
+    """**输错口令后用同一个幂等键重试，必须立刻拿到真实结果**（闭环 L-113）。
+
+    ⚠️ 选登录当端到端样本，是因为它是 L-113 里**最容易被真人踩到**的场景：
+    输错口令 → 前端重发（同一个 ``Idempotency-Key``）→ 用户看到的是
+    「同一请求正在处理中，请稍后重试」并**干等 5 秒**，而真实原因是「口令错误」。
+
+    ⚠️ 断的是**第二次响应的内容与耗时**：
+    - 内容必须是**登录成功**（证明占位已释放、真的重新执行了）；
+    - 耗时必须远小于等待上限（否则就算内容对，也是靠等满 5 秒 + TTL 过期侥幸过的）。
+    """
+    await _seed_user(db_session, employee_no="A001")
+    key = f"login-retry-{uuid4().hex}"
+    headers = {"Idempotency-Key": key}
+
+    failed = await client.post(
+        f"{PREFIX}/login", json=make_login_payload(password="Wrong123"), headers=headers
+    )
+    assert failed.status_code == 401, "先确认前置：口令错确实失败"
+
+    started = time.monotonic()
+    ok = await client.post(f"{PREFIX}/login", json=make_login_payload(), headers=headers)
+    elapsed = time.monotonic() - started
+
+    assert ok.status_code == 200, (
+        f"改对口令后同键重试应立刻成功，实际 {ok.status_code} "
+        f"code={ok.json().get('code')} —— 占位没被释放"
+    )
+    assert ok.json()["data"]["user"]["employee_no"] == "A001"
+    assert elapsed < idem.WAIT_TIMEOUT_SECONDS / 2, (
+        f"重试耗时 {elapsed:.3f}s：用户会白等 {idem.WAIT_TIMEOUT_SECONDS}s 才知道真实原因"
+    )

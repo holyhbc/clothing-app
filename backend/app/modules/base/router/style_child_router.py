@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request
 
-from app.core.idempotency import load_idempotent, store_idempotent
+from app.core.idempotency import load_idempotent, mark_idempotent_failed, store_idempotent
 from app.core.responses import ApiResponse, ok
 from app.modules.base.schemas import (
     RatioListOut,
@@ -190,8 +190,15 @@ async def copy_style_template(
     idempotent = await load_idempotent(request)
     if idempotent is not None and idempotent.cached is not None:
         return idempotent.cached
-    result = await _style_service(session, ctx).copy_template(style_no, source_style_no, payload)
-    response = ok(result.model_dump(mode="json"))
-    if idempotent is not None:
-        await store_idempotent(idempotent, response)
-    return response
+    try:
+        result = await _style_service(session, ctx).copy_template(
+            style_no, source_style_no, payload
+        )
+        response = ok(result.model_dump(mode="json"))
+        if idempotent is not None:
+            await store_idempotent(idempotent, response)
+        return response
+    except Exception:
+        if idempotent is not None:
+            await mark_idempotent_failed(idempotent)
+        raise

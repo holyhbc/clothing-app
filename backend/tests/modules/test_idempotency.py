@@ -290,3 +290,60 @@ async def test_redis_unavailable_degrades_to_process_memory(
     assert hit is not None and hit.cached is not None
     assert hit.cached["response"] == {"data": {"ok": True}}
     idem.clear_memory_store()
+
+
+# ================================================== ⑥ 业务失败必须释放占位（L-113）
+
+
+async def test_business_failure_releases_placeholder_so_same_key_can_retry(
+    _clean_redis_namespace: None,
+) -> None:
+    """业务失败后**同键立刻可重试**，不等占位 TTL 到期（闭环 L-113）。
+
+    ⚠️ 这是 L-113 的**核心断言**，而且它是**时间断言** —— 不能只验「最终能重试」
+    （等 30s TTL 到期也能重试，那样这条用例就永远绿着，测不出缺陷）。
+    所以断的是「**耗时**」：释放后重试是毫秒级，不释放则必然等满
+    :data:`WAIT_TIMEOUT_SECONDS` 才报 ``10003``。
+    """
+    key = f"failed-{uuid4().hex}"
+    raw = _body(7)
+
+    owner = await idem.load_idempotent(_idem_request(key, raw))
+    assert owner is not None and owner.cached is None
+
+    # 业务失败：router 在 except 里调用它
+    await idem.mark_idempotent_failed(owner)
+
+    started = time.monotonic()
+    retry = await idem.load_idempotent(_idem_request(key, raw))
+    elapsed = time.monotonic() - started
+
+    assert retry is not None and retry.cached is None, (
+        "释放占位后同键同 body 应立刻重新执行（cached=None），而不是拿到旧结果或 10003"
+    )
+    assert elapsed < idem.WAIT_TIMEOUT_SECONDS / 2, (
+        f"重试耗时 {elapsed:.3f}s 超过等待上限的一半 —— 占位多半没被释放，"
+        f"用户会白等 {idem.WAIT_TIMEOUT_SECONDS}s 才看到失败"
+    )
+
+
+async def test_released_key_still_rejects_a_different_body(
+    _clean_redis_namespace: None,
+) -> None:
+    """释放后**换 body 仍然按新请求处理**，不会因为「这个键用过」被误拒。
+
+    ⚠️ 反向约束：释放不能退化成「无条件放行同一个键」—— 那样 ``10002``
+    「同键不同 body」的保证就没了，幂等键就退化成随机数。
+    """
+    key = f"failed-diff-{uuid4().hex}"
+    owner = await idem.load_idempotent(_idem_request(key, _body(1)))
+    assert owner is not None
+    await idem.mark_idempotent_failed(owner)
+
+    fresh = await idem.load_idempotent(_idem_request(key, _body(2)))
+    assert fresh is not None and fresh.cached is None, "换 body 后是全新请求，应能执行"
+
+
+async def test_release_is_a_noop_without_a_key() -> None:
+    """没带 ``Idempotency-Key`` 的请求（``load_idempotent`` 返回 ``None``）不该炸。"""
+    await idem.mark_idempotent_failed(None)  # type: ignore[arg-type]

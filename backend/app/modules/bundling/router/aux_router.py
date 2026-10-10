@@ -30,7 +30,7 @@ from uuid import UUID
 from fastapi import APIRouter, Path, Query, Request, Response
 
 from app.common.enums import LabelExportFormat
-from app.core.idempotency import load_idempotent, store_idempotent
+from app.core.idempotency import load_idempotent, mark_idempotent_failed, store_idempotent
 from app.core.responses import ApiResponse, PageData, ok, page_ok
 from app.modules.bundling.code_repository import BundleListQuery, StatQuery
 from app.modules.bundling.repository import BundlingOrderListQuery
@@ -236,24 +236,29 @@ async def register_label_prints(
         cached = idempotent.cached.get("response")
         if isinstance(cached, dict):
             return dict(cached)
-    result = await _service(session).register_print(
-        order_id,
-        ctx.user_id,
-        ctx,
-        hands_seq=payload.hands_seq,
-        size_code=payload.size_code,
-        hands_total_of_size=payload.hands_total_of_size,
-        from_hands=payload.from_hands,
-        to_hands=payload.to_hands,
-        printed_qty=payload.printed_qty,
-        is_reprint=payload.is_reprint,
-        print_seq=payload.print_seq,
-        idempotency_key=idempotent.key if idempotent is not None else None,
-    )
-    response = ok(LabelPrintOut.model_validate(result).model_dump(mode="json"))
-    if idempotent is not None:
-        await store_idempotent(idempotent, response)
-    return response
+    try:
+        result = await _service(session).register_print(
+            order_id,
+            ctx.user_id,
+            ctx,
+            hands_seq=payload.hands_seq,
+            size_code=payload.size_code,
+            hands_total_of_size=payload.hands_total_of_size,
+            from_hands=payload.from_hands,
+            to_hands=payload.to_hands,
+            printed_qty=payload.printed_qty,
+            is_reprint=payload.is_reprint,
+            print_seq=payload.print_seq,
+            idempotency_key=idempotent.key if idempotent is not None else None,
+        )
+        response = ok(LabelPrintOut.model_validate(result).model_dump(mode="json"))
+        if idempotent is not None:
+            await store_idempotent(idempotent, response)
+        return response
+    except Exception:
+        if idempotent is not None:
+            await mark_idempotent_failed(idempotent)
+        raise
 
 
 # ====================================================================== 码查询 / 单码作废
@@ -365,14 +370,19 @@ async def void_bundle_code(
         cached = idempotent.cached.get("response")
         if isinstance(cached, dict):
             return dict(cached)
-    result = await _service(session).void_code(
-        bundle_no,
-        payload.void_reason,
-        ctx.user_id,
-        ctx,
-        idempotency_key=idempotent.key if idempotent is not None else None,
-    )
-    response = ok(VoidCodeOut.model_validate(result).model_dump(mode="json"))
-    if idempotent is not None:
-        await store_idempotent(idempotent, response)
-    return response
+    try:
+        result = await _service(session).void_code(
+            bundle_no,
+            payload.void_reason,
+            ctx.user_id,
+            ctx,
+            idempotency_key=idempotent.key if idempotent is not None else None,
+        )
+        response = ok(VoidCodeOut.model_validate(result).model_dump(mode="json"))
+        if idempotent is not None:
+            await store_idempotent(idempotent, response)
+        return response
+    except Exception:
+        if idempotent is not None:
+            await mark_idempotent_failed(idempotent)
+        raise

@@ -47,6 +47,23 @@ async def close_redis() -> None:
     _client = None
 
 
+async def redis_delete(key: str) -> bool:
+    """删键。成功（键存在并被删、或本就不存在）返回 ``True``；Redis 不可用返回 ``False``。
+
+    ⚠️ **不抛异常**：调用方是「失败后清理」路径 —— 这里抛异常会把**本来已经正确的
+    业务失败**（比如 ``31004`` 超打）变成一个 500，而 500 会让客户端以为是服务端故障，
+    于是重试 → 又撞同一个业务错误。清理失败只该降级，不该改变响应的错误码。
+    """
+    client = get_redis()
+    if client is None:
+        return False
+    try:
+        return bool(await client.delete(key))
+    except (RedisError, OSError, TimeoutError):
+        logger.warning("redis 删除失败，降级处理", extra={"key": key})
+        return False
+
+
 async def redis_get_json(key: str) -> dict[str, Any] | None:
     """读 JSON。Redis 不可用或超时返回 ``None``（**不抛异常**，让调用方降级）。"""
     client = get_redis()

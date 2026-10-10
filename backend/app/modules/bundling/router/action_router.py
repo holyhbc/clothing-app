@@ -28,7 +28,7 @@
 
 from fastapi import APIRouter, Request
 
-from app.core.idempotency import load_idempotent, store_idempotent
+from app.core.idempotency import load_idempotent, mark_idempotent_failed, store_idempotent
 from app.core.responses import ApiResponse
 from app.modules.bundling.schemas import (
     ApproveIn,
@@ -124,17 +124,22 @@ async def approve_bundling_order(
         cached_response = idempotent.cached.get("response")
         if isinstance(cached_response, dict):
             return dict(cached_response)
-    order = await _service(session).approve(
-        order_id,
-        ctx.user_id,
-        ctx,
-        remark=payload.remark if payload is not None else None,
-        idempotency_key=idempotent.key if idempotent is not None else None,
-    )
-    response = _order_payload(order)
-    if idempotent is not None:
-        await store_idempotent(idempotent, response)
-    return response
+    try:
+        order = await _service(session).approve(
+            order_id,
+            ctx.user_id,
+            ctx,
+            remark=payload.remark if payload is not None else None,
+            idempotency_key=idempotent.key if idempotent is not None else None,
+        )
+        response = _order_payload(order)
+        if idempotent is not None:
+            await store_idempotent(idempotent, response)
+        return response
+    except Exception:
+        if idempotent is not None:
+            await mark_idempotent_failed(idempotent)
+        raise
 
 
 # ====================================================================== 增手（不改状态）
