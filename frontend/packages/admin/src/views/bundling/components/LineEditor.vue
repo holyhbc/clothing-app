@@ -125,9 +125,9 @@ function sourceLabel(value: string): string {
       :pagination="false"
       :scroll="{ x: 1200 }"
     >
-      <template #bodyCell="{ column, record, rowIndex }">
+      <template #bodyCell="{ column, record, index }">
         <template v-if="column.key === 'line_no'">
-          {{ rowIndex + 1 }}
+          {{ index + 1 }}
         </template>
 
         <template v-if="column.key === 'size_code'">
@@ -135,7 +135,7 @@ function sourceLabel(value: string): string {
             :value="record.size_code"
             placeholder="如 XL / L / M"
             style="width: 100%"
-            @update:value="(v: string) => onSizeCodeChange(rowIndex, v)"
+            @update:value="(v: string) => onSizeCodeChange(index, v)"
           />
         </template>
 
@@ -148,7 +148,7 @@ function sourceLabel(value: string): string {
               show-search
               placeholder="选来源裁剪明细行…"
               style="width: 100%"
-              @update:value="(v: unknown) => onSourceChange(rowIndex, typeof v === 'string' ? v : '')"
+              @update:value="(v: unknown) => onSourceChange(index, typeof v === 'string' ? v : '')"
               @blur="() => saveEdit(record.cutting_size_line_id)"
             />
           </template>
@@ -168,7 +168,7 @@ function sourceLabel(value: string): string {
               :min="1"
               :precision="0"
               style="width: 100%"
-              @update:value="(v: number | null) => onHandsChange(rowIndex, v)"
+              @update:value="(v: number | null) => onHandsChange(index, v)"
               @blur="() => saveEdit(`hands-${record.line_no}`)"
             />
           </template>
@@ -184,7 +184,7 @@ function sourceLabel(value: string): string {
               :min="0"
               :precision="3"
               style="width: 100%"
-              @update:value="(v: number | null) => onPlannedQtyChange(rowIndex, v)"
+              @update:value="(v: number | null) => onPlannedQtyChange(index, v)"
               @blur="() => saveEdit(`planned-${record.line_no}`)"
             />
           </template>
@@ -199,7 +199,7 @@ function sourceLabel(value: string): string {
               :value="record.group_no ?? ''"
               placeholder="组别"
               style="width: 100%"
-              @update:value="(v: string) => onGroupNoChange(rowIndex, v)"
+              @update:value="(v: string) => onGroupNoChange(index, v)"
               @blur="() => saveEdit(`group-${record.line_no}`)"
             />
           </template>
@@ -214,7 +214,7 @@ function sourceLabel(value: string): string {
               :value="record.workstation_no ?? ''"
               placeholder="工位"
               style="width: 100%"
-              @update:value="(v: string) => onWorkstationNoChange(rowIndex, v)"
+              @update:value="(v: string) => onWorkstationNoChange(index, v)"
               @blur="() => saveEdit(`ws-${record.line_no}`)"
             />
           </template>
@@ -232,7 +232,7 @@ function sourceLabel(value: string): string {
               <Button size="small" type="primary" @click="saveEdit(`hands-${record.line_no}`)">保存</Button>
               <Button size="small" @click="cancelEdit(`hands-${record.line_no}`)">取消</Button>
             </template>
-            <Button size="small" danger @click="removeLine(rowIndex)">删除</Button>
+            <Button size="small" danger @click="removeLine(index)">删除</Button>
           </Space>
         </template>
       </template>
