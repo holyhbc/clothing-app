@@ -330,6 +330,16 @@ describe('LabelPrint.vue', () => {
       printed_qty: 1,
       print_seq: undefined,
     }))
+
+    // ⚠️ 这条断言曾经缺席，于是「点打印必然报 10002」这个 bug 活了下来：
+    // `label_guard.resolve_hand_span()` 第一句就是
+    //   `if hands_seq is None: raise BusinessError(10002, "必须带 hands_seq")`，
+    // 而前端当时传的是 `hands_seq: undefined`。
+    //
+    // 只断言「调用了这个函数」是不够的 —— 必须断**参数**，
+    // 否则调用参数全错、真实环境 100% 失败，测试照样绿。
+    const payload = vi.mocked(registerLabelPrints).mock.calls[0]?.[1]
+    expect(payload?.hands_seq).toBe(1)
   })
 
   it('requires print_seq for reprint', async () => {

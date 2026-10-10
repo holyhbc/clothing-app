@@ -80,7 +80,16 @@ const blocking = computed(() => {
     if (line.size_code === '') list.push(`${at}：还没选尺码`)
     if (line.cutting_size_line_id === '') list.push(`${at}：还没选来源裁剪明细行`)
     if (line.hands < 1) list.push(`${at}：手数必须 ≥ 1（整数，ADR-0020）`)
-    if (line.planned_qty !== undefined && line.planned_qty < 1) list.push(`${at}：计划件数必须 ≥ 1`)
+    // ⚠️ 必须同时排除 `null` 与 `undefined`：`null < 1` 在 JS 里是 **true**
+    // （null 转 0），只判 `!== undefined` 会把 `planned_qty: null`
+    // 误判成「计划件数必须 ≥ 1」。而 `null` 恰恰是 `addLine()` 新建行的默认值
+    // —— 后端也明确定义为 `int | None = None`（「预览用，服务端重算」），
+    // 本就该放过。于是每一行刚建出来就红着，**表单根本提交不了**。
+    // （写成 `!= null` 更短，但 eslint `eqeqeq` 不让，故显式两条。）
+    const planned = line.planned_qty
+    if (planned !== undefined && planned !== null && planned < 1) {
+      list.push(`${at}：计划件数必须 ≥ 1`)
+    }
   })
   return list
 })

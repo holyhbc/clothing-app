@@ -122,8 +122,28 @@ function isPositive(value: string | null | undefined): boolean {
   return Number(value ?? 0) > 0
 }
 
-function handsText(line: LineOut): string {
-  return `第 ${line.hands} 手 / 共 — 手 · ${formatQty(line.planned_qty ?? '0', 0)} 件`
+/**
+ * 入参是 Table 插槽给的 `Record<string, any>`。索引签名不会被用来满足
+ * 必填属性，所以这里显式接 `Record<string, unknown>` 并在内部收窄 ——
+ * 既过了类型检查，又把 `any` 逃逸一起还掉了。
+ */
+function handsText(line: Record<string, unknown>): string {
+  const hands = typeof line.hands === 'number' ? line.hands : 0
+  const qty = typeof line.planned_qty === 'string' ? line.planned_qty : '0'
+  return `第 ${hands} 手 / 共 — 手 · ${formatQty(qty, 0)} 件`
+}
+
+/**
+ * 生成的时间字段类型是 `unknown` —— OpenAPI 的 `format: date-time` 到
+ * pydantic 导出时被降成了 `Any`，`schema.d.ts` 里就是 `unknown`。
+ * 而 `formatDateTime()` 要的是 `string | null | undefined`。
+ *
+ * 这里**只放真正的字符串**通过，其余一律当缺失处理。
+ * 不写 `String(v)` 强转：那样对象会变成 `"[object Object]"` 直接显示到界面上，
+ * 把一个类型问题换成了一个界面上看得见的脏数据问题。
+ */
+function asDate(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
 }
 
 async function submit(): Promise<void> {
@@ -194,8 +214,11 @@ async function cancel(): Promise<void> {
 }
 
 function print(): void {
-  // TODO: T-BUND-010 接入标签打印
-  router.push({ name: 'bundling-orders-print', params: { orderId } })
+  // ⚠️ 必须 `orderId.value`：`orderId` 是 `computed()`，在 `<script>` 里
+  // 不会像模板表达式那样自动解包，直接传 `orderId` 等于把
+  // **ComputedRef 对象本身**塞进路由 params，跳过去是个坏路由。
+  // （同文件 234 行模板里的 `orderId` 没问题 —— 模板会解包。）
+  router.push({ name: 'bundling-orders-print', params: { orderId: orderId.value } })
 }
 
 onMounted(() => {
@@ -282,9 +305,9 @@ watch(orderId, () => {
           </DescriptionsItem>
           <DescriptionsItem label="已打印">{{ order.label_print_qty }} 张</DescriptionsItem>
           <DescriptionsItem label="版本">{{ order.version }}</DescriptionsItem>
-          <DescriptionsItem label="创建时间">{{ formatDateTime(order.created_at) }}</DescriptionsItem>
-          <DescriptionsItem label="更新时间">{{ formatDateTime(order.updated_at) }}</DescriptionsItem>
-          <DescriptionsItem v-if="order.approved_at" label="审核时间">{{ formatDateTime(order.approved_at) }}</DescriptionsItem>
+          <DescriptionsItem label="创建时间">{{ formatDateTime(asDate(order.created_at)) }}</DescriptionsItem>
+          <DescriptionsItem label="更新时间">{{ formatDateTime(asDate(order.updated_at)) }}</DescriptionsItem>
+          <DescriptionsItem v-if="order.approved_at" label="审核时间">{{ formatDateTime(asDate(order.approved_at)) }}</DescriptionsItem>
           <DescriptionsItem v-if="order.approved_by" label="审核人">{{ order.approved_by }}</DescriptionsItem>
           <DescriptionsItem v-if="order.rejected_reason" label="驳回原因" :span="3">{{ order.rejected_reason }}</DescriptionsItem>
           <DescriptionsItem v-if="order.cancelled_reason" label="作废原因" :span="3">{{ order.cancelled_reason }}</DescriptionsItem>

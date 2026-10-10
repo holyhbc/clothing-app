@@ -109,7 +109,7 @@ function update<K extends keyof HeaderFieldsValue>(key: K, value: HeaderFieldsVa
         :min="1"
         :precision="0"
         style="width: 100%"
-        @update:value="(v: number | null) => update('bundle_qty', v ?? 1)"
+        @update:value="(v: unknown) => update('bundle_qty', typeof v === 'number' ? v : 1)"
       />
     </div>
 

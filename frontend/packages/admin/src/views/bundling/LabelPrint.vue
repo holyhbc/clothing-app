@@ -60,13 +60,16 @@ const sizeOptions = computed(() => {
   return Array.from(set).sort()
 })
 
-const handsRange = computed(() => {
+const handsRange = computed<{ min: number; max: number }>(() => {
   const filtered = printParams.value.size_code
     ? bundles.value.filter(b => b.size_code === printParams.value.size_code)
     : bundles.value
   if (filtered.length === 0) return { min: 1, max: 1 }
-  const hands = filtered.map(b => b.hands).sort((a, b) => a - b)
-  return { min: hands[0], max: hands[hands.length - 1] }
+  // 用 Math.min/max 而不是「排序后取首尾」：语义就是 min/max，
+  // 而且取索引在 `noUncheckedIndexedAccess` 下仍是 `number | undefined`，
+  // 哪怕前面已经判过 `length === 0`，TS 也推不出来。
+  const hands = filtered.map(b => b.hands)
+  return { min: Math.min(...hands), max: Math.max(...hands) }
 })
 
 const previewItems = ref<LabelItemOut[]>([])
@@ -139,15 +142,28 @@ async function loadPreview(): Promise<void> {
 async function handlePrintAndPrint(): Promise<void> {
   if (!orderId.value) return
   try {
+    const sizeCode = printParams.value.size_code
     const payload: LabelPrintIn = {
       from_hands: printParams.value.from_hands,
       to_hands: printParams.value.to_hands,
-      size_code: printParams.value.size_code,
+      // ★ `hands_seq` **后端必传**：`label_guard.resolve_hand_span()` 第一句就是
+      //   `if hands_seq is None: raise BusinessError(10002, "必须带 hands_seq")`。
+      //   之前这里写的是 `undefined` —— 也就是说**点「打印」必然报 10002**，
+      //   标签打印登记在真实环境下 100% 失败（单测没抓到：`registerLabelPrints`
+      //   被 mock 了，只断言「调用了这个函数」，没断言参数）。
+      //   语义是「本次打印第几手」，且服务端会校验它与 `from_hands` 相等
+      //   （矛盾报 10001），所以取区间起点。
+      hands_seq: printParams.value.from_hands,
       printed_qty: printParams.value.printed_qty,
       is_reprint: printParams.value.is_reprint,
       print_seq: printParams.value.is_reprint ? printParams.value.print_seq : undefined,
-      hands_seq: undefined,
-      hands_total_of_size: undefined,
+      // `size_code` 不传 = 全部尺码。**空串不等于不传** —— 传 `''` 会变成
+      // `WHERE size_code = ''`，一个都匹配不上。
+      ...(sizeCode ? { size_code: sizeCode } : {}),
+      // 「共 M 手」快照，服务端拿它跟库内权威值核对，对不上报 10001。
+      // 没选具体尺码时手数是**按尺码各自编号**的，全局 max 对不上任何单一尺码，
+      // 所以这时不传。
+      ...(sizeCode ? { hands_total_of_size: handsRange.value.max } : {}),
     }
     await registerLabelPrints(orderId.value, payload)
     message.success(printParams.value.is_reprint ? '重打登记成功' : '打印登记成功')
@@ -166,8 +182,6 @@ function resetForm(): void {
     printed_qty: 1,
     is_reprint: false,
     print_seq: undefined,
-    hands_seq: undefined,
-    hands_total_of_size: undefined,
   }
 }
 

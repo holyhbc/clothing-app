@@ -83,6 +83,17 @@ function onSourceChange(index: number, value: string | null): void {
   commit(next)
 }
 
+/**
+ * antd `InputNumber` 的 `@update:value` 发的是 `ValueType`
+ * （`string | number | null`），标注成 `(v: number | null)` 在严格函数类型下
+ * 不兼容。这里按 `unknown` 接再收窄：只放真正的数字通过，
+ * 其余（含数字字符串）一律当「清空」——这与「输入框被清掉」的原意一致。
+ */
+function asCount(v: unknown): number | null {
+  if (typeof v === 'number') return v
+  return null
+}
+
 function onHandsChange(index: number, value: number | null): void {
   const next = [...props.modelValue]
   next[index] = { ...next[index], hands: value ?? 1 }
@@ -168,7 +179,7 @@ function sourceLabel(value: string): string {
               :min="1"
               :precision="0"
               style="width: 100%"
-              @update:value="(v: number | null) => onHandsChange(index, v)"
+              @update:value="(v: unknown) => onHandsChange(index, asCount(v))"
               @blur="() => saveEdit(`hands-${record.line_no}`)"
             />
           </template>
@@ -184,7 +195,7 @@ function sourceLabel(value: string): string {
               :min="0"
               :precision="3"
               style="width: 100%"
-              @update:value="(v: number | null) => onPlannedQtyChange(index, v)"
+              @update:value="(v: unknown) => onPlannedQtyChange(index, asCount(v))"
               @blur="() => saveEdit(`planned-${record.line_no}`)"
             />
           </template>
