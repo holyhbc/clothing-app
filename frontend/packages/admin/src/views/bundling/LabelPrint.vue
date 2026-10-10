@@ -409,7 +409,7 @@ const breadcrumbs = computed(() => {
 
   .label-sub {
     font-size: 7px;
-    color: #666;
+    color: var(--color-text-second);
   }
 
   .label-body {
@@ -426,7 +426,7 @@ const breadcrumbs = computed(() => {
 
   .label-key {
     font-size: 7px;
-    color: #666;
+    color: var(--color-text-second);
   }
 
   .label-value {
@@ -477,7 +477,7 @@ const breadcrumbs = computed(() => {
 
   .code-label {
     font-size: 6px;
-    color: #666;
+    color: var(--color-text-second);
     margin-top: 0.5mm;
   }
 
@@ -495,7 +495,7 @@ const breadcrumbs = computed(() => {
     position: absolute;
     width: 2mm;
     height: 2mm;
-    border: 0.2mm solid #000;
+    border: 0.2mm solid var(--color-print-ink);
   }
 
   .cut-mark.tl { top: -1mm; left: -1mm; border-right: none; border-bottom: none; }
@@ -611,7 +611,7 @@ const breadcrumbs = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
+  background: var(--color-print-paper);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
 }
