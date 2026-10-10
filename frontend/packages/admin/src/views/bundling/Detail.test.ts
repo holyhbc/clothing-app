@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { Drawer } from 'ant-design-vue'
 import type { PageData } from '@garment/shared'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -171,8 +172,18 @@ describe('打菲单详情页（TC-BW-04）', () => {
     historyBtn?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await settle()
 
-    const drawer = wrapper.find('.ant-drawer-content')
-    expect(drawer.exists()).toBe(true)
+    // 断言 Drawer 的 `open` prop，而不是 `.ant-drawer-content` 这个**内部 class**：
+    // ① antd 升级会改 DOM 结构，class 断言会静默失效；
+    // ② Drawer 走 Teleport，内容挂到 body 上，wrapper.find 根本看不到 ——
+    //    这条断言当时是「Drawer 明明开了却报红」的原因。
+    expect(wrapper.findComponent(Drawer).props('open')).toBe(true)
+
+    // 测试名承诺了「并调用日志接口」，原断言却漏了 —— 补上，
+    // 否则这个用例实际只验了「Drawer 打开」，接口挂了它照样绿。
+    expect(bundlingApi.listBundlingOrderLogs).toHaveBeenCalledWith(
+      expect.any(String),
+      { page: 1, page_size: 100 },
+    )
   })
 
   it('TC-BW-05 无 `bundling:read` 权限时 v-can 隐藏按钮', async () => {

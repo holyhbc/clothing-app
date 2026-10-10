@@ -9,7 +9,7 @@
  * ADR-0017 §4）；唯一键是 `(doc_id, line_no)`。
  */
 import { ref } from 'vue'
-import { Button, Input, InputNumber, Space, Table, Tooltip } from 'ant-design-vue'
+import { Button, Input, InputNumber, Select, Space, Table, Tooltip } from 'ant-design-vue'
 import type { LineIn } from '@garment/shared'
 
 interface Props {
@@ -141,14 +141,14 @@ function sourceLabel(value: string): string {
 
         <template v-else-if="column.key === 'cutting_size_line_id'">
           <template v-if="editingKey === record.cutting_size_line_id">
-            <a-select
-              :model-value="record.cutting_size_line_id"
+            <Select
+              :value="record.cutting_size_line_id"
               :options="props.sourceOptions"
               allow-clear
               show-search
               placeholder="选来源裁剪明细行…"
               style="width: 100%"
-              @update:model-value="(v: string | null) => onSourceChange(rowIndex, v)"
+              @update:value="(v: unknown) => onSourceChange(rowIndex, typeof v === 'string' ? v : '')"
               @blur="() => saveEdit(record.cutting_size_line_id)"
             />
           </template>

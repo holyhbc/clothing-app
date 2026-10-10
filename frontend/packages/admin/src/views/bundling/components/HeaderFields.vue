@@ -3,14 +3,14 @@
  * 打菲单表头字段（新建页）。
  *
  * 字段：
- * - 车间（Combo，UUID）
- * - 款号（Combo，UUID，走 `searchStyleOptionsById`）
+ * - 车间（Select，UUID）
+ * - 款号（Select，UUID，走 `searchStyleOptionsById`）
  * - 单据日期
  * - 一扎件数（参考值，InputNumber）
  * - 色码（文本）
  * - 色组（文本）
- * - 工序（Combo，value = operation_no）
- * - 来源裁剪单（a-select，本地过滤，显示手数/出数/每手件数）
+ * - 工序（Select，value = operation_no）
+ * - 来源裁剪单（Select，显示手数/出数/每手件数）
  * - 备注
  */
 import { Input, InputNumber, Select } from 'ant-design-vue'
@@ -42,6 +42,16 @@ defineOptions({ name: 'BundlingHeaderFields' })
 const props = defineProps<Props>()
 const emit = defineEmits<{ 'update:modelValue': [value: HeaderFieldsValue]; sourceChange: [] }>()
 
+/**
+ * antd `Select` 的取值可能是数组 / LabeledValue / undefined，
+ * 而本表单的这几个字段是**单值 UUID**。这里统一收窄，
+ * 免得每个 handler 里各写一遍 `typeof v === 'string'`
+ * （同文件「工序」也是这个写法）。
+ */
+function asId(v: unknown): string {
+  return typeof v === 'string' ? v : ''
+}
+
 function update<K extends keyof HeaderFieldsValue>(key: K, value: HeaderFieldsValue[K]): void {
   const next = { ...props.modelValue, [key]: value }
   emit('update:modelValue', next)
@@ -56,23 +66,29 @@ function update<K extends keyof HeaderFieldsValue>(key: K, value: HeaderFieldsVa
   <div style="display: flex; flex-wrap: wrap; gap: var(--space-4); padding: var(--space-3);">
     <div style="flex: 1; min-width: 280px;">
       <label class="form-label">车间</label>
-      <Combo
-        :model-value="modelValue.workshop_id"
+      <Select
+        :value="modelValue.workshop_id ?? undefined"
         :options="workshopOptions"
         placeholder="输入关键字搜索车间…"
         allow-clear
-        @update:model-value="(v: string | null) => update('workshop_id', v)"
+        show-search
+        option-filter-prop="label"
+        style="width: 100%"
+        @update:value="(v: unknown) => update('workshop_id', asId(v))"
       />
     </div>
 
     <div style="flex: 1; min-width: 280px;">
       <label class="form-label">款号</label>
-      <Combo
-        :model-value="modelValue.style_id"
+      <Select
+        :value="modelValue.style_id ?? undefined"
         :options="styleOptions"
         placeholder="输入货号或款名搜索…"
         allow-clear
-        @update:model-value="(v: string | null) => update('style_id', v)"
+        show-search
+        option-filter-prop="label"
+        style="width: 100%"
+        @update:value="(v: unknown) => update('style_id', asId(v))"
       />
     </div>
 
@@ -132,15 +148,15 @@ function update<K extends keyof HeaderFieldsValue>(key: K, value: HeaderFieldsVa
 
     <div style="flex: 1; min-width: 320px;">
       <label class="form-label">来源裁剪单</label>
-      <a-select
-        :model-value="modelValue.source_cutting_order_id"
+      <Select
+        :value="modelValue.source_cutting_order_id ?? undefined"
         :options="availableSources.map(s => ({ value: s.cutting_size_line_id, label: `${s.size_code} · 手数:${s.hands} · 出数:${s.output_qty} · 每手:${s.qty_per_hand}` }))"
         :loading="loadingSources"
         placeholder="先选款号/色码，再选来源裁剪单…"
         allow-clear
         show-search
         style="width: 100%"
-        @update:model-value="(v: string | null) => update('source_cutting_order_id', v)"
+        @update:value="(v: unknown) => update('source_cutting_order_id', asId(v))"
       />
     </div>
 

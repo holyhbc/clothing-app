@@ -1,3 +1,4 @@
+import * as fsmod from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -114,6 +115,63 @@ function findButton(label: string): HTMLButtonElement | undefined {
   )
 }
 
+/**
+ * 往输入框里「打字」。
+ *
+ * ⚠️ 只 `dispatchEvent(new Event('input'))` 是**什么都没做**：事件的
+ * `target.value` 仍是 `''`，组件读到的就是空串。原测试色码/色组一直是 `''`
+ * 正是这个原因 —— 于是 `onSourceCuttingOrderChange` 的前置条件不满足、
+ * 来源裁剪单下拉永远空着，提交自然被 `blocking` 拦下。
+ *
+ * 所以必须**先赋值再派发**，且要 `bubbles: true`（antd Input 内部包了一层）。
+ */
+function typeInto(input: HTMLInputElement | undefined, value: string): void {
+  if (!input) {
+    throw new Error(
+      `找不到待填输入框。现有 placeholder：` +
+        JSON.stringify([...document.querySelectorAll('input')].map((i) => i.placeholder)),
+    )
+  }
+  input.value = value
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+/**
+ * 按**字段 label** 找对应输入框。
+ *
+ * ⚠️ 不要按 placeholder 找：色码字段的 placeholder 是「如 WHT / BLK」，
+ * 根本不含「色码」二字。原测试写的是 `placeholder?.includes('色码')` ——
+ * 永远找不到 → `colorCodeInput` 一直是 `undefined` → 色码始终是 `''`
+ * → 来源裁剪单的可选项从不加载。placeholder 是会随时改的文案，
+ * label 才是字段语义。
+ */
+function fieldInput(labelText: string): HTMLInputElement | undefined {
+  const label = [...document.querySelectorAll('.form-label')].find(
+    (n) => (n.textContent ?? '').trim() === labelText,
+  )
+  return label?.parentElement?.querySelector('input') ?? undefined
+}
+
+/** 打开第 n 个 Select 下拉并选中含 `text` 的选项。 */
+async function pickOption(index: number, text: string): Promise<void> {
+  const selector = document.querySelectorAll('.ant-select-selector')[index]
+  if (!selector) throw new Error(`找不到第 ${index} 个 Select（共 ${document.querySelectorAll('.ant-select-selector').length} 个）`)
+  selector.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+  selector.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  await settle()
+  const option = [...document.querySelectorAll('.ant-select-item-option')].find((node) =>
+    (node.textContent ?? '').includes(text),
+  )
+  if (!option) {
+    throw new Error(
+      `第 ${index} 个 Select 里没有「${text}」选项。现有选项：` +
+        JSON.stringify([...document.querySelectorAll('.ant-select-item-option')].map((n) => n.textContent)),
+    )
+  }
+  option.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  await settle()
+}
+
 describe('打菲单新建页（TC-BW-03）', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -148,39 +206,38 @@ describe('打菲单新建页（TC-BW-03）', () => {
     styleOption?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await settle()
 
-    // 填色码/色组/工序
-    const inputs = document.querySelectorAll('input')
-    const colorCodeInput = [...inputs].find((i) => i.placeholder?.includes('色码'))
-    const colorGroupInput = [...inputs].find((i) => i.placeholder?.includes('色组'))
-    colorCodeInput?.dispatchEvent(new Event('input', { bubbles: true }))
-    colorGroupInput?.dispatchEvent(new Event('input', { bubbles: true }))
+    // 填色码/色组
+    typeInto(fieldInput('色码'), 'WHT')
+    typeInto(fieldInput('色组'), 'WHT-GRP')
+    await settle()
 
     // 选择工序
-    const operationSelector = document.querySelectorAll('.ant-select-selector')[2]
-    operationSelector?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-    operationSelector?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await settle()
-    const operationOption = [...document.querySelectorAll('.ant-select-item-option')].find((node) =>
-      (node.textContent ?? '').includes('拼前'),
-    )
-    operationOption?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await settle()
+    await pickOption(2, '拼前')
 
-    // 选择来源裁剪单
-    const sourceSelector = document.querySelectorAll('.ant-select-selector')[3]
-    sourceSelector?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-    sourceSelector?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await settle()
-    const sourceOption = [...document.querySelectorAll('.ant-select-item-option')].find((node) =>
-      (node.textContent ?? '').includes('XL'),
-    )
-    sourceOption?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await settle()
+    // 选择来源裁剪单（依赖款号 + 色码，缺一不会去加载可选项）
+    await pickOption(3, 'XL')
 
     // 新增一行明细
     const addLineBtn = findButton('新增行')
+    expect(addLineBtn).toBeDefined()
     addLineBtn?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await settle()
+
+    // ⚠️ `addLine()` 建的是**全空行**（size_code / cutting_size_line_id 都是 ''），
+    // `blocking` 会拦下提交。原测试新增完就直接点保存，等于什么都没填 ——
+    // 这里必须把明细行真的填出来。
+    const lineInputs = [...document.querySelectorAll('input')]
+    fsmod.writeFileSync('/tmp/f4.txt', `rows=${document.querySelectorAll('.ant-table-tbody tr').length} rowcell=${document.querySelectorAll('.ant-table-cell').length} hint=${document.querySelectorAll('.empty-hint').length}`)
+    const sizeInput = lineInputs.find((i) => i.placeholder?.includes('XL / L / M'))
+    typeInto(sizeInput, 'XL')
+    await settle()
+
+    // 点「来源裁剪明细行」单元格进入编辑，再选来源
+    const sourceCell = [...document.querySelectorAll('.code-cell')][0]
+    expect(sourceCell).toBeDefined()
+    sourceCell?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await settle()
+    await pickOption(4, 'XL')
 
     // 点击保存
     const saveBtn = findButton('保存草稿')
