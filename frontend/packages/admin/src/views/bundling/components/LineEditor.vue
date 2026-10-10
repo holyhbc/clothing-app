@@ -159,92 +159,89 @@ function sourceLabel(value: string): string {
               </span>
             </Tooltip>
           </template>
+        </template>
 
-          <!-- eslint-disable vue/valid-v-else-if -->
-          <!-- eslint-disable vue/valid-v-else-if -->
-          <template v-else-if="column.key === 'hands'">
-            <template v-if="editingKey === `hands-${record.line_no}`">
-              <InputNumber
-                :value="record.hands"
-                :min="1"
-                :precision="0"
-                style="width: 100%"
-                @update:value="(v: number | null) => onHandsChange(rowIndex, v)"
-                @blur="() => saveEdit(`hands-${record.line_no}`)"
-              />
-            </template>
-            <template v-else>
-              <span @click="() => startEdit(`hands-${record.line_no}`)">{{ record.hands }}</span>
-            </template>
+        <template v-else-if="column.key === 'hands'">
+          <template v-if="editingKey === `hands-${record.line_no}`">
+            <InputNumber
+              :value="record.hands"
+              :min="1"
+              :precision="0"
+              style="width: 100%"
+              @update:value="(v: number | null) => onHandsChange(rowIndex, v)"
+              @blur="() => saveEdit(`hands-${record.line_no}`)"
+            />
           </template>
-
-          <!-- eslint-enable vue/valid-v-else-if -->
-          <template v-else-if="column.key === 'planned_qty'">
-            <template v-if="editingKey === `planned-${record.line_no}`">
-              <InputNumber
-                :value="record.planned_qty ?? 0"
-                :min="0"
-                :precision="3"
-                style="width: 100%"
-                @update:value="(v: number | null) => onPlannedQtyChange(rowIndex, v)"
-                @blur="() => saveEdit(`planned-${record.line_no}`)"
-              />
-            </template>
-            <template v-else>
-              <span>{{ record.planned_qty ?? '—' }}</span>
-            </template>
-          </template>
-
-          <template v-else-if="column.key === 'group_no'">
-            <template v-if="editingKey === `group-${record.line_no}`">
-              <Input
-                :value="record.group_no ?? ''"
-                placeholder="组别"
-                style="width: 100%"
-                @update:value="(v: string) => onGroupNoChange(rowIndex, v)"
-                @blur="() => saveEdit(`group-${record.line_no}`)"
-              />
-            </template>
-            <template v-else>
-              <span>{{ record.group_no ?? '—' }}</span>
-            </template>
-          </template>
-
-          <template v-else-if="column.key === 'workstation_no'">
-            <template v-if="editingKey === `ws-${record.line_no}`">
-              <Input
-                :value="record.workstation_no ?? ''"
-                placeholder="工位"
-                style="width: 100%"
-                @update:value="(v: string) => onWorkstationNoChange(rowIndex, v)"
-                @blur="() => saveEdit(`ws-${record.line_no}`)"
-              />
-            </template>
-            <template v-else>
-              <span>{{ record.workstation_no ?? '—' }}</span>
-            </template>
-          </template>
-
-          <template v-else-if="column.key === 'actions'">
-            <Space>
-              <template v-if="editingKey === null">
-                <Button size="small" type="link" @click="startEdit(`hands-${record.line_no}`)">编辑</Button>
-              </template>
-              <template v-else-if="editingKey === `hands-${record.line_no}`">
-                <Button size="small" type="primary" @click="saveEdit(`hands-${record.line_no}`)">保存</Button>
-                <Button size="small" @click="cancelEdit(`hands-${record.line_no}`)">取消</Button>
-              </template>
-              <Button size="small" danger @click="removeLine(rowIndex)">删除</Button>
-            </Space>
+          <template v-else>
+            <span @click="() => startEdit(`hands-${record.line_no}`)">{{ record.hands }}</span>
           </template>
         </template>
 
-        <!-- eslint-disable vue/valid-v-slot -->
-        <template #emptyText>
-          <div class="empty-hint">点上方「新增行」添加第一个尺码明细</div>
+        <template v-else-if="column.key === 'planned_qty'">
+          <template v-if="editingKey === `planned-${record.line_no}`">
+            <InputNumber
+              :value="record.planned_qty ?? 0"
+              :min="0"
+              :precision="3"
+              style="width: 100%"
+              @update:value="(v: number | null) => onPlannedQtyChange(rowIndex, v)"
+              @blur="() => saveEdit(`planned-${record.line_no}`)"
+            />
+          </template>
+          <template v-else>
+            <span>{{ record.planned_qty ?? '—' }}</span>
+          </template>
         </template>
-        <!-- eslint-enable vue/valid-v-slot -->
+
+        <template v-else-if="column.key === 'group_no'">
+          <template v-if="editingKey === `group-${record.line_no}`">
+            <Input
+              :value="record.group_no ?? ''"
+              placeholder="组别"
+              style="width: 100%"
+              @update:value="(v: string) => onGroupNoChange(rowIndex, v)"
+              @blur="() => saveEdit(`group-${record.line_no}`)"
+            />
+          </template>
+          <template v-else>
+            <span>{{ record.group_no ?? '—' }}</span>
+          </template>
+        </template>
+
+        <template v-else-if="column.key === 'workstation_no'">
+          <template v-if="editingKey === `ws-${record.line_no}`">
+            <Input
+              :value="record.workstation_no ?? ''"
+              placeholder="工位"
+              style="width: 100%"
+              @update:value="(v: string) => onWorkstationNoChange(rowIndex, v)"
+              @blur="() => saveEdit(`ws-${record.line_no}`)"
+            />
+          </template>
+          <template v-else>
+            <span>{{ record.workstation_no ?? '—' }}</span>
+          </template>
+        </template>
+
+        <template v-else-if="column.key === 'actions'">
+          <Space>
+            <template v-if="editingKey === null">
+              <Button size="small" type="link" @click="startEdit(`hands-${record.line_no}`)">编辑</Button>
+            </template>
+            <template v-else-if="editingKey === `hands-${record.line_no}`">
+              <Button size="small" type="primary" @click="saveEdit(`hands-${record.line_no}`)">保存</Button>
+              <Button size="small" @click="cancelEdit(`hands-${record.line_no}`)">取消</Button>
+            </template>
+            <Button size="small" danger @click="removeLine(rowIndex)">删除</Button>
+          </Space>
+        </template>
       </template>
+
+      <!-- eslint-disable vue/valid-v-slot -->
+      <template #emptyText>
+        <div class="empty-hint">点上方「新增行」添加第一个尺码明细</div>
+      </template>
+      <!-- eslint-enable vue/valid-v-slot -->
     </Table>
 
     <div class="editor-toolbar" style="margin-top: var(--space-3)">

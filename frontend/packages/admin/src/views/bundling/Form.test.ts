@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { nextTick } from 'vue'
 import { PERM } from '@garment/shared'
+import type { BundlingOrderOut } from '@garment/shared'
 import * as bundlingApi from '@/api/bundling'
 import { baseApi } from '@/api/base'
 import * as cuttingApi from '@/api/cutting'
@@ -82,20 +83,17 @@ async function mountForm() {
     output_qty: '120',
     balance_qty: '0',
     bundle_qty: 60,
-    color_code: '',
-    color_group: '',
+    color_code: 'WHT',
+    color_group: 'WHT-GRP',
     created_at: new Date().toISOString(),
     doc_date: '2026-10-08',
-    doc_no: 'BD-20261005-000031',
-    hands_total: 2,
-    output_qty: '120',
-    balance_qty: '0',
-    status: 'DRAFT',
+    operation_no: '03',
+    source_cutting_order_id: '11111111-1111-1111-1111-111111111111',
     style_no: 'HB-2026-0001',
-    version: 1,
+    updated_at: new Date().toISOString(),
     workshop_id: '44444444-4444-4444-4444-444444444444',
     lines: [],
-  })
+  } as BundlingOrderOut)
 
   const router = stubRouter()
   await router.push('/bundling/orders/new')

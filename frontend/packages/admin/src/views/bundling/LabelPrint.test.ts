@@ -42,13 +42,32 @@ vi.mock('@/composables/useLabelCodes', () => ({
 }))
 
 import { getBundlingOrder, listBundlesByOrder, exportLabels, registerLabelPrints } from '@/api/bundling'
+import type { BundlingOrderOut } from '@garment/shared'
 
-const mockOrder = {
+/**
+ * ⚠️ **必须给全 `BundlingOrderOut` 的必填字段**，不能靠 `as Record<string, unknown>` 糊过去 ——
+ * 那种写法把「少字段」藏进断言里，页面真的少读一个字段时测试照样绿。
+ */
+const mockOrder: BundlingOrderOut = {
+  id: '33333333-3333-3333-3333-333333333333',
   doc_no: 'BD-20261018-000001',
+  doc_date: '2026-10-18',
   status: 'APPROVED',
+  version: 1,
   style_no: 'STYLE-001',
-  color_code: 'WHT',
+  workshop_id: '44444444-4444-4444-4444-444444444444',
+  source_cutting_order_id: '11111111-1111-1111-1111-111111111111',
   operation_no: '01',
+  color_code: 'WHT',
+  color_group: 'WHT-GRP',
+  bundle_qty: 60,
+  hands_total: 2,
+  output_qty: '120',
+  balance_qty: '0',
+  label_print_qty: 0,
+  created_at: '2026-10-18T02:00:00Z',
+  updated_at: '2026-10-18T02:00:00Z',
+  lines: [],
 }
 
 const mockBundles = [
@@ -59,6 +78,9 @@ const mockBundles = [
     hands: 1,
     hands_total_of_size: 2,
     line_id: 'line-1',
+    doc_id: '33333333-3333-3333-3333-333333333333',
+    counted_qty: '0',
+    counted_by_name: null,
     operation_no: '01',
     qr_content: 'BD-20261018-000001-XL01-0001',
     size_code: 'XL',
@@ -72,6 +94,9 @@ const mockBundles = [
     hands: 2,
     hands_total_of_size: 2,
     line_id: 'line-1',
+    doc_id: '33333333-3333-3333-3333-333333333333',
+    counted_qty: '0',
+    counted_by_name: null,
     operation_no: '01',
     qr_content: 'BD-20261018-000001-XL02-0001',
     size_code: 'XL',
