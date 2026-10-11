@@ -1,46 +1,35 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+/**
+ * 标签打印页测试。
+ *
+ * mock、样例数据、mount 样板、按钮查找都在 `./test-support/labelPrintHarness` ——
+ * 原因见那里。这个文件只留「用例与断言」，让该看的东西不被样板淹没。
+ *
+ * ⚠️ 本文件的历史教训（都已写进对应断言旁的注释）：
+ *  1. 断言锚在 antd **内部 DOM** 上会静默失效（`:contains` / placeholder /
+ *     `.ant-drawer-content`）；
+ *  2. 只断言「调用了这个函数」不够 —— 必须断**参数**。缺了这条，
+ *     「点打印必然报 10002」这个 bug 活了很久且测试全绿。
+ */
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { InputNumber, Select, Spin } from 'ant-design-vue'
-import LabelPrint from './LabelPrint.vue'
+import { getBundlingOrder, listBundlesByOrder, exportLabels, registerLabelPrints } from '@/api/bundling'
+import {
+  TEST_ORDER_ID,
+  findButton,
+  hasButton,
+  mockBundles,
+  mockOrder,
+  mockPreviewItems,
+  mountLabelPrint,
+  settle,
+} from './test-support/labelPrintHarness'
 
-/* ---------------------------------------------------------------------------
- * 为什么不用 `find('button:contains("打印")')`
- *
- * 两个坑叠在一起，都会**静默**给出空 DOMWrapper（然后报 "Cannot call trigger
- * on an empty DOMWrapper"，看不出真正原因）：
- *
- * 1. **jsdom 不支持 `:contains()`** —— 那是 jQuery 的私有扩展，不是标准 CSS。
- *    标准 `querySelector` 直接返回空集。
- * 2. **antd 会给「两字中文」的按钮自动插空格**：`<Button>打印</Button>` 实际渲染成
- *    `<span>打 印</span>`。就算 `:contains` 能用，文本也对不上。
- *
- * 所以按**可见文本**匹配，并先剥掉空白 —— 断言锚在「用户看到什么」上，
- * 而不是锚在第三方库的 DOM 实现上（后者会随 antd 版本静默失效）。
- * ------------------------------------------------------------------------- */
-
-/** 归一化按钮文本：剥掉 antd 为两字中文插入的空格。 */
-function buttonLabel(button: { text: () => string }): string {
-  return button.text().replace(/\s+/g, '')
-}
-
-/** 按可见文本找按钮；找不到就抛出**带候选清单**的错误，避免下一个空 DOMWrapper。 */
-function findButton(wrapper: ReturnType<typeof mount>, label: string) {
-  const buttons = wrapper.findAll('button')
-  const match = buttons.find((b) => buttonLabel(b).includes(label))
-  if (!match) {
-    throw new Error(
-      `找不到按钮「${label}」。实际渲染的按钮：${JSON.stringify(buttons.map(buttonLabel))}`,
-    )
-  }
-  return match
-}
-
-/** 同上，但只回答「在不在」。 */
-function hasButton(wrapper: ReturnType<typeof mount>, label: string): boolean {
-  return wrapper.findAll('button').some((b) => buttonLabel(b).includes(label))
-}
-
-// Mock dependencies
+/* ----------------------------- 依赖 mock -----------------------------
+ * ⚠️ 必须待在这个文件里，不能挪进上面的夹具：`vi.mock` 被 vitest 提升到
+ * 文件最顶部执行，而它得在**导入被测模块之前**就把 mock 注册好。
+ * 挪进夹具会晚一步，测试拿到的就成了真函数，`.mockResolvedValue` 抛
+ * 「is not a function」。
+ */
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { orderId: 'test-order-id' } }),
   useRouter: () => ({ back: vi.fn(), push: vi.fn() }),
@@ -63,9 +52,7 @@ vi.mock('@garment/shared', async () => {
 })
 
 vi.mock('qrcode', () => ({
-  default: {
-    toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,qrcode'),
-  },
+  default: { toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,qrcode') },
 }))
 
 vi.mock('bwip-js', () => ({
@@ -79,117 +66,17 @@ vi.mock('@/composables/useLabelCodes', () => ({
   }),
 }))
 
-import { getBundlingOrder, listBundlesByOrder, exportLabels, registerLabelPrints } from '@/api/bundling'
-import type { BundlingOrderOut } from '@garment/shared'
-
-/**
- * ⚠️ **必须给全 `BundlingOrderOut` 的必填字段**，不能靠 `as Record<string, unknown>` 糊过去 ——
- * 那种写法把「少字段」藏进断言里，页面真的少读一个字段时测试照样绿。
- */
-const mockOrder: BundlingOrderOut = {
-  id: '33333333-3333-3333-3333-333333333333',
-  doc_no: 'BD-20261018-000001',
-  doc_date: '2026-10-18',
-  status: 'APPROVED',
-  version: 1,
-  style_no: 'STYLE-001',
-  workshop_id: '44444444-4444-4444-4444-444444444444',
-  source_cutting_order_id: '11111111-1111-1111-1111-111111111111',
-  operation_no: '01',
-  color_code: 'WHT',
-  color_group: 'WHT-GRP',
-  bundle_qty: 60,
-  hands_total: 2,
-  output_qty: '120',
-  balance_qty: '0',
-  label_print_qty: 0,
-  created_at: '2026-10-18T02:00:00Z',
-  updated_at: '2026-10-18T02:00:00Z',
-  lines: [],
-}
-
-const mockBundles = [
-  {
-    bundle_no: 'BD-20261018-000001-XL01-0001',
-    bundle_qty: '60',
-    color_code: 'WHT',
-    hands: 1,
-    hands_total_of_size: 2,
-    line_id: 'line-1',
-    doc_id: '33333333-3333-3333-3333-333333333333',
-    counted_qty: '0',
-    counted_by_name: null,
-    operation_no: '01',
-    qr_content: 'BD-20261018-000001-XL01-0001',
-    size_code: 'XL',
-    status: 'ACTIVE',
-    style_no: 'STYLE-001',
-  },
-  {
-    bundle_no: 'BD-20261018-000001-XL02-0001',
-    bundle_qty: '60',
-    color_code: 'WHT',
-    hands: 2,
-    hands_total_of_size: 2,
-    line_id: 'line-1',
-    doc_id: '33333333-3333-3333-3333-333333333333',
-    counted_qty: '0',
-    counted_by_name: null,
-    operation_no: '01',
-    qr_content: 'BD-20261018-000001-XL02-0001',
-    size_code: 'XL',
-    status: 'ACTIVE',
-    style_no: 'STYLE-001',
-  },
-]
-
-const mockPreviewItems = [
-  {
-    barcode_content: 'BD-20261018-000001-XL01-0001',
-    bundle_no: 'BD-20261018-000001-XL01-0001',
-    bundle_qty: '60',
-    color_code: 'WHT',
-    hands_seq: 1,
-    hands_text: '第 1 手 / 共 2 手',
-    hands_total_of_size: 2,
-    operation_no: '01',
-    qr_content: 'BD-20261018-000001-XL01-0001',
-    size_code: 'XL',
-    style_no: 'STYLE-001',
-  },
-  {
-    barcode_content: 'BD-20261018-000001-XL02-0001',
-    bundle_no: 'BD-20261018-000001-XL02-0001',
-    bundle_qty: '60',
-    color_code: 'WHT',
-    hands_seq: 2,
-    hands_text: '第 2 手 / 共 2 手',
-    hands_total_of_size: 2,
-    operation_no: '01',
-    qr_content: 'BD-20261018-000001-XL02-0001',
-    size_code: 'XL',
-    style_no: 'STYLE-001',
-  },
-]
-
 describe('LabelPrint.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;vi.mocked(getBundlingOrder).mockResolvedValue(mockOrder)
-    ;vi.mocked(listBundlesByOrder).mockResolvedValue({ items: mockBundles, total: 2 })
-    ;vi.mocked(exportLabels).mockResolvedValue({ data: mockPreviewItems, csv_text: '' })
-    ;vi.mocked(registerLabelPrints).mockResolvedValue({ print_ids: ['print-1', 'print-2'], printed_count: 2 })
+    vi.mocked(getBundlingOrder).mockResolvedValue(mockOrder as never)
+    vi.mocked(listBundlesByOrder).mockResolvedValue({ items: mockBundles, total: 2 } as never)
+    vi.mocked(exportLabels).mockResolvedValue({ data: mockPreviewItems, csv_text: '' } as never)
+    vi.mocked(registerLabelPrints).mockResolvedValue({ print_ids: ['print-1', 'print-2'], printed_count: 2 } as never)
   })
 
   it('renders loading state initially', () => {
-    const wrapper = mount(LabelPrint, {
-      global: {
-        stubs: {
-          PageLayout: { template: '<div><slot /><slot name="extra" /></div>' },
-          StatusTag: { template: '<span>APPROVED</span>' },
-        },
-      },
-    })
+    const wrapper = mountLabelPrint()
     // ⚠️ 按**组件引用**查，不按 `{ name: 'Spin' }` 的字符串查：
     // antd 的 Spin 组件没有 `name` 选项（`es/spin/index.js` 只有 `export default Spin`），
     // 按名字查会永远返回 false —— 而且组件改名/换库时它是**静默失效**的，
@@ -198,32 +85,18 @@ describe('LabelPrint.vue', () => {
   })
 
   it('loads order and bundles on mount', async () => {
-    const wrapper = mount(LabelPrint, {
-      global: {
-        stubs: {
-          PageLayout: { template: '<div><slot /><slot name="extra" /></div>' },
-          StatusTag: { template: '<span>APPROVED</span>' },
-        },
-      },
-    })
+    const wrapper = mountLabelPrint()
     await wrapper.vm.$nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await settle()
 
-    expect(getBundlingOrder).toHaveBeenCalledWith('test-order-id')
-    expect(listBundlesByOrder).toHaveBeenCalledWith('test-order-id', { status: 'ACTIVE' })
+    expect(getBundlingOrder).toHaveBeenCalledWith(TEST_ORDER_ID)
+    expect(listBundlesByOrder).toHaveBeenCalledWith(TEST_ORDER_ID, { status: 'ACTIVE' })
   })
 
   it('shows print parameters form after loading', async () => {
-    const wrapper = mount(LabelPrint, {
-      global: {
-        stubs: {
-          PageLayout: { template: '<div><slot /><slot name="extra" /></div>' },
-          StatusTag: { template: '<span>APPROVED</span>' },
-        },
-      },
-    })
+    const wrapper = mountLabelPrint()
     await wrapper.vm.$nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await settle()
 
     // ⚠️ 断言按**组件引用 + props**，不按 antd 的内部 DOM：
     // `input[placeholder="请选择尺码"]` 永远匹配不到 —— antd `Select` 是把
@@ -254,22 +127,15 @@ describe('LabelPrint.vue', () => {
   })
 
   it('generates preview when clicking preview button', async () => {
-    const wrapper = mount(LabelPrint, {
-      global: {
-        stubs: {
-          PageLayout: { template: '<div><slot /><slot name="extra" /></div>' },
-          StatusTag: { template: '<span>APPROVED</span>' },
-        },
-      },
-    })
+    const wrapper = mountLabelPrint()
     await wrapper.vm.$nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await settle()
 
     await findButton(wrapper, '生成预览').trigger('click')
     await wrapper.vm.$nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await settle()
 
-    expect(exportLabels).toHaveBeenCalledWith('test-order-id', {
+    expect(exportLabels).toHaveBeenCalledWith(TEST_ORDER_ID, {
       from_hands: 1,
       to_hands: 2,
       size_code: 'XL',
@@ -278,20 +144,13 @@ describe('LabelPrint.vue', () => {
   })
 
   it('displays preview grid with label items', async () => {
-    const wrapper = mount(LabelPrint, {
-      global: {
-        stubs: {
-          PageLayout: { template: '<div><slot /><slot name="extra" /></div>' },
-          StatusTag: { template: '<span>APPROVED</span>' },
-        },
-      },
-    })
+    const wrapper = mountLabelPrint()
     await wrapper.vm.$nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await settle()
 
     await findButton(wrapper, '生成预览').trigger('click')
     await wrapper.vm.$nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await settle()
 
     expect(wrapper.findAll('.label-card')).toHaveLength(2)
     expect(wrapper.text()).toContain('第 1 手 / 共 2 手')
@@ -300,35 +159,29 @@ describe('LabelPrint.vue', () => {
   })
 
   it('registers print for the hand range in one call', async () => {
-    const wrapper = mount(LabelPrint, {
-      global: {
-        stubs: {
-          PageLayout: { template: '<div><slot /><slot name="extra" /></div>' },
-          StatusTag: { template: '<span>APPROVED</span>' },
-        },
-      },
-    })
+    const wrapper = mountLabelPrint()
     await wrapper.vm.$nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await settle()
 
     await findButton(wrapper, '生成预览').trigger('click')
     await wrapper.vm.$nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await settle()
 
-    // 触发打印登记
     await findButton(wrapper, '打印').trigger('click')
     await wrapper.vm.$nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await settle()
 
-    // 验证只调用了一次，覆盖整个手号区间
     expect(registerLabelPrints).toHaveBeenCalledTimes(1)
-    expect(registerLabelPrints).toHaveBeenCalledWith('test-order-id', expect.objectContaining({
-      from_hands: 1,
-      to_hands: 2,
-      size_code: 'XL',
-      is_reprint: false,
-      printed_qty: 1,
-    }))
+    expect(registerLabelPrints).toHaveBeenCalledWith(
+      TEST_ORDER_ID,
+      expect.objectContaining({
+        from_hands: 1,
+        to_hands: 2,
+        size_code: 'XL',
+        is_reprint: false,
+        printed_qty: 1,
+      }),
+    )
 
     // ⚠️ 下面这几条断言曾经**整条缺席**，于是「点打印必然报 10002」这个
     // bug 活了下来：`label_guard.resolve_hand_span()` 第一句就是
@@ -349,90 +202,64 @@ describe('LabelPrint.vue', () => {
   })
 
   it('requires print_seq for reprint', async () => {
-    const wrapper = mount(LabelPrint, {
-      global: {
-        stubs: {
-          PageLayout: { template: '<div><slot /><slot name="extra" /></div>' },
-          StatusTag: { template: '<span>APPROVED</span>' },
-        },
-      },
-    })
+    const wrapper = mountLabelPrint()
     await wrapper.vm.$nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await settle()
 
     await findButton(wrapper, '生成预览').trigger('click')
     await wrapper.vm.$nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await settle()
 
     // 勾选重打但不填批次序号
-    await wrapper.find('input[type="checkbox"]').setValue(true)
+    const checkbox = wrapper.find('input[type="checkbox"]')
+    expect(checkbox.exists()).toBe(true)
+    await checkbox.setValue(true)
     await wrapper.vm.$nextTick()
 
     await findButton(wrapper, '打印').trigger('click')
     await wrapper.vm.$nextTick()
 
-    // 应该报错不调用 registerLabelPrints（后端会校验 print_seq 必填）
-    // 这里验证前端仍会尝试调用，后端返回 10008
+    // 重打且没填 print_seq 时**不应该**带上 print_seq 键 ——
+    // 带上 undefined 会被序列化丢掉，后端只会看到「没传」而报 10002，
+    // 与不传等价；但显式断言「键不存在」才能钉住这个约定。
+    const payload = vi.mocked(registerLabelPrints).mock.calls[0]?.[1]
+    expect(payload && 'print_seq' in payload).toBe(false)
     expect(registerLabelPrints).toHaveBeenCalled()
   })
 
   it('includes hands_text in preview items', async () => {
-    const wrapper = mount(LabelPrint, {
-      global: {
-        stubs: {
-          PageLayout: { template: '<div><slot /><slot name="extra" /></div>' },
-          StatusTag: { template: '<span>APPROVED</span>' },
-        },
-      },
-    })
+    const wrapper = mountLabelPrint()
     await wrapper.vm.$nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await settle()
 
     await findButton(wrapper, '生成预览').trigger('click')
     await wrapper.vm.$nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await settle()
 
     expect(wrapper.text()).toContain('第 1 手 / 共 2 手')
     expect(wrapper.text()).toContain('第 2 手 / 共 2 手')
   })
 
   it('hides print button when status is not APPROVED', async () => {
-    ;vi.mocked(getBundlingOrder).mockResolvedValue({ ...mockOrder, status: 'DRAFT' })
+    vi.mocked(getBundlingOrder).mockResolvedValue({ ...mockOrder, status: 'DRAFT' } as never)
 
-    const wrapper = mount(LabelPrint, {
-      global: {
-        stubs: {
-          PageLayout: { template: '<div><slot /><slot name="extra" /></div>' },
-          StatusTag: { template: '<span>DRAFT</span>' },
-        },
-      },
-    })
+    const wrapper = mountLabelPrint('DRAFT')
     await wrapper.vm.$nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await settle()
 
     expect(hasButton(wrapper, '打印')).toBe(false)
   })
 
   it('generates QR code and barcode for each preview item', async () => {
-    const wrapper = mount(LabelPrint, {
-      global: {
-        stubs: {
-          PageLayout: { template: '<div><slot /><slot name="extra" /></div>' },
-          StatusTag: { template: '<span>APPROVED</span>' },
-        },
-      },
-    })
+    const wrapper = mountLabelPrint()
     await wrapper.vm.$nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await settle()
 
     await findButton(wrapper, '生成预览').trigger('click')
     await wrapper.vm.$nextTick()
-    await new Promise(r => setTimeout(r, 10))
+    await settle()
 
-    // 验证二维码和条码图片存在
-    const qrImages = wrapper.findAll('.qr-code img')
-    const barcodeImages = wrapper.findAll('.barcode img')
-    expect(qrImages).toHaveLength(2)
-    expect(barcodeImages).toHaveLength(2)
+    expect(wrapper.findAll('.qr-code img')).toHaveLength(2)
+    expect(wrapper.findAll('.barcode img')).toHaveLength(2)
   })
 })

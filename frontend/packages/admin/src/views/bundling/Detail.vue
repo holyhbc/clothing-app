@@ -8,7 +8,7 @@
  * - 明细表格（按 line_no 排序，每行含 `hands`/`planned_qty`/`available_qty_before` + 所属缸号匹号）
  * - 底部汇总（手数合计、出数合计，右对齐等宽字体）
  * - 操作区（右上 sticky）：按状态显示编辑/提交/审核/反审核/打印/复制
- * - 变更历史（Drawer，展示 document_logs）
+ * - 变更历史（见 `ChangeLogDrawer.vue`，展示 document_logs）
  * - 「按手列表」区块（手号 / 码 / 色 / 尺码 / 件数 / 打印 / 计件）
  *
  * ⚠️ 页面**不**做任何汇总计算：表头五列与各层小计都由后端重算并返回（模块/03 §4），
@@ -18,11 +18,12 @@
  */
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Alert, Button, Card, Descriptions, DescriptionsItem, Drawer, Spin, Table, Tooltip, message } from 'ant-design-vue'
+import { Alert, Button, Card, Descriptions, DescriptionsItem, Spin, Table, Tooltip, message } from 'ant-design-vue'
+import ChangeLogDrawer from './components/ChangeLogDrawer.vue'
 import type { ColumnsType } from 'ant-design-vue/es/table'
 import { PERM, formatDateTime, formatQty } from '@garment/shared'
 import type { BundlingOrderOut, LineOut } from '@garment/shared'
-import { getBundlingOrder, listBundlingOrderLogs, submitBundlingOrder, approveBundlingOrder, rejectBundlingOrder, withdrawBundlingOrder, reverseBundlingOrder, cancelBundlingOrder } from '@/api/bundling'
+import { getBundlingOrder, submitBundlingOrder, approveBundlingOrder, rejectBundlingOrder, withdrawBundlingOrder, reverseBundlingOrder, cancelBundlingOrder } from '@/api/bundling'
 import PageLayout from '@/components/PageLayout.vue'
 import StatusTag from '@/components/StatusTag.vue'
 
@@ -34,9 +35,7 @@ const router = useRouter()
 const order = ref<BundlingOrderOut | null>(null)
 const loading = ref(false)
 const errorMessage = ref('')
-const logsVisible = ref(false)
-const logsLoading = ref(false)
-const logs = ref<unknown[]>([])
+const logDrawer = ref<InstanceType<typeof ChangeLogDrawer> | null>(null)
 
 function orderIdOf(raw: unknown): string {
   const value = Array.isArray(raw) ? raw[0] : raw
@@ -62,21 +61,8 @@ async function load(): Promise<void> {
   }
 }
 
-async function loadLogs(): Promise<void> {
-  logsLoading.value = true
-  try {
-    const result = await listBundlingOrderLogs(orderId.value, { page: 1, page_size: 100 })
-    logs.value = result.items
-  } catch {
-    logs.value = []
-  } finally {
-    logsLoading.value = false
-  }
-}
-
 function openLogs(): void {
-  logsVisible.value = true
-  void loadLogs()
+  logDrawer.value?.show()
 }
 
 const lineColumns: ColumnsType<LineOut> = [
@@ -96,15 +82,6 @@ const handsColumns: ColumnsType<LineOut> = [
   { key: 'hands', title: '手数', dataIndex: 'hands', width: 80, align: 'right' },
   { key: 'hands', title: '手号详情', dataIndex: 'hands', width: 220, customRender: ({ record }: { record: LineOut }) => `第 ${record.hands} 手` },
   { key: 'planned_qty', title: '计划件数', dataIndex: 'planned_qty', width: 110, align: 'right', customRender: ({ record }: { record: LineOut }) => record.planned_qty },
-]
-
-const logsColumns: ColumnsType<unknown> = [
-  { key: 'created_at', title: '时间', dataIndex: 'created_at', width: 160 },
-  { key: 'operator_name', title: '操作人', dataIndex: 'operator_name', width: 100 },
-  { key: 'action', title: '动作', dataIndex: 'action', width: 100 },
-  { key: 'from_status', title: '从', dataIndex: 'from_status', width: 80 },
-  { key: 'to_status', title: '到', dataIndex: 'to_status', width: 80 },
-  { key: 'reason', title: '原因', dataIndex: 'reason', width: 200 },
 ]
 
 /** 溯源面包屑：`款号 > 裁剪单 > 打菲单 > 码`。 */
@@ -366,23 +343,7 @@ watch(orderId, () => {
           <span>已打印：<strong>{{ order.label_print_qty }}</strong> 张</span>
         </div>
 
-        <!-- 变更历史 Drawer -->
-        <Drawer
-          v-model:open="logsVisible"
-          title="变更历史"
-          :width="720"
-          placement="right"
-        >
-          <Spin :spinning="logsLoading">
-            <Table
-              :columns="logsColumns"
-              :data-source="logs"
-              :row-key="(row: unknown) => (row as Record<string, unknown>).id as string"
-              size="small"
-              :pagination="false"
-            />
-          </Spin>
-        </Drawer>
+        <ChangeLogDrawer ref="logDrawer" :order-id="orderId" />
       </template>
     </Spin>
   </PageLayout>

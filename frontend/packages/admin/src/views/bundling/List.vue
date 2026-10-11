@@ -8,8 +8,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Button, DatePicker, Select, Space, Spin, Table } from 'ant-design-vue'
-import type { ColumnsType } from 'ant-design-vue/es/table'
 import type { ExpandedRowRender } from 'ant-design-vue/es/vc-table/interface'
+import HandsExpandedRow from './components/HandsExpandedRow.vue'
+import { columns } from './columns'
 import { h } from 'vue'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
@@ -180,20 +181,6 @@ const pagination = computed(() => ({
   showTotal: (value: number) => `共 ${value} 张打菲单`,
 }))
 
-const columns: ColumnsType<BundlingOrderListOut> = [
-  { key: 'doc_no', title: '打菲单号', dataIndex: 'doc_no', width: 160 },
-  { key: 'doc_date', title: '单据日期', dataIndex: 'doc_date', width: 110 },
-  { key: 'status', title: '状态', dataIndex: 'status', width: 100 },
-  { key: 'style_no', title: '款号', dataIndex: 'style_no', width: 140 },
-  { key: 'operation_no', title: '工序', dataIndex: 'operation_no', width: 100 },
-  { key: 'color_code', title: '商品分类', dataIndex: 'color_code', width: 100 },
-  { key: 'hands_total', title: '码数(手)', dataIndex: 'hands_total', width: 100, align: 'right' },
-  { key: 'output_qty', title: '出数', dataIndex: 'output_qty', width: 100, align: 'right' },
-  { key: 'balance_qty', title: '余数', dataIndex: 'balance_qty', width: 90, align: 'right' },
-  { key: 'label_print_qty', title: '已打印', dataIndex: 'label_print_qty', width: 90, align: 'right' },
-  { key: 'actions', title: '操作', width: 120, fixed: 'right' },
-]
-
 const expandedRowKeys = ref<string[]>([])
 const handsCache = ref<Record<string, LineOut[]>>({})
 
@@ -208,14 +195,6 @@ async function onExpand(expanded: boolean, record: BundlingOrderListOut): Promis
   }
 }
 
-const handsColumns: ColumnsType<LineOut> = [
-  { key: 'line_no', title: '行号', dataIndex: 'line_no', width: 60 },
-  { key: 'size_code', title: '尺码', dataIndex: 'size_code', width: 80 },
-  { key: 'hands', title: '手数', dataIndex: 'hands', width: 80, align: 'right' },
-  { key: 'planned_qty', title: '计划件数', dataIndex: 'planned_qty', width: 100, align: 'right' },
-  { key: 'available_qty_before', title: '可打菲量', dataIndex: 'available_qty_before', width: 100, align: 'right' },
-]
-
 /**
  * ⚠️ antd 的 `ExpandedRowRender` 收的是**单个对象** `{ record, index, indent, expanded }`，
  * 不是 4 个位置参数（那是 `@expand` **事件**的签名，两者别混）。
@@ -224,18 +203,11 @@ const handsColumns: ColumnsType<LineOut> = [
  * `record.id` 为 `undefined` → `handsCache[undefined]` 永远 miss
  * → **展开行永远显示「加载中…」**，数据其实早就被 `onExpand` 缓存好了。
  */
-const renderHands: ExpandedRowRender<BundlingOrderListOut> = ({ record }) => {
-  const lines = handsCache.value[record.id] ?? []
-  if (lines.length === 0) return h('span', { class: 'cell-muted' }, '加载中…')
-  return h(Table, {
-    class: 'hands-table',
-    columns: handsColumns,
-    dataSource: lines,
-    rowKey: (row: LineOut) => row.id,
-    size: 'small',
-    pagination: false,
+const renderHands: ExpandedRowRender<BundlingOrderListOut> = ({ record }) =>
+  h(HandsExpandedRow, {
+    lines: handsCache.value[record.id] ?? [],
+    loaded: handsCache.value[record.id] !== undefined,
   })
-}
 
 onMounted(() => {
   void list.reload()
@@ -411,7 +383,7 @@ onMounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: inline-block
+  display: inline-block;
   max-width: 160px;
   font-family: var(--font-mono);
 }
