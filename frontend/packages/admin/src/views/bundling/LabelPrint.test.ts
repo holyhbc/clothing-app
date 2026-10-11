@@ -328,11 +328,10 @@ describe('LabelPrint.vue', () => {
       size_code: 'XL',
       is_reprint: false,
       printed_qty: 1,
-      print_seq: undefined,
     }))
 
-    // ⚠️ 这条断言曾经缺席，于是「点打印必然报 10002」这个 bug 活了下来：
-    // `label_guard.resolve_hand_span()` 第一句就是
+    // ⚠️ 下面这几条断言曾经**整条缺席**，于是「点打印必然报 10002」这个
+    // bug 活了下来：`label_guard.resolve_hand_span()` 第一句就是
     //   `if hands_seq is None: raise BusinessError(10002, "必须带 hands_seq")`，
     // 而前端当时传的是 `hands_seq: undefined`。
     //
@@ -340,6 +339,13 @@ describe('LabelPrint.vue', () => {
     // 否则调用参数全错、真实环境 100% 失败，测试照样绿。
     const payload = vi.mocked(registerLabelPrints).mock.calls[0]?.[1]
     expect(payload?.hands_seq).toBe(1)
+    // 「共 M 手」快照只在选了尺码时传，服务端会拿它跟库内权威值核对
+    expect(payload?.hands_total_of_size).toBe(2)
+
+    // 非重打时 print_seq 这个键**不该存在**，而不是「存在且为 undefined」——
+    // `expect.objectContaining({ print_seq: undefined })` 反而能通过，
+    // 所以要显式断「键不存在」。
+    expect(payload && 'print_seq' in payload).toBe(false)
   })
 
   it('requires print_seq for reprint', async () => {

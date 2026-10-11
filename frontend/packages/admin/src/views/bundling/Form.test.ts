@@ -93,6 +93,9 @@ async function mountForm() {
     style_no: 'HB-2026-0001',
     updated_at: new Date().toISOString(),
     workshop_id: '44444444-4444-4444-4444-444444444444',
+    // 契约里 `label_print_qty` 是必填。之前漏了它，`as BundlingOrderOut`
+    // 是在拿一个缺字段的对象硬转 —— 转过去也就算了，但少写字段这件事被藏住了。
+    label_print_qty: 0,
     lines: [],
   } as BundlingOrderOut)
 

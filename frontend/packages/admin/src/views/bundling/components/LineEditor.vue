@@ -10,6 +10,7 @@
  */
 import { ref } from 'vue'
 import { Button, Input, InputNumber, Select, Space, Table, Tooltip } from 'ant-design-vue'
+import type { ColumnsType } from 'ant-design-vue/es/table' // 同 Detail.vue：包根没导这个
 import type { LineIn } from '@garment/shared'
 
 interface Props {
@@ -24,7 +25,9 @@ const props = defineProps<Props>()
 const emit = defineEmits<{ 'update:modelValue': [value: LineIn[]] }>()
 
 const editingKey = ref<string | null>(null)
-const _columns = [
+// ⚠️ 必须标注 `ColumnsType<LineIn>`：`align` / `fixed` 在裸对象数组里会被推成
+// `string`，而 antd 要求的是字面量联合（`'right' | 'left' | 'center'` 等）。
+const _columns: ColumnsType<LineIn> = [
   { key: 'line_no', title: '行号', dataIndex: 'line_no', width: 70 },
   { key: 'size_code', title: '尺码', dataIndex: 'size_code', width: 100 },
   { key: 'cutting_size_line_id', title: '来源裁剪明细行', dataIndex: 'cutting_size_line_id', width: 320 },
@@ -48,9 +51,11 @@ function addLine(): void {
     cutting_size_line_id: '',
     hands: 1,
     planned_qty: null,
-    group_no: undefined,
-    workstation_no: undefined,
-    remark: undefined,
+    // group_no / workstation_no / remark 是**可选**字段（`?`），
+    // 「未填」的正确表达是**不写这个键**，不是写 `undefined` ——
+    // `exactOptionalPropertyTypes` 下后者不成立（可选 ≠ 可为 undefined）。
+    // 两者运行时都读成 undefined，但显式写出来会在类型上过不去，
+    // 逼着人到处加 `as`，反而把真问题盖住。
   }
   commit([...props.modelValue, newLine])
 }
@@ -71,16 +76,32 @@ function removeLine(index: number): void {
   commit(props.modelValue.filter((_, i) => i !== index))
 }
 
-function onSizeCodeChange(index: number, value: string): void {
+/**
+ * 改某一行的字段 —— 6 个 `onXxxChange` 的共同底座。
+ *
+ * ⚠️ 必须先 `const row = next[index]` 判 undefined 再展开：
+ * `noUncheckedIndexedAccess` 下 `next[index]` 是 `LineIn | undefined`，
+ * 直接写 `{ ...next[index], x: v }` 会让 TS 把**所有**字段推成可选，
+ * 整个数组便赋不回 `LineIn[]`（原先 5 处 TS2375 全是这一个根因）。
+ *
+ * 之前 `onGroupNoChange` / `onWorkstationNoChange` 靠 `as LineIn` 强转把
+ * 类型问题按下去 —— 那是把类型问题换成运行时可能写出 `undefined` 行，
+ * 并没有真的解决。现在统一在这里判掉，**那两个强转也一并去掉**。
+ */
+function patch(index: number, changes: Partial<LineIn>): void {
   const next = [...props.modelValue]
-  next[index] = { ...next[index], size_code: value }
+  const row = next[index]
+  if (row === undefined) return
+  next[index] = { ...row, ...changes }
   commit(next)
 }
 
+function onSizeCodeChange(index: number, value: string): void {
+  patch(index, { size_code: value })
+}
+
 function onSourceChange(index: number, value: string | null): void {
-  const next = [...props.modelValue]
-  next[index] = { ...next[index], cutting_size_line_id: value ?? '' }
-  commit(next)
+  patch(index, { cutting_size_line_id: value ?? '' })
 }
 
 /**
@@ -95,29 +116,19 @@ function asCount(v: unknown): number | null {
 }
 
 function onHandsChange(index: number, value: number | null): void {
-  const next = [...props.modelValue]
-  next[index] = { ...next[index], hands: value ?? 1 }
-  commit(next)
+  patch(index, { hands: value ?? 1 })
 }
 
 function onPlannedQtyChange(index: number, value: number | null): void {
-  const next = [...props.modelValue]
-  next[index] = { ...next[index], planned_qty: value ?? null }
-  commit(next)
+  patch(index, { planned_qty: value ?? null })
 }
 
 function onGroupNoChange(index: number, value: string): void {
-  const next = [...props.modelValue]
-  const updated = { ...next[index], group_no: value === '' ? null : value } as LineIn
-  next[index] = updated
-  commit(next)
+  patch(index, { group_no: value === '' ? null : value })
 }
 
 function onWorkstationNoChange(index: number, value: string): void {
-  const next = [...props.modelValue]
-  const updated = { ...next[index], workstation_no: value === '' ? null : value } as LineIn
-  next[index] = updated
-  commit(next)
+  patch(index, { workstation_no: value === '' ? null : value })
 }
 
 function sourceLabel(value: string): string {

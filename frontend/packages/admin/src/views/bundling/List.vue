@@ -9,6 +9,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Button, DatePicker, Select, Space, Spin, Table } from 'ant-design-vue'
 import type { ColumnsType } from 'ant-design-vue/es/table'
+import type { ExpandedRowRender } from 'ant-design-vue/es/vc-table/interface'
 import { h } from 'vue'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
@@ -215,7 +216,15 @@ const handsColumns: ColumnsType<LineOut> = [
   { key: 'available_qty_before', title: '可打菲量', dataIndex: 'available_qty_before', width: 100, align: 'right' },
 ]
 
-const renderHands = (record: BundlingOrderListOut, _index: number, _indent: number, _expanded: boolean) => {
+/**
+ * ⚠️ antd 的 `ExpandedRowRender` 收的是**单个对象** `{ record, index, indent, expanded }`，
+ * 不是 4 个位置参数（那是 `@expand` **事件**的签名，两者别混）。
+ *
+ * 之前写成位置参数，于是 `record` 实际拿到的是那个包装对象，
+ * `record.id` 为 `undefined` → `handsCache[undefined]` 永远 miss
+ * → **展开行永远显示「加载中…」**，数据其实早就被 `onExpand` 缓存好了。
+ */
+const renderHands: ExpandedRowRender<BundlingOrderListOut> = ({ record }) => {
   const lines = handsCache.value[record.id] ?? []
   if (lines.length === 0) return h('span', { class: 'cell-muted' }, '加载中…')
   return h(Table, {

@@ -156,7 +156,12 @@ async function handlePrintAndPrint(): Promise<void> {
       hands_seq: printParams.value.from_hands,
       printed_qty: printParams.value.printed_qty,
       is_reprint: printParams.value.is_reprint,
-      print_seq: printParams.value.is_reprint ? printParams.value.print_seq : undefined,
+      // 「非重打」时不传 print_seq —— 与上面 size_code 同一个道理：
+      // 可选字段的「没这个值」应该是不写这个键，不是写 `undefined`
+      //（`exactOptionalPropertyTypes` 下可选 ≠ 可为 undefined）。
+      ...(printParams.value.is_reprint && printParams.value.print_seq !== undefined
+        ? { print_seq: printParams.value.print_seq }
+        : {}),
       // `size_code` 不传 = 全部尺码。**空串不等于不传** —— 传 `''` 会变成
       // `WHERE size_code = ''`，一个都匹配不上。
       ...(sizeCode ? { size_code: sizeCode } : {}),
