@@ -151,15 +151,31 @@ function cancel(): void {
  * ⚠️ 不按色筛裁剪单本身 —— 色码挂在「裁剪尺码明细行」上（ADR-0016 一码一色），
  * 裁剪单层面没有「这张单是什么色」这回事，按色筛会把有该色明细的单整体漏掉。
  */
+/**
+ * 把 `style_id`（UUID）反查成款号字符串。
+ *
+ * ⚠️ **两个来源接口要的是 `style_no`（款号字符串），不是 `style_id`（UUID）**。
+ * 传错时后端不报错，只是 `WHERE style_no = '<uuid>'` 恒不命中 → 返回空列表 →
+ * 来源下拉永远「暂无数据」。实测：`style_no=E2E-2026-0001` 返回 1 条，
+ * `style_no=<uuid>` 返回 0 条 —— 而单测里这个接口是 mock 的，所以掩盖住了。
+ */
+function styleNoOf(styleId: string | null): string {
+  if (!styleId) return ''
+  const hit = styleOptions.value.find((o) => o.value === styleId)
+  // label 形如「款号 款名」，取第一段即款号
+  return hit ? (hit.label.split(' ')[0] ?? '') : ''
+}
+
 async function loadSourceOrders(): Promise<void> {
-  if (!header.value.style_id) {
+  const styleNo = styleNoOf(header.value.style_id)
+  if (!styleNo) {
     sourceOrders.value = []
     return
   }
   loadingSources.value = true
   try {
     sourceOrders.value = await listSourceOrders({
-      style_no: header.value.style_id,
+      style_no: styleNo,
       ...(header.value.workshop_id ? { workshop_id: header.value.workshop_id } : {}),
     })
   } catch (error) {
@@ -180,7 +196,8 @@ async function loadSourceOrders(): Promise<void> {
 async function onSourceCuttingOrderChange(): Promise<void> {
   // 车间/款号变了 → 候选裁剪单要重列；没到选来源那一步就先把明细来源清空
   await loadSourceOrders()
-  if (!header.value.source_cutting_order_id || !header.value.style_id || !header.value.color_code) {
+  const styleNo = styleNoOf(header.value.style_id)
+  if (!header.value.source_cutting_order_id || !styleNo || !header.value.color_code) {
     availableSources.value = []
     return
   }
@@ -188,7 +205,7 @@ async function onSourceCuttingOrderChange(): Promise<void> {
   try {
     availableSources.value = await listSourceLines({
       cutting_order_id: header.value.source_cutting_order_id,
-      style_no: header.value.style_id,
+      style_no: styleNo,
       color_code: header.value.color_code,
     })
   } catch (error) {

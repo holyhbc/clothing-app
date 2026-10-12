@@ -256,6 +256,12 @@ async def _clean(conn: AsyncConnection) -> None:
         ),
         delete(CuttingOrderLine).where(CuttingOrderLine.doc_id.in_(order_ids or [UUID(int=0)])),
         delete(CuttingOrder).where(CuttingOrder.id.in_(order_ids or [UUID(int=0)])),
+        # ⚠️ `cutting_outputs` **必须先于 `styles` 删**：它按 (style_id, 色, 尺码)
+        #   登记、有 `fk_cutting_outputs_style` 指向 `styles`。不删的话最后那句
+        #   `DELETE FROM styles` 会撞 `ForeignKeyViolationError: ... violates
+        #   foreign key constraint "fk_cutting_outputs_style"` ——
+        #   而报错指向款号表，与「打菲余量登记还在」毫无关系。
+        delete(CuttingOutput).where(CuttingOutput.style_no == STYLE_NO),
         delete(MaterialStock).where(MaterialStock.dye_lot_no == DYE_LOT_NO),
         delete(Material).where(Material.code == MATERIAL_CODE),
         delete(OperationRate).where(OperationRate.style_no == STYLE_NO),

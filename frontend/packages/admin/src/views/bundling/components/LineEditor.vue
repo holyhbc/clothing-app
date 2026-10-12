@@ -131,7 +131,19 @@ function onWorkstationNoChange(index: number, value: string): void {
   patch(index, { workstation_no: value === '' ? null : value })
 }
 
+/**
+ * 来源明细行的显示文案。
+ *
+ * ⚠️ **空值必须给占位文案，不能直接回 `value`**：`value` 为 `''`（新建行的初始值）
+ *   时返回空串，而 `<span class="code-cell">` 渲染成**零宽零高**的空元素 ——
+ *   用户点不到、也不看得出这里能点，「明细行必须带来源裁剪尺码明细行」（B26）
+ *   于是永远填不上，单子根本建不出来。E2E 里实测 `boundingBox` 为 `{0,0}`。
+ *
+ * ⚠️ 同时补了内边距与边框：零尺寸元素即使有文字也不可点，而「未选」这件事
+ *   本身就是要让人看见并去点的。
+ */
 function sourceLabel(value: string): string {
+  if (!value) return '未选，点此选择'
   const found = props.sourceOptions.find((o) => o.value === value)
   return found?.label ?? value
 }
@@ -176,7 +188,11 @@ function sourceLabel(value: string): string {
           </template>
           <template v-else>
             <Tooltip :title="sourceLabel(record.cutting_size_line_id)">
-              <span class="code-cell" @click="() => startEdit(record.cutting_size_line_id)">
+              <span
+                class="code-cell"
+                :class="{ 'code-cell--empty': !record.cutting_size_line_id }"
+                @click="() => startEdit(record.cutting_size_line_id)"
+              >
                 {{ sourceLabel(record.cutting_size_line_id) }}
               </span>
             </Tooltip>
@@ -311,5 +327,14 @@ function sourceLabel(value: string): string {
   max-width: 300px;
   font-family: var(--font-mono);
   cursor: pointer;
+}
+
+/* 未选来源时的占位样式：必须有可见文字 + 边框，否则 span 是零尺寸、点不到 */
+.code-cell--empty {
+  color: var(--color-text-third);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  min-width: 8em;
 }
 </style>
