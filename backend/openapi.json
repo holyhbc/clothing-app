@@ -2399,6 +2399,122 @@
         "title": "ApiResponse[list[RoleOut]]",
         "type": "object"
       },
+      "ApiResponse_list_SourceLineOut__": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SourceLineOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null",
+            "title": "Data"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[list[SourceLineOut]]",
+        "type": "object"
+      },
+      "ApiResponse_list_SourceOrderOut__": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SourceOrderOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null",
+            "title": "Data"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[list[SourceOrderOut]]",
+        "type": "object"
+      },
       "ApiResponse_list_StockBatchOptionOut__": {
         "properties": {
           "code": {
@@ -7361,6 +7477,99 @@
         "title": "SizeLineOut",
         "type": "object"
       },
+      "SourceLineOut": {
+        "description": "选定来源裁剪单后，该色下每个尺码的可打菲来源明细。\n\n与 :class:`~app.modules.bundling.schemas.code_schemas.AvailableOutputOut` 同口径，\n只是入口不同（那个以已存在的打菲单为根）。",
+        "properties": {
+          "available_qty": {
+            "description": "现在还能打多少（款号+色+尺码级别；余量为 0 也在列表里）",
+            "title": "Available Qty",
+            "type": "string"
+          },
+          "cutting_size_line_id": {
+            "description": "★ 填进明细行的 cutting_size_line_id",
+            "format": "uuid",
+            "title": "Cutting Size Line Id",
+            "type": "string"
+          },
+          "hands": {
+            "description": "该尺码裁剪手数",
+            "title": "Hands",
+            "type": "integer"
+          },
+          "output_qty": {
+            "description": "该尺码出数",
+            "title": "Output Qty",
+            "type": "string"
+          },
+          "qty_per_hand": {
+            "description": "每手件数",
+            "title": "Qty Per Hand",
+            "type": "string"
+          },
+          "size_code": {
+            "description": "尺码",
+            "title": "Size Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cutting_size_line_id",
+          "size_code",
+          "hands",
+          "qty_per_hand",
+          "output_qty",
+          "available_qty"
+        ],
+        "title": "SourceLineOut",
+        "type": "object"
+      },
+      "SourceOrderOut": {
+        "description": "候选来源裁剪单（**只列** ``APPROVED``，B8 + 03 §5.1）。",
+        "properties": {
+          "doc_date": {
+            "description": "单据日期",
+            "title": "Doc Date",
+            "type": "string"
+          },
+          "doc_no": {
+            "description": "裁剪单号",
+            "title": "Doc No",
+            "type": "string"
+          },
+          "id": {
+            "description": "★ 裁剪单 id（填进 source_cutting_order_id）",
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "style_no": {
+            "description": "款号",
+            "title": "Style No",
+            "type": "string"
+          },
+          "workshop_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "车间（数据范围按它过滤，INV-8）",
+            "title": "Workshop Id"
+          }
+        },
+        "required": [
+          "id",
+          "doc_no",
+          "doc_date",
+          "style_no"
+        ],
+        "title": "SourceOrderOut",
+        "type": "object"
+      },
       "SplitBundleOut": {
         "description": "预演出的**一手**（modules/03 §5.5 的 ``bundles[]``）。",
         "properties": {
@@ -10409,6 +10618,150 @@
           "打菲"
         ],
         "x-permission": "bundling:create"
+      }
+    },
+    "/api/v1/bundling-orders/available-source-lines": {
+      "get": {
+        "description": "来源裁剪单该色下**每个尺码**的手数与可用量（modules/03 §5.1 第 2 步）。\n\n⚠️ 余量为 0 的尺码**也在列表里**（不是被过滤掉）：主管要看见\n「这个尺码一件都打不了」（与 ``available-outputs`` 同一原则）。\n⚠️ **只读**：不插码、不预占、不写日志 —— 与 ``available-outputs`` 同款理由。",
+        "operationId": "list_source_lines_api_v1_bundling_orders_available_source_lines_get",
+        "parameters": [
+          {
+            "description": "选中的来源裁剪单 id",
+            "in": "query",
+            "name": "cutting_order_id",
+            "required": true,
+            "schema": {
+              "description": "选中的来源裁剪单 id",
+              "format": "uuid",
+              "title": "Cutting Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "style_no",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Style No",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "color_code",
+            "required": true,
+            "schema": {
+              "maxLength": 16,
+              "minLength": 1,
+              "title": "Color Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_SourceLineOut__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "选定来源裁剪单后，该色下各尺码的可打菲来源明细",
+        "tags": [
+          "打菲",
+          "打菲"
+        ],
+        "x-permission": "bundling:read"
+      }
+    },
+    "/api/v1/bundling-orders/available-source-orders": {
+      "get": {
+        "description": "**新建**打菲单时列候选来源裁剪单（modules/03 §5.1 第 2 步）。\n\n⚠️ 为什么不用 ``GET /cutting-orders?status=APPROVED``：那条要 ``cutting:read``\n权限，而打菲主管未必有 —— 权限要跟着**动作**走（07 §4），用户正在做的是打菲单，\n不是裁剪单。\n⚠️ 与 ``/available-outputs`` 的区别：那个以**已存在的打菲单**为根（取它的\nstyle_no 与来源单），新建表单上还没有打菲单 id。\n⚠️ **不带余量**：``CuttingOutput`` 按（款号+色+尺码）登记、没有\n``cutting_order_id``，多张同款同色的裁剪单共享同一份余量，\n算不出「这张单还剩多少」。余量在选定后的来源明细行接口里。\n⚠️ ``workshop_id`` 传了只是**再过滤一次**，**不能放大范围**（07 §3.2 铁律 1）。",
+        "operationId": "list_source_orders_api_v1_bundling_orders_available_source_orders_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "style_no",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Style No",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workshop_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workshop Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_SourceOrderOut__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "候选来源裁剪单（新建打菲单用，只列 APPROVED）",
+        "tags": [
+          "打菲",
+          "打菲"
+        ],
+        "x-permission": "bundling:read"
       }
     },
     "/api/v1/bundling-orders/exports": {

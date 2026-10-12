@@ -26,6 +26,8 @@ from app.modules.bundling.schemas import (
     BundlingOrderOut,
     BundlingOrderPatchIn,
     PutLinesIn,
+    SourceLineOut,
+    SourceOrderOut,
 )
 
 from .deps import (
@@ -36,6 +38,7 @@ from .deps import (
     _order_payload,
     _require,
     _service,
+    _source_service,
 )
 
 router = APIRouter(tags=BUNDLING_TAGS)
@@ -114,6 +117,65 @@ async def list_bundling_orders(
         BundlingOrderListOut.model_validate(row).model_dump(mode="json") for row in rows
     ]
     return ok({"items": items, "total": total, "page": page, "page_size": size})
+
+
+# ⚠️ 下面两个**静态**段必须排在 `/bundling-orders/{order_id}` **之前** ——
+# FastAPI 按注册顺序匹配，放在后面会被 `{order_id}` 抢先，命中成 422。
+# `test_bundling_router2.py::test_static_routes_precede_the_id_route` 盯着这条。
+# （T-CUT-001c-1 的教训：`/orders/statistics` 曾永远命中不了。）
+@router.get(
+    "/bundling-orders/available-source-orders",
+    response_model=ApiResponse[list[SourceOrderOut]],
+    summary="候选来源裁剪单（新建打菲单用，只列 APPROVED）",
+    openapi_extra={"x-permission": "bundling:read"},
+)
+async def list_source_orders(
+    ctx: ContextDep,
+    session: SessionDep,
+    style_no: Annotated[str, Query(min_length=1, max_length=32)],
+    workshop_id: UUID | None = None,
+) -> dict[str, object]:
+    """**新建**打菲单时列候选来源裁剪单（modules/03 §5.1 第 2 步）。
+
+    ⚠️ 为什么不用 ``GET /cutting-orders?status=APPROVED``：那条要 ``cutting:read``
+    权限，而打菲主管未必有 —— 权限要跟着**动作**走（07 §4），用户正在做的是打菲单，
+    不是裁剪单。
+    ⚠️ 与 ``/available-outputs`` 的区别：那个以**已存在的打菲单**为根（取它的
+    style_no 与来源单），新建表单上还没有打菲单 id。
+    ⚠️ **不带余量**：``CuttingOutput`` 按（款号+色+尺码）登记、没有
+    ``cutting_order_id``，多张同款同色的裁剪单共享同一份余量，
+    算不出「这张单还剩多少」。余量在选定后的来源明细行接口里。
+    ⚠️ ``workshop_id`` 传了只是**再过滤一次**，**不能放大范围**（07 §3.2 铁律 1）。
+    """
+    _require(ctx, "bundling:read", "查看候选来源裁剪单")
+    rows = await _source_service(session, ctx).available_orders(style_no, workshop_id=workshop_id)
+    return ok([SourceOrderOut.model_validate(r).model_dump(mode="json") for r in rows])
+
+
+@router.get(
+    "/bundling-orders/available-source-lines",
+    response_model=ApiResponse[list[SourceLineOut]],
+    summary="选定来源裁剪单后，该色下各尺码的可打菲来源明细",
+    openapi_extra={"x-permission": "bundling:read"},
+)
+async def list_source_lines(
+    ctx: ContextDep,
+    session: SessionDep,
+    cutting_order_id: Annotated[UUID, Query(description="选中的来源裁剪单 id")],
+    style_no: Annotated[str, Query(min_length=1, max_length=32)],
+    color_code: Annotated[str, Query(min_length=1, max_length=16)],
+) -> dict[str, object]:
+    """来源裁剪单该色下**每个尺码**的手数与可用量（modules/03 §5.1 第 2 步）。
+
+    ⚠️ 余量为 0 的尺码**也在列表里**（不是被过滤掉）：主管要看见
+    「这个尺码一件都打不了」（与 ``available-outputs`` 同一原则）。
+    ⚠️ **只读**：不插码、不预占、不写日志 —— 与 ``available-outputs`` 同款理由。
+    """
+    _require(ctx, "bundling:read", "查看来源明细")
+    rows = await _source_service(session, ctx).available_lines(
+        cutting_order_id, style_no, color_code=color_code
+    )
+    return ok([SourceLineOut.model_validate(r).model_dump(mode="json") for r in rows])
 
 
 @router.get(

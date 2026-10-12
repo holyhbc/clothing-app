@@ -30,6 +30,7 @@ from app.core.responses import ok
 from app.modules.bundling.models import BundlingOrder
 from app.modules.bundling.schemas import BundlingOrderOut
 from app.modules.bundling.service import BundlingOrderService
+from app.modules.bundling.service.source import SourceService
 
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
 ContextDep = Annotated[AuthContext, Depends(get_auth_context)]
@@ -56,6 +57,10 @@ def _require(ctx: AuthContext, permission: str, action: str) -> None:
             f"你没有{action}的权限，请联系管理员开通",
             details={"required_permission": permission},
         )
+
+
+def _source_service(session: AsyncSession, ctx: AuthContext) -> SourceService:
+    return SourceService(session, ctx)
 
 
 def _service(session: AsyncSession) -> BundlingOrderService:

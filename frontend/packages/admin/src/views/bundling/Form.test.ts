@@ -1,4 +1,3 @@
-import * as fsmod from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -65,7 +64,18 @@ async function mountForm() {
   vi.spyOn(baseApi.operations, 'optionsById').mockResolvedValue([
     { value: '03', label: '拼前', disabled: false },
   ])
-  vi.spyOn(bundlingApi, 'listAvailableOutputs').mockResolvedValue([
+  // 候选**裁剪单**（B8 + 03 §5.1：打菲单只挂一张裁剪单）
+  vi.spyOn(bundlingApi, 'listSourceOrders').mockResolvedValue([
+    {
+      id: '11111111-1111-1111-1111-111111111111',
+      doc_no: 'CT-20261005-000001',
+      doc_date: '2026-10-05',
+      style_no: 'HB-2026-0001',
+      workshop_id: '44444444-4444-4444-4444-444444444444',
+    },
+  ])
+  // 选定裁剪单后，该色下各尺码的可打菲来源明细
+  vi.spyOn(bundlingApi, 'listSourceLines').mockResolvedValue([
     {
       cutting_size_line_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
       size_code: 'XL',
@@ -183,7 +193,7 @@ describe('打菲单新建页（TC-BW-03）', () => {
     grant([PERM.BUNDLING_CREATE, PERM.BUNDLING_READ])
   })
 
-  it.skip('TC-BW-03 新建页能选来源裁剪行并提交草稿 —— 待后端接口：按款号+色码列可用裁剪单', async () => {
+  it('TC-BW-03 新建页能选来源裁剪行并提交草稿', async () => {
     const { router } = await mountForm()
 
     // 选择车间
@@ -210,15 +220,24 @@ describe('打菲单新建页（TC-BW-03）', () => {
     await settle()
 
     // 填色码/色组
+    // ⚠️ 两个字段之间**必须 await settle()**：两次输入紧挨着写时，
+    // 第二次的 `update()` 展开的还是**上一 tick 的** `modelValue` ——
+    // Vue 的 v-model 更新要到下一 tick 才传到子组件，于是后一个字段
+    // 会把前一个字段的改动覆盖回旧值（实测：色码被色组覆盖回空）。
+    // 真实用户打字有间隔，不会遇到；但测试里连着写就会踩到。
     typeInto(fieldInput('色码'), 'WHT')
+    await settle()
     typeInto(fieldInput('色组'), 'WHT-GRP')
+    await settle()
     await settle()
 
     // 选择工序
     await pickOption(2, '拼前')
 
-    // 选择来源裁剪单（依赖款号 + 色码，缺一不会去加载可选项）
-    await pickOption(3, 'XL')
+    // 选择来源裁剪单（候选列表由款号+车间决定）
+    // ⚠️ 顺序有讲究：`listSourceLines` 要「裁剪单 + 款号 + 色码」三者齐备才拉，
+    // 所以色码必须**先**填好 —— 否则来源明细永远是空的。
+    await pickOption(3, 'CT-20261005-000001')
 
     // 新增一行明细
     const addLineBtn = findButton('新增行')
@@ -230,7 +249,6 @@ describe('打菲单新建页（TC-BW-03）', () => {
     // `blocking` 会拦下提交。原测试新增完就直接点保存，等于什么都没填 ——
     // 这里必须把明细行真的填出来。
     const lineInputs = [...document.querySelectorAll('input')]
-    fsmod.writeFileSync('/tmp/f4.txt', `rows=${document.querySelectorAll('.ant-table-tbody tr').length} rowcell=${document.querySelectorAll('.ant-table-cell').length} hint=${document.querySelectorAll('.empty-hint').length}`)
     const sizeInput = lineInputs.find((i) => i.placeholder?.includes('XL / L / M'))
     typeInto(sizeInput, 'XL')
     await settle()
@@ -240,7 +258,7 @@ describe('打菲单新建页（TC-BW-03）', () => {
     expect(sourceCell).toBeDefined()
     sourceCell?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await settle()
-    await pickOption(4, 'XL')
+    await pickOption(4, 'XL · 手数:2')
 
     // 点击保存
     const saveBtn = findButton('保存草稿')

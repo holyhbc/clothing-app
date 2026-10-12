@@ -15,6 +15,8 @@ import type {
   LineIn,
   LineOut,
   AvailableOutputOut,
+  SourceOrderOut,
+  SourceLineOut,
   HandIncrementIn,
   SplitPreviewOut,
   CancelIn,
@@ -35,6 +37,8 @@ export type {
   LineIn,
   LineOut,
   AvailableOutputOut,
+  SourceOrderOut,
+  SourceLineOut,
   HandIncrementIn,
   SplitPreviewOut,
   CancelIn,
@@ -108,6 +112,32 @@ export function listAvailableOutputs(
   params: { style_no: string; color_code: string },
 ): Promise<AvailableOutputOut[]> {
   return http.get<AvailableOutputOut[]>(`${BASE}/${orderId}/available-outputs`, { query: { ...params } })
+}
+
+/**
+ * **新建**打菲单时列候选来源裁剪单（只列 `APPROVED`，03 §5.1 第 2 步）。
+ *
+ * ⚠️ 为什么不用 `listCuttingOrders({ status: 'APPROVED' })`：那条要 `cutting:read`
+ * 权限，而打菲主管未必有 —— 权限跟着**动作**走（07 §4），用户在做的是打菲单。
+ * ⚠️ 与 `listAvailableOutputs` 的区别：那个以**已存在的打菲单**为根（取它的
+ * `style_no` 与来源单），**新建表单上还没有打菲单 id**。
+ * ⚠️ 返回里**没有余量**：`CuttingOutput` 按（款号+色+尺码）登记、没有
+ * `cutting_order_id`，同款同色的多张裁剪单共享一份余量，算不出「这张单剩多少」。
+ */
+export function listSourceOrders(params: {
+  style_no: string
+  workshop_id?: string
+}): Promise<SourceOrderOut[]> {
+  return http.get<SourceOrderOut[]>(`${BASE}/available-source-orders`, { query: { ...params } })
+}
+
+/** 选定来源裁剪单后，取该色下各尺码的可打菲来源明细（余量为 0 的也在列表里）。 */
+export function listSourceLines(params: {
+  cutting_order_id: string
+  style_no: string
+  color_code: string
+}): Promise<SourceLineOut[]> {
+  return http.get<SourceLineOut[]>(`${BASE}/available-source-lines`, { query: { ...params } })
 }
 
 /**

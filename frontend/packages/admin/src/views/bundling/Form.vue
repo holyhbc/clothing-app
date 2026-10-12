@@ -24,11 +24,13 @@ import { PERM } from '@garment/shared'
 import type {
   BundlingOrderCreateIn,
   LineIn,
-  AvailableOutputOut,
+  SourceOrderOut,
+  SourceLineOut,
 } from '@garment/shared'
 import {
   createBundlingOrder,
-  listAvailableOutputs,
+  listSourceLines,
+  listSourceOrders,
   searchStyleOptionsById,
 } from '@/api/bundling'
 import { baseApi } from '@/api/base'
@@ -56,7 +58,8 @@ const header = ref<HeaderFieldsValue>({
 const lines = ref<LineIn[]>([])
 const submitting = ref(false)
 const loadingSources = ref(false)
-const availableSources = ref<AvailableOutputOut[]>([])
+const sourceOrders = ref<SourceOrderOut[]>([])
+const availableSources = ref<SourceLineOut[]>([])
 const sourceOptions = computed(() =>
   availableSources.value.map((src) => ({
     value: src.cutting_size_line_id,
@@ -142,11 +145,49 @@ function cancel(): void {
   void router.push({ name: 'bundling-orders' })
 }
 
-async function onSourceCuttingOrderChange(): Promise<void> {
-  if (!header.value.source_cutting_order_id || !header.value.style_id || !header.value.color_code) return
+/**
+ * 候选来源裁剪单：款号 + 车间定了就列（B8 + 03 §5.1「只列 APPROVED」）。
+ *
+ * ⚠️ 不按色筛裁剪单本身 —— 色码挂在「裁剪尺码明细行」上（ADR-0016 一码一色），
+ * 裁剪单层面没有「这张单是什么色」这回事，按色筛会把有该色明细的单整体漏掉。
+ */
+async function loadSourceOrders(): Promise<void> {
+  if (!header.value.style_id) {
+    sourceOrders.value = []
+    return
+  }
   loadingSources.value = true
   try {
-    availableSources.value = await listAvailableOutputs(header.value.source_cutting_order_id, {
+    sourceOrders.value = await listSourceOrders({
+      style_no: header.value.style_id,
+      ...(header.value.workshop_id ? { workshop_id: header.value.workshop_id } : {}),
+    })
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '加载来源裁剪单失败')
+    sourceOrders.value = []
+  } finally {
+    loadingSources.value = false
+  }
+}
+
+/**
+ * 选定来源裁剪单后，拉该色下各尺码的可打菲来源明细（填明细行的下拉）。
+ *
+ * ⚠️ 旧实现在这里是**循环依赖**：它要求 `source_cutting_order_id` 已存在才去加载，
+ * 而那个字段正是这个下拉要选的 —— 于是下拉永远空着，整页无法新建。
+ * 且它调的是 `available-outputs`（以**已有打菲单**为根），新建时压根没有打菲单 id。
+ */
+async function onSourceCuttingOrderChange(): Promise<void> {
+  // 车间/款号变了 → 候选裁剪单要重列；没到选来源那一步就先把明细来源清空
+  await loadSourceOrders()
+  if (!header.value.source_cutting_order_id || !header.value.style_id || !header.value.color_code) {
+    availableSources.value = []
+    return
+  }
+  loadingSources.value = true
+  try {
+    availableSources.value = await listSourceLines({
+      cutting_order_id: header.value.source_cutting_order_id,
       style_no: header.value.style_id,
       color_code: header.value.color_code,
     })
@@ -229,7 +270,7 @@ onMounted(() => {
         :style-options="styleOptions"
         :operation-options="operationOptions"
         :workshop-options="workshopOptions"
-        :available-sources="availableSources"
+        :source-orders="sourceOrders"
         :loading-sources="loadingSources"
         @source-change="onSourceCuttingOrderChange"
       />

@@ -81,6 +81,8 @@ export type {
   ApiEnvelope as ApiEnvelopeType,
   AuthChannel,
   AvailableOutputOut,
+  SourceOrderOut,
+  SourceLineOut,
   BaseDictRow,
   BuiltinMissingOut,
   BuiltinRestoreOut,

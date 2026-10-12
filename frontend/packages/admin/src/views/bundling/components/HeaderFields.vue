@@ -14,7 +14,7 @@
  * - 备注
  */
 import { Input, InputNumber, Select } from 'ant-design-vue'
-import type { AvailableOutputOut } from '@garment/shared'
+import type { SourceOrderOut } from '@garment/shared'
 
 export interface HeaderFieldsValue {
   workshop_id: string | null
@@ -33,7 +33,8 @@ interface Props {
   styleOptions: { value: string; label: string }[]
   operationOptions: { value: string; label: string }[]
   workshopOptions: { value: string; label: string }[]
-  availableSources: AvailableOutputOut[]
+  /** 候选**裁剪单**（不是尺码明细行）—— 03 §5.1：打菲单只挂一张裁剪单（B8）。 */
+  sourceOrders: SourceOrderOut[]
   loadingSources: boolean
 }
 
@@ -55,7 +56,14 @@ function asId(v: unknown): string {
 function update<K extends keyof HeaderFieldsValue>(key: K, value: HeaderFieldsValue[K]): void {
   const next = { ...props.modelValue, [key]: value }
   emit('update:modelValue', next)
-  if (key === 'source_cutting_order_id' || key === 'style_id' || key === 'color_code') {
+  // 车间也要触发：候选裁剪单按车间过滤（且车间主管的数据范围也按它限定，INV-8）。
+  // 少这一条会出现「切了车间，下拉里还是别的车间的单」。
+  if (
+    key === 'source_cutting_order_id' ||
+    key === 'style_id' ||
+    key === 'color_code' ||
+    key === 'workshop_id'
+  ) {
     emit('sourceChange')
   }
 }
@@ -150,7 +158,7 @@ function update<K extends keyof HeaderFieldsValue>(key: K, value: HeaderFieldsVa
       <label class="form-label">来源裁剪单</label>
       <Select
         :value="modelValue.source_cutting_order_id ?? undefined"
-        :options="availableSources.map(s => ({ value: s.cutting_size_line_id, label: `${s.size_code} · 手数:${s.hands} · 出数:${s.output_qty} · 每手:${s.qty_per_hand}` }))"
+        :options="sourceOrders.map(o => ({ value: o.id, label: `${o.doc_no} · ${o.doc_date}` }))"
         :loading="loadingSources"
         placeholder="先选款号/色码，再选来源裁剪单…"
         allow-clear

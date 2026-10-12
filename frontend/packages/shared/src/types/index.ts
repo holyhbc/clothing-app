@@ -413,6 +413,8 @@ export type PutBundlingLinesIn = ApiModel<'app__modules__bundling__schemas__orde
 
 /** 可打菲来源明细（`GET /api/v1/bundling-orders/{id}/available-outputs`）。 */
 export type AvailableOutputOut = ApiModel<'AvailableOutputOut'>
+export type SourceOrderOut = ApiModel<'SourceOrderOut'>
+export type SourceLineOut = ApiModel<'SourceLineOut'>
 
 /** 审核后增手入参（`POST /api/v1/bundling-orders/{id}/hand-increments`）。 */
 export type HandIncrementIn = ApiModel<'HandIncrementIn'>

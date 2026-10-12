@@ -240,6 +240,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bundling-orders/available-source-lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 选定来源裁剪单后，该色下各尺码的可打菲来源明细
+         * @description 来源裁剪单该色下**每个尺码**的手数与可用量（modules/03 §5.1 第 2 步）。
+         *
+         *     ⚠️ 余量为 0 的尺码**也在列表里**（不是被过滤掉）：主管要看见
+         *     「这个尺码一件都打不了」（与 ``available-outputs`` 同一原则）。
+         *     ⚠️ **只读**：不插码、不预占、不写日志 —— 与 ``available-outputs`` 同款理由。
+         */
+        get: operations["list_source_lines_api_v1_bundling_orders_available_source_lines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bundling-orders/available-source-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 候选来源裁剪单（新建打菲单用，只列 APPROVED）
+         * @description **新建**打菲单时列候选来源裁剪单（modules/03 §5.1 第 2 步）。
+         *
+         *     ⚠️ 为什么不用 ``GET /cutting-orders?status=APPROVED``：那条要 ``cutting:read``
+         *     权限，而打菲主管未必有 —— 权限要跟着**动作**走（07 §4），用户正在做的是打菲单，
+         *     不是裁剪单。
+         *     ⚠️ 与 ``/available-outputs`` 的区别：那个以**已存在的打菲单**为根（取它的
+         *     style_no 与来源单），新建表单上还没有打菲单 id。
+         *     ⚠️ **不带余量**：``CuttingOutput`` 按（款号+色+尺码）登记、没有
+         *     ``cutting_order_id``，多张同款同色的裁剪单共享同一份余量，
+         *     算不出「这张单还剩多少」。余量在选定后的来源明细行接口里。
+         *     ⚠️ ``workshop_id`` 传了只是**再过滤一次**，**不能放大范围**（07 §3.2 铁律 1）。
+         */
+        get: operations["list_source_orders_api_v1_bundling_orders_available_source_orders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bundling-orders/exports": {
         parameters: {
             query?: never;
@@ -4207,6 +4261,70 @@ export interface components {
              */
             request_id?: string | null;
         };
+        /** ApiResponse[list[SourceLineOut]] */
+        ApiResponse_list_SourceLineOut__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /**
+             * Data
+             * @description 业务数据；失败时为 null
+             */
+            data?: components["schemas"]["SourceLineOut"][] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
+        /** ApiResponse[list[SourceOrderOut]] */
+        ApiResponse_list_SourceOrderOut__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /**
+             * Data
+             * @description 业务数据；失败时为 null
+             */
+            data?: components["schemas"]["SourceOrderOut"][] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
         /** ApiResponse[list[StockBatchOptionOut]] */
         ApiResponse_list_StockBatchOptionOut__: {
             /**
@@ -7078,6 +7196,78 @@ export interface components {
             size_line_no: number;
         };
         /**
+         * SourceLineOut
+         * @description 选定来源裁剪单后，该色下每个尺码的可打菲来源明细。
+         *
+         *     与 :class:`~app.modules.bundling.schemas.code_schemas.AvailableOutputOut` 同口径，
+         *     只是入口不同（那个以已存在的打菲单为根）。
+         */
+        SourceLineOut: {
+            /**
+             * Available Qty
+             * @description 现在还能打多少（款号+色+尺码级别；余量为 0 也在列表里）
+             */
+            available_qty: string;
+            /**
+             * Cutting Size Line Id
+             * Format: uuid
+             * @description ★ 填进明细行的 cutting_size_line_id
+             */
+            cutting_size_line_id: string;
+            /**
+             * Hands
+             * @description 该尺码裁剪手数
+             */
+            hands: number;
+            /**
+             * Output Qty
+             * @description 该尺码出数
+             */
+            output_qty: string;
+            /**
+             * Qty Per Hand
+             * @description 每手件数
+             */
+            qty_per_hand: string;
+            /**
+             * Size Code
+             * @description 尺码
+             */
+            size_code: string;
+        };
+        /**
+         * SourceOrderOut
+         * @description 候选来源裁剪单（**只列** ``APPROVED``，B8 + 03 §5.1）。
+         */
+        SourceOrderOut: {
+            /**
+             * Doc Date
+             * @description 单据日期
+             */
+            doc_date: string;
+            /**
+             * Doc No
+             * @description 裁剪单号
+             */
+            doc_no: string;
+            /**
+             * Id
+             * Format: uuid
+             * @description ★ 裁剪单 id（填进 source_cutting_order_id）
+             */
+            id: string;
+            /**
+             * Style No
+             * @description 款号
+             */
+            style_no: string;
+            /**
+             * Workshop Id
+             * @description 车间（数据范围按它过滤，INV-8）
+             */
+            workshop_id?: string | null;
+        };
+        /**
          * SplitBundleOut
          * @description 预演出的**一手**（modules/03 §5.5 的 ``bundles[]``）。
          */
@@ -8625,6 +8815,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_BundlingOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_source_lines_api_v1_bundling_orders_available_source_lines_get: {
+        parameters: {
+            query: {
+                /** @description 选中的来源裁剪单 id */
+                cutting_order_id: string;
+                style_no: string;
+                color_code: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_SourceLineOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_source_orders_api_v1_bundling_orders_available_source_orders_get: {
+        parameters: {
+            query: {
+                style_no: string;
+                workshop_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_SourceOrderOut__"];
                 };
             };
             /** @description Validation Error */
