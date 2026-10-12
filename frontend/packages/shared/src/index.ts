@@ -112,6 +112,7 @@ export type {
   HandIncrementIn,
   LabelItemOut,
   LabelPrintIn,
+  LabelExportOut,
   LabelPrintOut,
   LineColorIn,
   LineColorOut,

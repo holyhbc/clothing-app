@@ -37,10 +37,10 @@ async function login(page: Page): Promise<void> {
   // ⚠️ 用 `/登\s*录/` 而不是 `'登录'`：antd 对**两个汉字**的按钮会自动插空格
   //    （`autoInsertSpace`），实际可访问名是 `'登 录'`。写死 `'登录'` 会一直
   //    等到超时 —— 而页面上分明有那个按钮，报错极具迷惑性。
-  await page.getByRole('button', { name: /登\s*录/ }).click()
-  await expect(page.getByText('服装厂 ERP')).toBeVisible()
-  // 等路由离开 /login：只等标题可见的话，刷新后任意页面都有这个标题
-  await expect(page).not.toHaveURL(/\/login/)
+await page.getByRole('button', { name: /登\s*录/ }).click()
+    await expect(page.getByText('服装厂 ERP')).toBeVisible()
+    // 等路由离开 /login：只等标题可见的话，刷新后任意页面都有这个标题
+    await expect(page).not.toHaveURL(/\/login/)
 }
 
 test.describe('E2E-00 款号与工序单价主流程', () => {
@@ -113,12 +113,33 @@ test.describe('E2E-00 款号与工序单价主流程', () => {
     // ⚠️ antd 的 Menu 子菜单**不是** `menuitem` role（是普通 `li` + `aria`），
     //    所以只能按文本点。展开后再点子项 ——
     //    先点「展开菜单」是因为侧栏在 1366 宽下默认折叠，折叠时子项不渲染进 DOM。
-    // ⚠️ `force: true`：antd 的 Menu 展开/收起带动画，刚点「展开菜单」后侧栏还在
-    //    做宽度过渡，此时子菜单标题的 bounding box 每帧都在变，Playwright 的
-    //    「element is not stable」会一直重试到超时。这里等的是**展开动作**本身
-    //    （下一行的 URL 断言），点标签不需要等稳定。
+// ⚠️ `force: true`：antd 的 Menu 展开/收起带动画，刚点「展开菜单」后侧栏还在
+    //   做宽度过渡，此时子菜单标题的 bounding box 每帧都在变，Playwright 的
+    //   「element is not stable」会一直重试到超时。这里等的是**展开动作**本身
+    //   （下一行的 URL 断言），点标签不需要等稳定。
+    //
+    // ⚠️ ★ 点完「展开菜单」必须**把鼠标移开、等 Tooltip 消失**。
+    //   那个折叠按钮外面包着 `<Tooltip>`（AdminLayout 的 aria-label 提示），
+    //   点它之后 Tooltip 会**留在屏幕上**，而它正好盖住第一个分组标题
+    //   「基础资料」—— 实测 `document.elementFromPoint(中心点)` 返回的是
+    //   `DIV.ant-tooltip-inner`，不是菜单项。
+    //   于是下面那些 `click({ force: true })` 全都点在了 Tooltip 上：
+    //   分组没展开、菜单项点不到、URL 停在 `/`。
+    //   而 `force: true` 只**跳过 actionability 检查**、并不跳过命中测试 ——
+    //   所以「我明明看见菜单项在那儿、Playwright 也说元素存在」却点不动。
+    //   症状还分两种：Tooltip 盖住分组标题时是「等不到菜单项出现」，
+    //   盖住别处时是「URL 变成 `/`」—— 两者的报错都看不出真因。
+    //   单跑本文件必绿、一跑全量必挂，因为 Tooltip 的淡出与后续断言的时序在
+    //   全量（更重的负载）下才会交叉。
+    //
+    //   移开鼠标 + 等 Tooltip 消失之后，下面所有点击都改回**普通 click**
+    //   （不带 force）：侧栏的宽度过渡只有 0.2s，Playwright 自带的
+    //   「元素稳定 / 接收指针事件」检查会自己等到合适时机 ——
+    //   跳过这些检查才是这条用例不稳的根源。
     await page.getByRole('button', { name: /展开菜单/ }).click()
     await expect(page.getByRole('button', { name: /收起菜单/ })).toBeVisible()
+    await page.mouse.move(0, 0)
+    await expect(page.locator('.ant-tooltip')).toBeHidden({ timeout: 5_000 })
     // ⚠️ **不要无条件点分组标题**（这是原写法）：分组可能**已经展开**（antd 的 Menu
     //   会记住展开状态，且折叠→展开侧栏时可能把首个分组一并展开），再点一次就是
     //   **收起**它 —— 于是下一步点「款号」时那个菜单项已经不在 DOM 里，
@@ -129,10 +150,10 @@ test.describe('E2E-00 款号与工序单价主流程', () => {
     //    而菜单项又点不到 → 整条用例偶发失败（连跑两轮：一轮过一轮挂）。
     const styleMenuItem = page.getByRole('menuitem', { name: '款号' })
     if (!(await styleMenuItem.isVisible().catch(() => false))) {
-      await page.getByText('基础资料', { exact: true }).click({ force: true })
+      await page.getByText('基础资料', { exact: true }).click()
       await expect(styleMenuItem).toBeVisible({ timeout: 5_000 })
     }
-    await styleMenuItem.click({ force: true })
+    await styleMenuItem.click()
 
     await expect(page).toHaveURL(/\/base\/styles$/)
     await expect(page.getByRole('columnheader', { name: '款号' })).toBeVisible()

@@ -1,6 +1,16 @@
 # 交接：打菲 E2E 未跑通，请接着往下做
 
-## 一句话现状
+> **✅ 已闭环（2026-10-12，变更记录 0138）** —— `p1-bundling-flow.spec.ts` 连续 3 轮全绿，
+> 全量 E2E（p0 + p1-bundling + p1-cutting）6/6。
+> 本文件**只作为排查记录留存**，下方「已排除的 / 待排查方向 / 环境准备」均已过时，
+> 真因见 [T-BUND-010](./T-BUND-010-标签打印前端与E2E.md) 的实际改动表与 `docs/12` 0138。
+>
+> **一句话答案**：POST **发出去了**，只是返回 422 —— `style_no` 与 `operation_no`
+> 传成了 **UUID**（36 > `max_length=32`），而页面只弹一句「参数校验失败」。
+> 之所以「日志里没有 POST」，是因为 `reuseExistingServer` 复用了别人起的旧实例。
+> 详细排查手法见文末「事后补记」。
+
+## 一句话现状（当时）
 
 打菲全链路（后端 + 前端 + 单测）已全绿，唯一未完成的是
 `frontend/e2e/p1-bundling-flow.spec.ts` —— 它写到「表单全部字段填对」为止，
@@ -139,3 +149,26 @@ cd backend && uv run python -m tests.e2e_seed
 
 第 8、9 条是本次 E2E 直接挖出来的 —— **E2E 这条路径确实能挖出单测抓不到的东西**，
 值得继续跑完。
+---
+
+## 事后补记：那次「POST 压根没发出」是怎么查出来的
+
+**手法**（下次直接照抄，不要重新推）：
+
+```ts
+// 挂在 beforeEach 里，四行就够
+page.on('console', (m) => console.log('[console]', m.type(), m.text()))
+page.on('pageerror', (e) => console.log('[pageerror]', e.message))
+page.on('request', (r) => console.log('[REQ]', r.method(), r.url()))
+page.on('response', async (r) => console.log('[RES]', r.status(), await r.text()))
+```
+
+⚠️ **别加过滤条件**。最初只 `if (url.includes('/bundling-orders'))`，
+结果 `/bundles`、`/labels` 两个关键请求被滤掉，白查一轮。
+⚠️ **跑之前先 `pkill -f "uvicorn app.main"`**：`reuseExistingServer: !CI` 会复用
+旧实例，日志不在你手里 —— 「后端日志里没有这条请求」这个观察本身就是错的
+（POST 发出去了，只是打到了别人的实例上）。
+
+**结论**：`.block-line` 为 0 ≠ 请求合法。表单自己的校验只管「必填有没有填」，
+**不管值的形状对不对**；真正的形状校验在后端 422 里，于是页面上只剩一句
+「参数校验失败，请检查标红字段」—— 而这个页面**一个字段都没标红**。

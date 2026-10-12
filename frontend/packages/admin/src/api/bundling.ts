@@ -25,6 +25,7 @@ import type {
   LabelPrintIn,
   PageData,
   BundleListOut,
+  LabelExportOut,
 } from '@garment/shared'
 import { http } from './http'
 import { searchStyleOptionsById } from '@/api/cutting'
@@ -45,6 +46,7 @@ export type {
   RejectIn,
   ReverseIn,
   LabelPrintIn,
+  LabelExportOut,
 }
 
 /**
@@ -259,12 +261,22 @@ export function registerLabelPrints(
   )
 }
 
-/** 标签导出（一手一张：款号/色/码/工序/第 N 手 / 共 M 手/该手件数/二维码）。 */
+/**
+ * 标签导出（一手一张：款号/色/码/工序/第 N 手 / 共 M 手/该手件数/二维码）。
+ *
+ * ⚠️ 返回的是**整个 `LabelExportOut`**（`items` + `hands_count` + `total_qty`
+ *   + `doc_no`），不是「直接给一个数组」。原先这里手写成 `{ data: unknown[] }`，
+ *   于是调用方 `res.data` 取到的是 `undefined` —— 而 `format=csv` 时响应里
+ *   **根本没有 `data` 这个键**，所以这条路径在真环境里 100% 抛
+ *   `previewItems.value is not iterable`，标签预览一张都出不来。
+ *   （单测抓不到：那里把 `exportLabels` mock 成 `{ data: items }`，形状正好对上
+ *   那个手写类型。**类型与契约不符时，mock 永远是对的、现实永远是错的**。）
+ */
 export function exportLabels(
   orderId: string,
   params: { from_hands: number; to_hands: number; size_code?: string; format?: 'data' | 'csv' },
-): Promise<{ data: unknown[]; csv_text?: string }> {
-  return http.get<{ data: unknown[]; csv_text?: string }>(`${BASE}/${orderId}/labels`, { query: { ...params } })
+): Promise<LabelExportOut> {
+  return http.get<LabelExportOut>(`${BASE}/${orderId}/labels`, { query: { ...params } })
 }
 
 /** 操作日志。 */

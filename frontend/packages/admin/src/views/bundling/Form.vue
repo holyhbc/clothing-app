@@ -27,13 +27,9 @@ import type {
   SourceOrderOut,
   SourceLineOut,
 } from '@garment/shared'
-import {
-  createBundlingOrder,
-  listSourceLines,
-  listSourceOrders,
-  searchStyleOptionsById,
-} from '@/api/bundling'
+import { createBundlingOrder, listSourceLines, listSourceOrders } from '@/api/bundling'
 import { baseApi } from '@/api/base'
+import { searchStyleOptions } from '@/api/styles'
 import PageLayout from '@/components/PageLayout.vue'
 import HeaderFields from './components/HeaderFields.vue'
 import type { HeaderFieldsValue } from './components/HeaderFields.vue'
@@ -45,7 +41,7 @@ const router = useRouter()
 
 const header = ref<HeaderFieldsValue>({
   source_cutting_order_id: null,
-  style_id: null,
+  style_no: '',
   doc_date: dayjs().format('YYYY-MM-DD'),
   bundle_qty: 1,
   color_code: '',
@@ -71,7 +67,7 @@ const blocking = computed(() => {
   const list: string[] = []
   const head = header.value
   if (head.workshop_id === null) list.push('车间必填')
-  if (head.style_id === null) list.push('款号必填')
+  if (head.style_no === '') list.push('款号必填')
   if (head.doc_date === '') list.push('单据日期必填')
   if (head.operation_no === '') list.push('工序必填')
   if (head.color_code === '') list.push('色码必填')
@@ -97,11 +93,26 @@ const blocking = computed(() => {
   return list
 })
 
+/**
+ * 组提交体。
+ *
+ * ⚠️ **`style_no` 要的是款号字符串，不是 `styles.id`（UUID）**（`BundlingOrderCreateIn`
+ *   的字段名就是 `style_no`，`max_length=32`）。传 UUID 时后端 422
+ *   `string_too_long`（36 > 32）—— 实测 E2E 就死在这儿，页面上只弹一句
+ *   「参数校验失败」，完全看不出「款号选对了但传错了类型」。
+ *   所以表单里存的就是款号本身，候选走 `searchStyleOptions`（`value` = 款号，
+ *   05 §9.5.2），**不是**裁剪那条链路用的 `searchStyleOptionsById`（`value` = UUID）。
+ *
+ * ⚠️ **明细行的 `color_code` / `operation_no` 由表头下发，不由行自己填**：
+ *   `LineEditor` 里这两个字段既没有输入框（新建行恒为 `''`），后端 schema 也写明
+ *   是「行级冗余，与表头一致」。留着空串落库的话，审核生成的每个 `bundles` 都会
+ *   带着空色码 —— 直接违反 B2/B3（一码一色），标签上印出来的也是空的。
+ */
 function buildPayload(): BundlingOrderCreateIn {
   const head = header.value
   return {
     workshop_id: head.workshop_id ?? '',
-    style_no: head.style_id ?? '',
+    style_no: head.style_no,
     doc_date: head.doc_date,
     bundle_qty: head.bundle_qty,
     color_code: head.color_code,
@@ -112,8 +123,8 @@ function buildPayload(): BundlingOrderCreateIn {
     lines: lines.value.map((line) => ({
       line_no: line.line_no,
       size_code: line.size_code,
-      color_code: line.color_code,
-      operation_no: line.operation_no,
+      color_code: head.color_code,
+      operation_no: head.operation_no,
       cutting_size_line_id: line.cutting_size_line_id,
       hands: line.hands,
       planned_qty: line.planned_qty ?? null,
@@ -151,23 +162,8 @@ function cancel(): void {
  * ⚠️ 不按色筛裁剪单本身 —— 色码挂在「裁剪尺码明细行」上（ADR-0016 一码一色），
  * 裁剪单层面没有「这张单是什么色」这回事，按色筛会把有该色明细的单整体漏掉。
  */
-/**
- * 把 `style_id`（UUID）反查成款号字符串。
- *
- * ⚠️ **两个来源接口要的是 `style_no`（款号字符串），不是 `style_id`（UUID）**。
- * 传错时后端不报错，只是 `WHERE style_no = '<uuid>'` 恒不命中 → 返回空列表 →
- * 来源下拉永远「暂无数据」。实测：`style_no=E2E-2026-0001` 返回 1 条，
- * `style_no=<uuid>` 返回 0 条 —— 而单测里这个接口是 mock 的，所以掩盖住了。
- */
-function styleNoOf(styleId: string | null): string {
-  if (!styleId) return ''
-  const hit = styleOptions.value.find((o) => o.value === styleId)
-  // label 形如「款号 款名」，取第一段即款号
-  return hit ? (hit.label.split(' ')[0] ?? '') : ''
-}
-
 async function loadSourceOrders(): Promise<void> {
-  const styleNo = styleNoOf(header.value.style_id)
+  const styleNo = header.value.style_no
   if (!styleNo) {
     sourceOrders.value = []
     return
@@ -196,7 +192,7 @@ async function loadSourceOrders(): Promise<void> {
 async function onSourceCuttingOrderChange(): Promise<void> {
   // 车间/款号变了 → 候选裁剪单要重列；没到选来源那一步就先把明细来源清空
   await loadSourceOrders()
-  const styleNo = styleNoOf(header.value.style_id)
+  const styleNo = header.value.style_no
   if (!header.value.source_cutting_order_id || !styleNo || !header.value.color_code) {
     availableSources.value = []
     return
@@ -220,18 +216,33 @@ const styleOptions = ref<{ value: string; label: string }[]>([])
 const operationOptions = ref<{ value: string; label: string }[]>([])
 const workshopOptions = ref<{ value: string; label: string }[]>([])
 
+/**
+ * 款号候选：`value` = 款号**字符串**（`/styles/options`，05 §9.5.2）。
+ *
+ * ⚠️ **不要用裁剪那条链路的 `searchStyleOptionsById`**：那个的 `value` 是
+ * `styles.id`（UUID），而打菲单入参字段叫 `style_no`（`max_length=32`）——
+ * 传 UUID 会被 422 挡下。两者只差一个「ById」，选错就是建不出单。
+ */
 async function loadStyleOptions(): Promise<void> {
   try {
-    const opts = await searchStyleOptionsById('')
+    const opts = await searchStyleOptions('')
     styleOptions.value = opts.map((o) => ({ value: o.value, label: o.label }))
   } catch {
     styleOptions.value = []
   }
 }
 
+/**
+ * 工序候选：`value` = **工序号**（`/operations/options`，05 §9.5.2「`value` 是业务编码」）。
+ *
+ * ⚠️ **不能用 `optionsById`**：那个的 `value` 是 `operations.id`（UUID），
+ * 而 `BundlingOrderCreateIn.operation_no` 是 `max_length=16` 的工序号字符串。
+ * `workshops.optionsById()` 是对的（`workshop_id` 本来就要 UUID）——
+ * 一张表里两个字段一个要 UUID 一个要编码，正好是最容易抄错的那种地方。
+ */
 async function loadOperationOptions(): Promise<void> {
   try {
-    operationOptions.value = (await baseApi.operations.optionsById('')).map((o) => ({
+    operationOptions.value = (await baseApi.operations.options('')).map((o) => ({
       value: o.value,
       label: o.label,
     }))

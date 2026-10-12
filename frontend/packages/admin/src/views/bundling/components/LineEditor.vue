@@ -100,8 +100,28 @@ function onSizeCodeChange(index: number, value: string): void {
   patch(index, { size_code: value })
 }
 
+/** 来源列的编辑态键。⚠️ **必须带 `line_no`**：见下面 `onSourceChange` 的注释。 */
+function sourceKey(lineNo: number): string {
+  return `source-${lineNo}`
+}
+
+/**
+ * 选完来源行就**退出编辑态**。
+ *
+ * ⚠️ 原来这里只 `patch`，编辑态留给 `@blur` 去收尾 —— 但选中候选项后 Select
+ *   并不一定触发 `blur`（点选项是在弹层里点的，selector 未必失焦），
+ *   于是 `editingKey` 卡在一个「既不是 `null` 也不是任何一列的键」的值上。
+ *   后果有两个，都很隐蔽：
+ *   1. 操作列三个分支（`editingKey === null` → 编辑 / `=== 'hands-N'` → 保存、取消）
+ *      **一个都不命中**，那一行只剩「删除」——「编辑」按钮凭空消失，
+ *      用户再也点不进手数编辑，而页面上看不出任何异常；
+ *   2. `editingKey` 原本用的是 `record.cutting_size_line_id`，**新建行它是空串**，
+ *      于是两行都还没选来源时，任点其中一格会让**两行同时**进入编辑态。
+ *   E2E 里是第 1 条直接卡住的：手数改不成 2，审核后只有 1 个码。
+ */
 function onSourceChange(index: number, value: string | null): void {
   patch(index, { cutting_size_line_id: value ?? '' })
+  editingKey.value = null
 }
 
 /**
@@ -174,7 +194,7 @@ function sourceLabel(value: string): string {
         </template>
 
         <template v-else-if="column.key === 'cutting_size_line_id'">
-          <template v-if="editingKey === record.cutting_size_line_id">
+          <template v-if="editingKey === sourceKey(record.line_no)">
             <Select
               :value="record.cutting_size_line_id"
               :options="props.sourceOptions"
@@ -183,7 +203,7 @@ function sourceLabel(value: string): string {
               placeholder="选来源裁剪明细行…"
               style="width: 100%"
               @update:value="(v: unknown) => onSourceChange(index, typeof v === 'string' ? v : '')"
-              @blur="() => saveEdit(record.cutting_size_line_id)"
+              @blur="() => saveEdit(sourceKey(record.line_no))"
             />
           </template>
           <template v-else>
@@ -191,7 +211,7 @@ function sourceLabel(value: string): string {
               <span
                 class="code-cell"
                 :class="{ 'code-cell--empty': !record.cutting_size_line_id }"
-                @click="() => startEdit(record.cutting_size_line_id)"
+                @click="() => startEdit(sourceKey(record.line_no))"
               >
                 {{ sourceLabel(record.cutting_size_line_id) }}
               </span>

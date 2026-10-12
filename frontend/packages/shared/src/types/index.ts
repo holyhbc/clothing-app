@@ -434,6 +434,13 @@ export type ReverseIn = ApiModel<'ReverseIn'>
 /** 批量打印登记入参（`POST /api/v1/bundling-orders/{id}/label-prints`）。 */
 export type LabelPrintIn = ApiModel<'LabelPrintIn'>
 export type LabelItemOut = ApiModel<'LabelItemOut'>
+/**
+ * 标签导出出参（`GET /api/v1/bundling-orders/{id}/labels`）。
+ *
+ * ⚠️ 响应体是 `LabelExportOut` 本身 —— 标签数组在**它的 `items` 里**，
+ * 顶层还有 `doc_no` / `hands_count` / `total_qty`。别写成「直接返回数组」。
+ */
+export type LabelExportOut = ApiModel<'LabelExportOut'>
 export type LabelPrintOut = ApiModel<'LabelPrintOut'>
 
 /** 单码详情（`GET /api/v1/bundles/{bundle_no}`）。 */

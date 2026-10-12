@@ -19,7 +19,7 @@ import {
   hasButton,
   mockBundles,
   mockOrder,
-  mockPreviewItems,
+  mockLabelExport,
   mountLabelPrint,
   settle,
 } from './test-support/labelPrintHarness'
@@ -71,7 +71,7 @@ describe('LabelPrint.vue', () => {
     vi.clearAllMocks()
     vi.mocked(getBundlingOrder).mockResolvedValue(mockOrder as never)
     vi.mocked(listBundlesByOrder).mockResolvedValue({ items: mockBundles, total: 2 } as never)
-    vi.mocked(exportLabels).mockResolvedValue({ data: mockPreviewItems, csv_text: '' } as never)
+    vi.mocked(exportLabels).mockResolvedValue(mockLabelExport() as never)
     vi.mocked(registerLabelPrints).mockResolvedValue({ print_ids: ['print-1', 'print-2'], printed_count: 2 } as never)
   })
 

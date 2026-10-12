@@ -3,22 +3,28 @@
  * 打菲单表头字段（新建页）。
  *
  * 字段：
- * - 车间（Select，UUID）
- * - 款号（Select，UUID，走 `searchStyleOptionsById`）
+ * - 车间（Select，value = `workshops.id` UUID —— 入参 `workshop_id` 要的就是 UUID）
+ * - 款号（Select，value = 款号**字符串** —— 入参 `style_no`，不是 UUID）
  * - 单据日期
  * - 一扎件数（参考值，InputNumber）
  * - 色码（文本）
  * - 色组（文本）
- * - 工序（Select，value = operation_no）
+ * - 工序（Select，value = 工序号）
  * - 来源裁剪单（Select，显示手数/出数/每手件数）
  * - 备注
+ *
+ * ⚠️ **车间要 UUID、工序要编码** —— 两个 Select 都是「从候选里取 `value`」，
+ *   但提交给后端的类型相反（`workshop_id` 是 UUID / `operation_no` 是业务编码，
+ *   见 05 §9.5.2）。所以候选分别走 `workshops.optionsById` 与 `operations.options`，
+ *   换任何一个都会让建单在 422 上死掉。
  */
 import { Input, InputNumber, Select } from 'ant-design-vue'
 import type { SourceOrderOut } from '@garment/shared'
 
 export interface HeaderFieldsValue {
   workshop_id: string | null
-  style_id: string | null
+  /** 款号**字符串**（不是 `styles.id`）。表头/来源候选/提交体都用它。 */
+  style_no: string
   doc_date: string
   bundle_qty: number
   color_code: string
@@ -45,9 +51,9 @@ const emit = defineEmits<{ 'update:modelValue': [value: HeaderFieldsValue]; sour
 
 /**
  * antd `Select` 的取值可能是数组 / LabeledValue / undefined，
- * 而本表单的这几个字段是**单值 UUID**。这里统一收窄，
- * 免得每个 handler 里各写一遍 `typeof v === 'string'`
- * （同文件「工序」也是这个写法）。
+ * 而本表单的这几个字段是**单值字符串**（UUID 或业务编码，见文件头注释）。
+ * 这里统一收窄，免得每个 handler 里各写一遍 `typeof v === 'string'`
+ * （款号与工序走的是同一套判断，只是没走本函数 —— 它们的空值是 `''`）。
  */
 function asId(v: unknown): string {
   return typeof v === 'string' ? v : ''
@@ -60,7 +66,7 @@ function update<K extends keyof HeaderFieldsValue>(key: K, value: HeaderFieldsVa
   // 少这一条会出现「切了车间，下拉里还是别的车间的单」。
   if (
     key === 'source_cutting_order_id' ||
-    key === 'style_id' ||
+    key === 'style_no' ||
     key === 'color_code' ||
     key === 'workshop_id'
   ) {
@@ -89,14 +95,14 @@ function update<K extends keyof HeaderFieldsValue>(key: K, value: HeaderFieldsVa
     <div style="flex: 1; min-width: 280px;">
       <label class="form-label">款号</label>
       <Select
-        :value="modelValue.style_id ?? undefined"
+        :value="modelValue.style_no || undefined"
         :options="styleOptions"
         placeholder="输入货号或款名搜索…"
         allow-clear
         show-search
         option-filter-prop="label"
         style="width: 100%"
-        @update:value="(v: unknown) => update('style_id', asId(v))"
+        @update:value="(v: unknown) => update('style_no', typeof v === 'string' ? v : '')"
       />
     </div>
 

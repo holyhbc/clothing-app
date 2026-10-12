@@ -99,6 +99,10 @@ function stubRouter() {
 async function mountDetail() {
   vi.spyOn(bundlingApi, 'getBundlingOrder').mockResolvedValue(ORDER as BundlingOrderOut)
   vi.spyOn(bundlingApi, 'listBundlingOrderLogs').mockResolvedValue({ items: [], total: 0, page: 1, page_size: 100 } as PageData<unknown>)
+  // ⚠️ 详情页现在会拉**真实的码列表**（`HandsTable`）。不 mock 的话这个用例
+  //   会真的发一个 HTTP 请求出去 —— 单测里没人等它，于是测试照样绿，
+  //   而「页面到底显示出几行码」从来没被验过。
+  vi.spyOn(bundlingApi, 'listBundlesByOrder').mockResolvedValue({ items: [], total: 0 })
 
   const router = stubRouter()
   await router.push('/bundling/orders/33333333-3333-3333-3333-333333333333')

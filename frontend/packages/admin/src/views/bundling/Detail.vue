@@ -20,6 +20,7 @@ import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Alert, Button, Card, Descriptions, DescriptionsItem, Spin, Table, Tooltip, message } from 'ant-design-vue'
 import ChangeLogDrawer from './components/ChangeLogDrawer.vue'
+import HandsTable from './components/HandsTable.vue'
 import type { ColumnsType } from 'ant-design-vue/es/table'
 import { PERM, formatDateTime, formatQty } from '@garment/shared'
 import type { BundlingOrderOut, LineOut } from '@garment/shared'
@@ -76,14 +77,6 @@ const lineColumns: ColumnsType<LineOut> = [
   { key: 'workstation_no', title: '工位', dataIndex: 'workstation_no', width: 120 },
 ]
 
-const handsColumns: ColumnsType<LineOut> = [
-  { key: 'line_no', title: '行', dataIndex: 'line_no', width: 60 },
-  { key: 'size_code', title: '尺码', dataIndex: 'size_code', width: 80 },
-  { key: 'hands', title: '手数', dataIndex: 'hands', width: 80, align: 'right' },
-  { key: 'hands', title: '手号详情', dataIndex: 'hands', width: 220, customRender: ({ record }: { record: LineOut }) => `第 ${record.hands} 手` },
-  { key: 'planned_qty', title: '计划件数', dataIndex: 'planned_qty', width: 110, align: 'right', customRender: ({ record }: { record: LineOut }) => record.planned_qty },
-]
-
 /** 溯源面包屑：`款号 > 裁剪单 > 打菲单 > 码`。 */
 const breadcrumbs = computed(() => {
   if (!order.value) return []
@@ -97,17 +90,6 @@ const breadcrumbs = computed(() => {
 
 function isPositive(value: string | null | undefined): boolean {
   return Number(value ?? 0) > 0
-}
-
-/**
- * 入参是 Table 插槽给的 `Record<string, any>`。索引签名不会被用来满足
- * 必填属性，所以这里显式接 `Record<string, unknown>` 并在内部收窄 ——
- * 既过了类型检查，又把 `any` 逃逸一起还掉了。
- */
-function handsText(line: Record<string, unknown>): string {
-  const hands = typeof line.hands === 'number' ? line.hands : 0
-  const qty = typeof line.planned_qty === 'string' ? line.planned_qty : '0'
-  return `第 ${hands} 手 / 共 — 手 · ${formatQty(qty, 0)} 件`
 }
 
 /**
@@ -317,23 +299,9 @@ watch(orderId, () => {
           </Table>
         </Card>
 
-        <!-- 按手列表（从 bundles 端点拉取，这里占位展示逻辑） -->
+        <!-- 按手列表：真实的打菲码（审核后才生成，详见 HandsTable.vue 的文件头） -->
         <Card size="small" title="按手列表（手号 / 码 / 色 / 尺码 / 件数 / 打印 / 计件）" style="margin-bottom: var(--space-4)">
-          <p class="hint">⚠️ 此处应通过 `GET /bundles?doc_id={orderId}` 获取完整码列表（T-BUND-010 接入）；当前展示明细行的 `hands` 作为占位。</p>
-          <Table
-            :columns="handsColumns"
-            :data-source="order.lines ?? []"
-            :row-key="(row: LineOut) => row.id"
-            size="small"
-            :pagination="false"
-            :scroll="{ x: 1100 }"
-          >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'hands_text'">
-                {{ handsText(record) }}
-              </template>
-            </template>
-          </Table>
+          <HandsTable :order-id="orderId" :reload-key="order?.version ?? 0" />
         </Card>
 
         <!-- 底部汇总 -->

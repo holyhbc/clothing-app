@@ -79,6 +79,31 @@ export const mockPreviewItems = [
   },
 ]
 
+/**
+ * `/labels` 端点的**完整**响应体（`LabelExportOut`）。
+ *
+ * ⚠️ 标签数组在 **`items`** 里，顶层还有 `doc_no` / `hands_count` / `total_qty`。
+ *   之前这里 mock 的是 `{ data: items }` —— 正好对上当时那个手写的错误类型
+ *   （`{ data: unknown[] }`），于是「组件取 `res.items`、类型声明是
+ *   `res.data`」这个错位被 mock 一起遮住了，标签预览在真环境里一张都出不来。
+ *   **mock 的形状必须来自契约，不能来自组件当前的取法。**
+ */
+export function mockLabelExport(): {
+  doc_no: string
+  size_code: string
+  hands_count: number
+  total_qty: string
+  items: typeof mockPreviewItems
+} {
+  return {
+    doc_no: 'BD-20261018-000001',
+    size_code: 'XL',
+    hands_count: mockPreviewItems.length,
+    total_qty: '120',
+    items: mockPreviewItems,
+  }
+}
+
 /* ----------------------------- 按钮查找 ----------------------------- */
 
 /** 归一化按钮文本：剥掉 antd 为两字中文插入的空格。 */

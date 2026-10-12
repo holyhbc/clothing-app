@@ -123,7 +123,13 @@ async function loadPreview(): Promise<void> {
       size_code: printParams.value.size_code,
       format: 'data',
     })
-    previewItems.value = res.data as LabelItemOut[]
+    // ⚠️ 取 `res.items`，不是 `res.data` —— `/labels` 返回的是整个 `LabelExportOut`
+    //   （`doc_no` / `hands_count` / `total_qty` / `items`），响应里**没有** `data` 键。
+    //   之前这里写的是 `res.data`，于是 `previewItems` 拿到 `undefined`，
+    //   紧接着的 `for (const item of previewItems.value)` 抛
+    //   `previewItems.value is not iterable`，被下面的 catch 吞掉、预览清空 ——
+    //   表现是「点生成预览什么都没发生」，而不是任何一条看得懂的报错。
+    previewItems.value = res.items
     showPreview.value = true
     // 预生成二维码/条码
     for (const item of previewItems.value) {
