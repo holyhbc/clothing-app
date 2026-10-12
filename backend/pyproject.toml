@@ -88,7 +88,10 @@ extend-immutable-calls = [
 # T201: E2E 种子是 **CLI 入口**（`python -m tests.e2e_seed`），人机界面就是 stdout ——
 #       跑它的人要看到"款号就绪了没有 / 哪条业务规则被拒了"。与 app/cli/** 同一条理由，
 #       所以豁免；pytest 用例仍然受 S101/ANN 约束。
+#       ⚠️ 拆出来的 `e2e_seed_accounts` 与主脚本是同一个 CLI，必须一起豁免 ——
+#   只豁免主脚本的话，守卫函数搬过去就直接被 ruff 拦下。
 "tests/e2e_seed.py" = ["T201"]
+"tests/e2e_seed_accounts.py" = ["T201"]
 
 # ---- mypy（docs/03 §1.6：strict = true）----
 [tool.mypy]

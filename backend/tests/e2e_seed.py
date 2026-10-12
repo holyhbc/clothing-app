@@ -25,38 +25,40 @@ E2E-00 的被测行为是「**页面上看到的数据 = 后端存的数据**」
     E2E_DATABASE_URL=... E2E_ADMIN_PASSWORD=... python -m tests.e2e_seed
 
 ⚠️ 幂等：重复执行只会把 E2E 的那批数据复位，不会重复插入。
+
+## 本文件只装「业务数据」，账号与库复位在 ``tests/e2e_seed_accounts.py``
+
+两者的安全模型不同（那边拿迁移账号**物理删**、这边走 service 层校验），
+混在一个文件里看不出哪些语句是有意用裸 SQL 的。拆分理由见那个模块的文件头。
+
+## 第二个拆分：已审核来源裁剪单
+
+`tests/e2e_seed_cutting_source.py` —— 打菲 E2E 的前置数据（一张 APPROVED 裁剪单）。
+它是**唯一**一处故意绕过 service 层直接落库的建数逻辑，必须一眼可见。
 """
 
 import asyncio
 import os
 import sys
-from datetime import UTC, date, datetime
+from datetime import date
 from decimal import Decimal
-from uuid import UUID
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
-    AsyncConnection,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 
 from app.cli.seed_baseline import run as seed_baseline
-from app.common.enums import DataScope, DocumentStatus
-from app.common.permissions_registry import permission_codes
 from app.core.errors import BusinessError
 from app.core.permissions import AuthContext
-from app.core.security import hash_password
 from app.modules.base.models import (
     Material,
     MaterialCategory,
     MaterialStock,
     Operation,
-    OperationRate,
     ProductCategory,
-    Style,
-    StyleOperation,
     Supplier,
     UomUnit,
     Warehouse,
@@ -68,34 +70,26 @@ from app.modules.base.schemas import (
     StyleOperationsReplaceIn,
 )
 from app.modules.base.service import RateService, StyleService
-from app.modules.cutting.models import (
-    CuttingOrder,
-    CuttingOrderLine,
-    CuttingOrderLineColor,
-    CuttingOrderSizeLine,
-    CuttingOutput,
+
+# ⚠️ 账号与库复位在另一个模块（安全模型不同，见文件头与那边���文件头）
+from tests.e2e_seed_accounts import (
+    E2E_APPROVER_NO,
+    E2E_EMPLOYEE_NO,
+    BusinessKeys,
+    prepare,
+    refuse_non_e2e_database,
 )
+from tests.e2e_seed_cutting_source import SourceKeys, seed_approved_cutting
 
 #: E2E 专用款号前缀。⚠️ 用固定前缀而不是随机数：失败后能一眼看出库里残留了什么，
 #: 而随机款号在 trace 与截图里是一串没法检索的十六进制。
 STYLE_NO = "E2E-2026-0001"
-#: E2E 专用账号。⚠️ **不复用 ADMIN**：`ADMIN` 的 ``must_change_password=true``，
-#: 登录后会被守卫重定向到改密页 —— E2E 里那不是被测行为，只会卡住流程。
-E2E_EMPLOYEE_NO = "E2EADMIN"
+
 E2E_PRIOR_DATES = (date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1))
 E2E_OPERATIONS = ("01", "02", "90")
 #: 内置分类 code（`seed_dicts.py::BUILTIN_PRODUCT_CATEGORIES`，不是自定义码）
 E2E_CATEGORY_CODE = "SET"
 
-#: 打菲 E2E 的**已审核**来源裁剪单。B8 要求 `APPROVED`，而裁剪模块没有
-#: submit/approve 端点（裁剪单走不到 APPROVED），只能由 seed 直接落库。
-APPROVED_CUTTING_DOC_NO = "CT-E2E-APPROVED-0001"
-CUTTING_COLOR_CODE = "WHT"
-CUTTING_COLOR_GROUP = "WHT-GRP"
-CUTTING_DOC_DATE = date(2026, 10, 1)
-CUTTING_QTY_PER_HAND = 60
-#: (尺码, 手数) —— 与 `p1-bundling-flow.spec.ts` 里的断言一一对应
-CUTTING_SIZE_PLAN: tuple[tuple[str, int], ...] = (("XL", 2), ("L", 1))
 
 # ------------------------------------------------------------------ 裁剪单的选料数据（T-CUT-001c-4）
 #
@@ -113,171 +107,14 @@ WAREHOUSE_CODE = "E2E-FAB-WH"
 WORKSHOP_CODE = "E2E-CUT"
 
 
-async def _clear_login_lock() -> None:
-    """清掉 E2E 账号的登录失败计数（Redis）。
-
-    ⚠️ **必须有这一步**：登录连续 5 次失败会把账号锁 15 分钟
-    （`auth:login_fail:<工号>`，`10004`）。一次失败的 E2E 之后，**后面每一轮**
-    都会在登录那一步失败，而报错是「账号已锁定」—— 与「上一轮是我的口令错了」
-    这个真因隔了三层。所以「准备数据」要顺带把账号解锁，否则一次手滑要等 15 分钟。
-    """
-    url = os.environ.get("REDIS_URL", "")
-    if url == "":
-        return
-    try:
-        import redis.asyncio as redis_asyncio
-
-        client = redis_asyncio.from_url(url)
-        try:
-            await client.delete(f"auth:login_fail:{E2E_EMPLOYEE_NO}")
-        finally:
-            await client.aclose()
-    except Exception as exc:  # noqa: BLE001 —— 解锁失败不该让整个 seed 失败
-        print(f"WARN: 清登录锁失败（不影响 E2E 本身）：{exc}", file=sys.stderr)
-
-
-async def _e2e_admin_id(conn: AsyncConnection) -> UUID:
-    user_id = (
-        await conn.execute(
-            text("SELECT id FROM users WHERE employee_no = :no"), {"no": E2E_EMPLOYEE_NO}
-        )
-    ).scalar_one()
-    return UUID(str(user_id))
-
-
-async def _ensure_admin(conn: AsyncConnection) -> AuthContext | None:
-    """建一个**不用改密**的 E2E 管理员，返回它的 `AuthContext`。
-
-    ⚠️ 走 `users` 表的 INSERT 而不是调 ``POST /users``：那要 token，
-      而 token 又要先有账号 —— 鸡生蛋。E2E 种子是「数据库的准备」，
-      这一步必须能独立完成（docs/10 §4 的精神：造数据不经过业务界面）。
-    """
-    password = os.environ.get("E2E_ADMIN_PASSWORD", "")
-    if not password:
-        print("FATAL: 未设置 E2E_ADMIN_PASSWORD", file=sys.stderr)
-        return None
-    existing = (
-        await conn.execute(
-            text("SELECT id FROM users WHERE employee_no = :no"), {"no": E2E_EMPLOYEE_NO}
-        )
-    ).scalar_one_or_none()
-    if existing is not None:
-        # ⚠️ ★ **每次都重置口令**（不只是「没有才建」）：这是 E2E **专用**账号，
-        #   而上一轮的 E2E_ADMIN_PASSWORD 与这一轮不同是常事（临时试一个口令、
-        #   或者 CI 上换了 secret）。不重置的表现是「昨天能跑今天全挂在登录」，
-        #   而失败信息是 `11003 工号或口令错误` —— 看不出是自己上一轮改的。
-        await conn.execute(
-            text(
-                "UPDATE users SET password_hash = :hash, must_change_password = false, "
-                "is_active = true, updated_at = now() WHERE id = :id"
-            ),
-            {"id": existing, "hash": hash_password(password)},
-        )
-        await _clear_login_lock()
-    else:
-        await conn.execute(
-            text(
-                "INSERT INTO users (employee_no, name, password_hash, data_scope, "
-                "is_active, must_change_password, created_by, updated_by, version) "
-                # ⚠️ `created_by` 是 **UUID** 不是工号字符串 —— 传工号会得到
-                #   `invalid input for query argument: invalid UUID`，而报错里完全
-                #   看不出是这个字段（与 `seed_baseline` 同款写法）
-                "VALUES (:no, 'E2E 管理员', :password_hash, 'FACTORY', true, false, "
-                "gen_random_uuid(), gen_random_uuid(), 1) RETURNING id"
-            ),
-            {"no": E2E_EMPLOYEE_NO, "password_hash": hash_password(password)},
-        )
-        role_id = (
-            await conn.execute(text("SELECT id FROM roles WHERE code = 'super_admin'"))
-        ).scalar_one()
-        await conn.execute(
-            # ⚠️ 表名是 `user_roles` 不是 `role_assignments`（与 `seed_baseline` 一致）：
-            #   写错时 SQLAlchemy 抛 `relation does not exist`，而报错完全看不出
-            #   是种子脚本自己写错了表名
-            text(
-                "INSERT INTO user_roles (user_id, role_id) VALUES (:user_id, :role_id) "
-                "ON CONFLICT DO NOTHING"
-            ),
-            {"user_id": await _e2e_admin_id(conn), "role_id": role_id},
-        )
-    return AuthContext(
-        user_id=await _e2e_admin_id(conn),
-        name="E2E 管理员",
-        employee_no=E2E_EMPLOYEE_NO,
-        workshop_id=None,
-        group_no=None,
-        permissions=frozenset(permission_codes()),
-        data_scope=DataScope.FACTORY,
-    )
-
-
-async def _clean(conn: AsyncConnection) -> None:
-    """清掉上一轮 E2E 数据。
-
-    ⚠️ **必须用迁移账号**（``erp_ddl``）跑，**不能**用应用账号：
-       ``operation_rates`` 按 ADR-0029 **没给应用账号 DELETE 权限** ——
-       试过用 ``erp_app`` 清，拿到的是
-       ``ProgrammingError: permission denied for table operation_rates``，
-       而报错完全看不出「是你的账号权限不够，不是 SQL 写错了」。
-       顺带说：这个报错本身就是 ADR-0029 生效的证据（应用账号真的删不掉单价历史）。
-    """
-    # ⚠️ ★ 顺序即外键依赖，**而且必须先清裁剪单**：上一轮 E2E 真的建过裁剪单，
-    #   它的 `cutting_order_lines.stock_id` 指向那批布 —— 直接删布批会撞
-    #   `ForeignKeyViolationError: ... violates foreign key constraint
-    #   "fk_cutting_order_lines_stock"`，而 seed 是 E2E 的**第一步**，于是这一轮
-    #   全挂在 globalSetup 上，报错完全看不出是「上一轮我建的那张单还没删」。
-    #   （踩过一次：E2E-01 跑完之后 seed 就再也跑不动了。）
-    #   ⚠️ 用**物理删**而不是软删：这是测试数据复位，而且应用账号对这几张表**没有**
-    #   DELETE 权限（ADR-0029），跑 seed 用的本来就是迁移账号。
-    order_ids = [
-        UUID(str(row))
-        for row in (
-            await conn.execute(text("SELECT id FROM cutting_orders WHERE doc_no LIKE 'CT-%'"))
-        ).scalars()
-    ]
-    for statement in (
-        delete(CuttingOrderSizeLine).where(
-            CuttingOrderSizeLine.line_color_id.in_(
-                select(CuttingOrderLineColor.id).where(
-                    CuttingOrderLineColor.line_id.in_(
-                        select(CuttingOrderLine.id).where(
-                            CuttingOrderLine.doc_id.in_(order_ids or [UUID(int=0)])
-                        )
-                    )
-                )
-            )
-        ),
-        delete(CuttingOrderLineColor).where(
-            CuttingOrderLineColor.line_id.in_(
-                select(CuttingOrderLine.id).where(
-                    CuttingOrderLine.doc_id.in_(order_ids or [UUID(int=0)])
-                )
-            )
-        ),
-        delete(CuttingOrderLine).where(CuttingOrderLine.doc_id.in_(order_ids or [UUID(int=0)])),
-        delete(CuttingOrder).where(CuttingOrder.id.in_(order_ids or [UUID(int=0)])),
-        # ⚠️ `cutting_outputs` **必须先于 `styles` 删**：它按 (style_id, 色, 尺码)
-        #   登记、有 `fk_cutting_outputs_style` 指向 `styles`。不删的话最后那句
-        #   `DELETE FROM styles` 会撞 `ForeignKeyViolationError: ... violates
-        #   foreign key constraint "fk_cutting_outputs_style"` ——
-        #   而报错指向款号表，与「打菲余量登记还在」毫无关系。
-        delete(CuttingOutput).where(CuttingOutput.style_no == STYLE_NO),
-        delete(MaterialStock).where(MaterialStock.dye_lot_no == DYE_LOT_NO),
-        delete(Material).where(Material.code == MATERIAL_CODE),
-        delete(OperationRate).where(OperationRate.style_no == STYLE_NO),
-        delete(StyleOperation).where(StyleOperation.style_no == STYLE_NO),
-        delete(Style).where(Style.style_no == STYLE_NO),
-    ):
-        await conn.execute(statement)
-
-
 async def run() -> int:
     url = os.environ.get("E2E_DATABASE_URL") or os.environ.get("DATABASE_URL_MIGRATION", "")
     if not url:
         print("FATAL: 未设置 E2E_DATABASE_URL", file=sys.stderr)
         return 1
-    # 清理用迁移账号，业务写入用应用账号 —— 见 _clean 的注释
+    # 清理用迁移账号，业务写入用应用账号 —— 见 e2e_seed_accounts.clean 的注释
     admin_url = os.environ.get("DATABASE_URL_MIGRATION") or url
+    refuse_non_e2e_database(url, admin_url)
 
     # 基线（权限点 / 角色 / 内置字典）先跑一次：幂等，缺了就补
     if await seed_baseline() != 0:
@@ -289,8 +126,16 @@ async def run() -> int:
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with admin_engine.begin() as conn:
-            await _clean(conn)
-            ctx = await _ensure_admin(conn)
+            # ⚠️ 事务**内**只做库复位与账号就位；解锁 Redis 在 :func:`prepare`
+            #   的最后一步，而 Redis 不参与这个事务 —— 它本来就没有「回滚」这回事。
+            ctx = await prepare(
+                conn,
+                BusinessKeys(
+                    style_no=STYLE_NO,
+                    material_code=MATERIAL_CODE,
+                    dye_lot_no=DYE_LOT_NO,
+                ),
+            )
         if ctx is None:
             return 1
         async with factory() as session:
@@ -310,16 +155,21 @@ async def run() -> int:
         await engine.dispose()
         await admin_engine.dispose()
 
-    print(f"OK: E2E 数据已就绪（款号 {STYLE_NO} / 3 道工序 / 3 段单价区间）")
+    print(
+        f"OK: E2E 数据已就绪（款号 {STYLE_NO} / 3 道工序 / 3 段单价区间 / "
+        f"账号 {E2E_EMPLOYEE_NO}+{E2E_APPROVER_NO}）"
+    )
     return 0
 
 
 async def _run_checked() -> int:
     """跑 `run` 并把**任何**异常原样带出来。
 
-    ⚠️ 不加这一层的话，`_ensure_admin` 里的 ``relation does not exist`` 这类
-    脚本自身错误会在 ``finally`` 之后照常抛出，但 stdout 已经打完了 ——
-    看到的只是「基线 OK」而看不到「种子没写进去」，极难定位。
+    ⚠️ 不加这一层的话，`ensure_user` 里的 ``relation does not exist`` 这类
+      脚本自身错误会在 ``finally`` 之后照常抛出，但 stdout 已经打完了 ——
+      看到的只是「基线 OK」而看不到「种子没写进去」，极难定位。
+      （``refuse_non_e2e_database` 抛的是 ``SystemExit``，**不**走这里 ——
+      它要的是「非零退出 + 人话提示」，不是 traceback。）
     """
     try:
         return await run()
@@ -398,7 +248,7 @@ async def _seed_business(session: AsyncSession, ctx: AuthContext) -> None:
     )
     await _seed_workshop(session, ctx)
     await _seed_fabric(session, ctx)
-    await _seed_approved_cutting(session, ctx)
+    await seed_approved_cutting(session, ctx, SourceKeys(STYLE_NO, DYE_LOT_NO))
 
     rates = RateService(session, ctx)
     for index, price in enumerate(("0.350000", "0.400000", "0.450000")):
@@ -518,170 +368,6 @@ async def _seed_fabric(session: AsyncSession, ctx: AuthContext) -> None:
             updated_by=ctx.user_id,
         )
     )
-    await session.flush()
-
-
-async def _seed_approved_cutting(session: AsyncSession, ctx: AuthContext) -> None:
-    """一张**已审核**的裁剪单 + 尺码明细行 + ``cutting_outputs``（打菲 E2E 的来源单）。
-
-    ⚠️ **为什么必须 seed 而不是走 API**：裁剪模块**没有提交/审核端点** ——
-    ``openapi.json`` 里 ``/cutting-orders`` 下只有 ``get/post``，
-    ``{order_id}`` 下只有 ``delete/get/patch``，再加 ``lines`` / ``size-lines``
-    / ``entry-mode`` / ``suggest-lines``，**没有任何 submit/approve 路径**。
-    也就是说裁剪单在系统里**根本走不到 APPROVED**。
-
-    而 B8 硬要求「来源裁剪单必须 ``status='APPROVED'``」，新建打菲单没有它就
-    建不出来。所以只能直接落库。
-
-    ⚠️ 这不是「测试偷懒绕过校验」：seed 造的是**一张前置数据**，
-    不是「跳过建单校验」。建打菲单时的 APPROVED 校验照样跑、照样会拦。
-
-    ⚠️ **幂等**：E2E 库跨轮次复用，靠 ``doc_no`` 判存在再返回，
-    否则第二轮撞 ``uq_cutting_orders_doc_no``，报错指向唯一索引，
-    与「谁跑过 E2E」毫无关系。
-    """
-    existing = (
-        await session.execute(
-            select(CuttingOrder).where(CuttingOrder.doc_no == APPROVED_CUTTING_DOC_NO)
-        )
-    ).scalar_one_or_none()
-    if existing is not None:
-        return
-
-    workshop = (
-        (await session.execute(select(Workshop).where(Workshop.deleted_at.is_(None))))
-        .scalars()
-        .first()
-    )
-    style = (
-        await session.execute(
-            select(Style).where(Style.style_no == STYLE_NO, Style.deleted_at.is_(None))
-        )
-    ).scalar_one()
-    stock = (
-        await session.execute(select(MaterialStock).where(MaterialStock.dye_lot_no == DYE_LOT_NO))
-    ).scalar_one()
-
-    total_hands = sum(hands for _, hands in CUTTING_SIZE_PLAN)
-    session.add(
-        CuttingOrder(
-            doc_no=APPROVED_CUTTING_DOC_NO,
-            workshop_id=workshop.id,
-            style_id=style.id,
-            style_no=style.style_no,
-            color_codes=CUTTING_COLOR_CODE,
-            doc_date=CUTTING_DOC_DATE,
-            delivery_date=CUTTING_DOC_DATE,
-            ply_count=100,
-            entry_mode_default="MASTER",
-            fabric_qty=Decimal("120.000"),
-            output_qty=Decimal(str(total_hands * CUTTING_QTY_PER_HAND)),
-            cut_waste_qty=Decimal("0.000"),
-            balance_qty=Decimal("0.000"),
-            # ★ 必须 APPROVED —— B8：来源裁剪单未审核则建单报 10001
-            status=DocumentStatus.APPROVED,
-            hands_total=total_hands,
-            remark_source="E2E 种子：打菲来源单",
-            approved_by=ctx.user_id,
-            approved_at=datetime(2026, 10, 1, 8, 0, tzinfo=UTC),
-            created_by=ctx.user_id,
-            updated_by=ctx.user_id,
-        )
-    )
-    await session.flush()
-
-    order = (
-        await session.execute(
-            select(CuttingOrder).where(CuttingOrder.doc_no == APPROVED_CUTTING_DOC_NO)
-        )
-    ).scalar_one()
-
-    session.add(
-        CuttingOrderLine(
-            doc_id=order.id,
-            line_no=1,
-            stock_id=stock.id,
-            supplier_id=stock.supplier_id,
-            material_id=stock.material_id,
-            style_no=style.style_no,
-            dye_lot_no=stock.dye_lot_no,
-            bolt_no=stock.bolt_no,
-            color_plan=CUTTING_COLOR_CODE,
-            width_cm=stock.width_cm,
-            fabric_qty=Decimal("120.000"),
-            waste_qty=Decimal("0.000"),
-            output_qty=Decimal(str(total_hands * CUTTING_QTY_PER_HAND)),
-            created_by=ctx.user_id,
-            updated_by=ctx.user_id,
-        )
-    )
-    await session.flush()
-
-    line = (
-        await session.execute(select(CuttingOrderLine).where(CuttingOrderLine.doc_id == order.id))
-    ).scalar_one()
-
-    session.add(
-        CuttingOrderLineColor(
-            line_id=line.id,
-            color_code=CUTTING_COLOR_CODE,
-            entry_mode="MASTER",
-            qty_per_hand=CUTTING_QTY_PER_HAND,
-            uniform_qty=Decimal("0"),
-            hands_total=Decimal(str(total_hands)),
-            output_qty_total=Decimal(str(total_hands * CUTTING_QTY_PER_HAND)),
-            balance_qty_total=Decimal("0"),
-            created_by=ctx.user_id,
-            updated_by=ctx.user_id,
-        )
-    )
-    await session.flush()
-
-    color = (
-        await session.execute(
-            select(CuttingOrderLineColor).where(CuttingOrderLineColor.line_id == line.id)
-        )
-    ).scalar_one()
-
-    for index, (size_code, hands) in enumerate(CUTTING_SIZE_PLAN, start=1):
-        output_qty = hands * CUTTING_QTY_PER_HAND
-        session.add(
-            CuttingOrderSizeLine(
-                line_id=line.id,
-                # ⚠️ 尺码明细行挂的是 **line_color_id**（色行），不是 line_id ——
-                #    挂错会在 flush 时才炸，报错是外键约束，与「该挂哪一层」毫无关系。
-                line_color_id=color.id,
-                size_line_no=index,
-                size_code=size_code,
-                hands=hands,
-                qty_per_hand=CUTTING_QTY_PER_HAND,
-                output_qty=output_qty,
-                output_qty_manual=False,
-                balance_qty=0,
-                hands_seq=index,
-                created_by=ctx.user_id,
-                updated_by=ctx.user_id,
-            )
-        )
-        # ⚠️ `cutting_outputs` 是「可打菲余量」的登记处（`v_cutting_output_available`
-        #   的数据源）。**不建这一行**，来源明细接口返回的 available_qty 会是 0，
-        #   E2E 会失败在「余量为 0」这种看起来像业务规则的地方。
-        session.add(
-            CuttingOutput(
-                style_id=style.id,
-                style_no=style.style_no,
-                color_code=CUTTING_COLOR_CODE,
-                size_code=size_code,
-                workshop_id=workshop.id,
-                output_qty=str(output_qty),
-                balance_qty="0",
-                bundled_qty="0",
-                reserved_qty="0",
-                cut_waste_qty="0",
-                created_by=ctx.user_id,
-                updated_by=ctx.user_id,
-            )
-        )
     await session.flush()
 
 
