@@ -83,6 +83,100 @@ jobs:
       - name: 闸门 3 单测
         run: pnpm test:unit
 
+  e2e:
+    name: E2E（Playwright）
+    # ⚠️ `docs/02` §1 阶段 4 写的是「覆盖率报告 + E2E + 闸门」，此前这个 job 不存在
+    #    —— 于是 E2E 只在开发者本机跑。单测守得住「点得动」，守不住「跨层一致」：
+    #    2026-10-12 打菲 E2E 挖出的 8 个缺陷（款号传 UUID、标签预览取错字段、
+    #    bwip-js 在浏览器构建上根本没有那个 API…）在 CI 里**全绿通过过**。
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      # ⚠️ 为什么还要装**后端**依赖：`e2e/global-setup.ts` 与 `e2e/start-backend.sh`
+      #   都硬依赖 `backend/.venv/bin/python`（跑 `tests.e2e_seed` 与 uvicorn），
+      #   `scripts/create-e2e-db.sh` 也是。找不到就直接抛「先在 backend/ 装好虚拟环境」。
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.8.4"
+          enable-cache: true
+
+      - name: 安装后端依赖（E2E 的 webServer 与 seed 都要用）
+        working-directory: backend
+        run: uv sync --frozen
+
+      # ⚠️ 用 compose 而不是 GitHub Actions 的 `services:`：后者不支持挂 volume，
+      #   `docker/postgres/init/01-create-roles.sh` 就跑不起来 —— 而没有它
+      #   `erp_app` / `erp_ddl` 不存在，`create-e2e-db.sh` 的 `:?` 直接退出。
+      #   另起一份 services 配置还意味着授权口径与 docker-compose.ci.yml 各写一份，
+      #   必然漂移（docs/04 §6.2.1：E2E 必须照抄生产授权，否则测不出权限问题）。
+      - name: 起 postgres + redis
+        working-directory: .
+        run: docker compose -f docker-compose.ci.yml up -d --wait postgres redis
+
+      - name: 建 E2E 库（建库 → 授权 → 迁移 → 基线）
+        working-directory: .
+        env:
+          # ⚠️ `PGPORT` 必须显式给：脚本默认 5432，而 compose 映射的是 **15432**。
+          #   不给就静默去连宿主机上的另一个 postgres —— 开发机上正好有一个，
+          #   于是「E2E 跑通了，但跑的不是这个库」。
+          PGHOST: 127.0.0.1
+          PGPORT: "15432"
+          PGUSER: postgres
+          PGPASSWORD: ci-only-not-a-secret
+          E2E_DDL_ROLE: erp_ddl
+          E2E_APP_ROLE: erp_app
+        run: scripts/create-e2e-db.sh /dev/null
+
+      # ⚠️ **不要设 `E2E_CHROMIUM_PATH`**：那是本机 arm64 的逃生口（Playwright 官方
+      #   不提供 ubuntu20.04-arm64 的二进制）。CI 里设了会跳过自己的浏览器下载，
+      #   然后用一个不存在的路径启动、失败信息是「Executable doesn't exist」。
+      - name: 装 Playwright 浏览器
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: 跑 E2E
+        env:
+          # ⚠️ `APP_ENV` 只允许 local/test/production；`e2e` 是非法值，会让 Settings 校验失败
+          APP_ENV: test
+          JWT_SECRET: ci-only-not-a-secret-0123456789abcdef
+          DATABASE_URL: postgresql+asyncpg://erp_app:ci-only-not-a-secret@127.0.0.1:15432/garment_erp_e2e
+          DATABASE_URL_MIGRATION: postgresql+asyncpg://erp_ddl:ci-only-not-a-secret@127.0.0.1:15432/garment_erp_e2e
+          E2E_DATABASE_URL: postgresql+asyncpg://erp_app:ci-only-not-a-secret@127.0.0.1:15432/garment_erp_e2e
+          REDIS_URL: redis://127.0.0.1:16379/1
+          # E2E 专用账号口令（seed 每轮重置它，见 `tests/e2e_seed_accounts.py`）
+          E2E_ADMIN_PASSWORD: E2e-Admin-2026
+        run: pnpm test:e2e
+
+      # ⚠️ `if: always()`：只在成功时上传等于永远不上传 —— 而失败那次才是要看 trace 的。
+      #   `playwright-report/` 里是 HTML 报告（含每步截图），
+      #   `test-results/` 里是 trace（CI 下 retries=1，`on-first-retry` 才会生成）。
+      - name: 上传 E2E 制品
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
   consistency:
     name: 规范一致性检查（docs/12 §9）
     runs-on: ubuntu-latest
