@@ -105,10 +105,13 @@ def visible_workshops(ctx: AuthContext) -> frozenset[UUID]:
 #: 一个名字蒙混过关）。
 PENDING_TABLES: Final[frozenset[str]] = frozenset(
     {
-        # P1 的单据表
+        # P1/P3 的单据表
         "bundling_orders",
-        "piecework_logs",
         "stock_ledgers",
+        # `piecework_logs` 已建（迁移 0019 / T-PIECE-001），从待建清单移出 ——
+        # 与 `cutting_orders` 同款处理。⚠️ 它上面的 `SCOPE_SPECS` 条目是 0005
+        # 当时「前瞻登记」写的，现在终于有真表可依；留着不删的后果见
+        # `tests/modules/test_cutting_tables.py::test_cutting_orders_left_pending_tables`。
         # `cutting_orders` 已建（迁移 0009 / T-CUT-001a），从待建清单移出 ——
         # 与 0005 对 `style_color_size_ratios` 同样处理。⚠️ 它上面的 `SCOPE_SPECS`
         # 条目是当初「前瞻登记」写的，现在**终于**有真表可依。
@@ -157,8 +160,18 @@ SCOPE_SPECS: dict[str, ScopeSpec] = {
         user_column="created_by",
         via=ScopeVia(model=BundlingOrder, on=BundlingOrder.id == Bundle.doc_id),
     ),
+    # 计件流水（T-PIECE-001 / 迁移 0019）。⚠️ `group_no` 是**行级冗余**（员工当时
+    #   所属组别），所以 GROUP 范围按它过滤 —— 不按 `users.group_no` 反查：
+    #   员工调组后，**历史流水仍属于当时的组别**，否则组别主管会凭空看见别人的历史。
     "piecework_logs": ScopeSpec(
         workshop_column="workshop_id", group_column="group_no", user_column="employee_id"
+    ),
+    # 员工工序绑定（T-PIECE-001 / 迁移 0019）。⚠️ `user_column="user_id"`：
+    #   SELF 范围对这张表就是「本人绑定的工序」，而不是「本人建的」——
+    #   员工端列表恒按 `user_id = ctx.user_id` 过滤（04-计件 BR-PW-15），
+    #   数据范围再按 `created_by` 过滤会让主管看不到员工自己建的绑定。
+    "piecework_bindings": ScopeSpec(
+        workshop_column="workshop_id", group_column=None, user_column="user_id"
     ),
     "stock_ledgers": ScopeSpec(workshop_column=None, group_column=None, user_column="created_by"),
     # WIP 是**车间在制品**（裁片），天然属于某个车间，车间范围必须过滤。

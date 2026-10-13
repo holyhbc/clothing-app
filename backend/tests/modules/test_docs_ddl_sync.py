@@ -69,8 +69,8 @@ IGNORED_TABLES = frozenset({"alembic_version"})
 #: 会拿本白名单当兜底放行条件，那才是真正的洞。
 P1_PENDING_TABLES = frozenset(
     {
-        # §7.1 计件流水
-        "piecework_logs",
+        # §7.1 计件流水（**T-PIECE-001 已建，迁移 0019**）—— 从本白名单移出意味着
+        # TD-02 对它从「跳过」变成**真比对**；⚠️ 不要加回来。
         # §7.5 采购
         "purchase_orders",
         "purchase_order_lines",
