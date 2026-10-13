@@ -45,14 +45,20 @@ const printParams = ref<{
   size_code: string
   printed_qty: number
   is_reprint: boolean
-  print_seq: number | undefined
+  // ⚠️ 用 `null` 表示「没填」，且**不能**直接绑到 `InputNumber` 的 `value` 上：
+  //   antd 的 `value` 类型是 `ValueType = string | number`，而本仓开了
+  //   `exactOptionalPropertyTypes`（可选 ≠ 可为 `undefined`）—— 传 `undefined`
+  //   或 `null` 都是类型错误。见 :func:`printSeqBinding`。
+  //   ⚠️ 本页原先写 `v-model`（→ `modelValue`）恰好**把这个类型错误一起吞掉了**：
+  //   写错的那一处把两个问题同时掩盖了 —— 这是「靠类型检查兜底」的反面教材。
+  print_seq: number | null
 }>({
   from_hands: 1,
   to_hands: 1,
   size_code: '',
   printed_qty: 1,
   is_reprint: false,
-  print_seq: undefined,
+  print_seq: null,
 })
 
 const sizeOptions = computed(() => {
@@ -162,10 +168,11 @@ async function handlePrintAndPrint(): Promise<void> {
       hands_seq: printParams.value.from_hands,
       printed_qty: printParams.value.printed_qty,
       is_reprint: printParams.value.is_reprint,
-      // 「非重打」时不传 print_seq —— 与上面 size_code 同一个道理：
-      // 可选字段的「没这个值」应该是不写这个键，不是写 `undefined`
-      //（`exactOptionalPropertyTypes` 下可选 ≠ 可为 undefined）。
-      ...(printParams.value.is_reprint && printParams.value.print_seq !== undefined
+      // 「非重打」时**不传** print_seq —— 传了空值会变成「重打批次序号 = 0」，
+      // 后端按 B15 判「重打必带 print_seq」而报 `10002`，而用户看到的却是
+      // 「我明明没重打」。⚠️ 判空用 `!= null`：`print_seq` 现在用 `null` 表示未填
+      //（见 `printParams` 的类型注释），写 `!== undefined` 会漏掉这一路。
+      ...(printParams.value.is_reprint && printParams.value.print_seq !== null
         ? { print_seq: printParams.value.print_seq }
         : {}),
       // `size_code` 不传 = 全部尺码。**空串不等于不传** —— 传 `''` 会变成
@@ -185,6 +192,22 @@ async function handlePrintAndPrint(): Promise<void> {
   }
 }
 
+/**
+ * 批次序号输入框的 props：未填时**整个不传 `value` 键**，而不是传 `undefined`。
+ *
+ * ⚠️ 两种「空」写法都会被类型检查拒绝（`exactOptionalPropertyTypes` 下可选属性
+ *   不能显式给 `undefined`；`null` 又不在 antd 的 `ValueType` 里），所以只能用
+ *   `v-bind` 把 `value` 这个键**存在与否**表达出来。
+ */
+const printSeqBinding = computed((): { value?: number } =>
+  printParams.value.print_seq === null ? {} : { value: printParams.value.print_seq },
+)
+
+/** `InputNumber` 的 `update:value` 在清空时给 `null`、正常时给 `number`。 */
+function onPrintSeqUpdate(value: number | string | null): void {
+  printParams.value.print_seq = typeof value === 'number' ? value : null
+}
+
 function resetForm(): void {
   printParams.value = {
     from_hands: handsRange.value.min,
@@ -192,7 +215,7 @@ function resetForm(): void {
     size_code: printParams.value.size_code,
     printed_qty: 1,
     is_reprint: false,
-    print_seq: undefined,
+    print_seq: null,
   }
 }
 
@@ -252,32 +275,60 @@ const breadcrumbs = computed(() => {
         </div>
 
         <Card size="small" title="打印参数" style="margin-bottom: var(--space-4)">
-          <Form :model="printParams" layout="inline" style="display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: flex-end;">
-            <Form.Item label="尺码" name="size_code">
-              <Select v-model="printParams.size_code" :options="sizeOptions.map(s => ({ label: s, value: s }))" placeholder="请选择尺码" style="width: 140px" allow-clear />
+          <!--
+            ⚠️ ★★ **antd 组件一律 `v-model:value`，不是 `v-model`**（2026-10-13 修，
+            E2E 挖出）。本页原先四个 `Select`/`InputNumber` 全写成 `v-model`，
+            Vue 于是把值当 `modelValue` 传给子组件 —— 而 antd 的受控属性叫
+            `value`，**不认 `modelValue`**。后果是它变成一个**透传的 DOM 属性**：
+
+                <div modelvalue="1" class="ant-input-number …">
+                  <input class="ant-input-number-input" value="">   ← 框里空白
+
+            两个后果都很隐蔽，**页面上完全看不出异常**：
+              1. 框里**显示空白**，而模型里明明是 1 / 2 / 1；
+              2. 用户**打字不生效** —— 填了「批次序号」提交，请求体里**没有**
+                 `print_seq`，后端按 B15 报 `10002`，操作员看到的只是
+                 「重打登记失败」，根本猜不到是自己填的值没进去。
+
+            单测抓不到：`LabelPrint.test.ts` 断的是组件的 **props**（min/max/placeholder），
+            而 props 传对了 —— 断的是「组件拿到什么」，没断「用户看到什么」。
+
+            ⚠️ 同理 **`Form.Item` 上不要写 `name`**：本页没有任何校验规则，
+            `name` 只会让 antd 再注入一份 `value`/`onUpdate:value`，形成第二份绑定。
+            全仓其余页面（`Login.vue` / `Password.vue`）都是「`Form.Item` 只管
+            标签与布局、值由子组件自己管」，本页原本是唯一的例外。
+          -->
+          <Form layout="inline" style="display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: flex-end;">
+            <Form.Item label="尺码">
+              <Select v-model:value="printParams.size_code" :options="sizeOptions.map(s => ({ label: s, value: s }))" placeholder="请选择尺码" style="width: 140px" allow-clear />
             </Form.Item>
 
-            <Form.Item label="起始手号" name="from_hands">
-              <InputNumber v-model="printParams.from_hands" :min="handsRange.min" :max="handsRange.max" :style="{ width: '120px' }" />
+            <Form.Item label="起始手号">
+              <InputNumber v-model:value="printParams.from_hands" :min="handsRange.min" :max="handsRange.max" :style="{ width: '120px' }" />
             </Form.Item>
 
-            <Form.Item label="结束手号" name="to_hands">
-              <InputNumber v-model="printParams.to_hands" :min="handsRange.min" :max="handsRange.max" :style="{ width: '120px' }" />
+            <Form.Item label="结束手号">
+              <InputNumber v-model:value="printParams.to_hands" :min="handsRange.min" :max="handsRange.max" :style="{ width: '120px' }" />
             </Form.Item>
 
-            <Form.Item label="每手打印张数" name="printed_qty">
-              <InputNumber v-model="printParams.printed_qty" :min="1" :max="10" :style="{ width: '140px' }" />
+            <Form.Item label="每手打印张数">
+              <InputNumber v-model:value="printParams.printed_qty" :min="1" :max="10" :style="{ width: '140px' }" />
             </Form.Item>
 
-            <Form.Item label="重打" name="is_reprint" style="margin-left: auto;">
+            <Form.Item label="重打" style="margin-left: auto;">
               <label style="display: flex; align-items: center; gap: var(--space-2); cursor: pointer;">
                 <input v-model="printParams.is_reprint" type="checkbox" @change="() => {}" />
                 <span>重打</span>
               </label>
             </Form.Item>
 
-            <Form.Item v-if="printParams.is_reprint" label="批次序号" name="print_seq" style="margin-left: var(--space-4);">
-              <InputNumber v-model="printParams.print_seq" :min="1" :style="{ width: '120px' }" />
+            <Form.Item v-if="printParams.is_reprint" label="批次序号" style="margin-left: var(--space-4);">
+              <InputNumber
+                v-bind="printSeqBinding"
+                :min="1"
+                :style="{ width: '120px' }"
+                @update:value="onPrintSeqUpdate"
+              />
             </Form.Item>
           </Form>
 

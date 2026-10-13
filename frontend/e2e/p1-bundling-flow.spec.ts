@@ -114,6 +114,25 @@ function fieldInput(page: Page, field: string): Locator {
 }
 
 /**
+ * 取一次响应的**统一响应包装**（docs/05 §1：`{code, message, data, ...}`）。
+ *
+ * ⚠️ 必须先 `waitForResponse` 拿到 promise 再 `await` 它 —— 直接 `await
+ *   page.request.get()` 走的是 API 上下文、拿不到**页面这次点击**真实发出的
+ *   那个响应（两者可能因为重试/幂等而不同）。
+ */
+async function readEnvelope(source: Promise<Response>): Promise<{ code: number; message: string }> {
+  const body = (await (await source).json()) as { code: number; message: string }
+  return body
+}
+
+/** 同 :func:`readEnvelope`，但取 `data` 层并顺手断言业务码为 0。 */
+async function readData<T>(source: Promise<Response>): Promise<T> {
+  const body = (await (await source).json()) as { code: number; message: string; data: T }
+  expect(body.code, `业务码非 0：${body.message}`).toBe(0)
+  return body.data
+}
+
+/**
  * 等单据状态变成 `status`。
  *
  * ⚠️ 用 `.status-tag[data-status="…"]` 而不是 `getByText('已审核')`：
@@ -265,8 +284,99 @@ test.describe('E2E-02 打菲单主流程', () => {
     // ★ 打印登记**必传 `hands_seq`**（B15，缺失报 10002）。
     //   这条真的漏传过：单测只断言「函数被调用」、没断言参数，所以一直没抓到。
     //   断言点放在「登记成功」提示上 —— 漏传 hands_seq 会直接报 10002。
+    //
+    // ⚠️ **直接断响应体**，而不是只等提示条：`LabelPrintOut` 里
+    //   `print_ids` / `printed_count` / `label_print_qty` / `is_reprint` 才是
+    //   「一手一行留痕」的契约本身，提示条只说明「没报错」。
+    const firstPrint = page.waitForResponse(
+      (r) => r.url().includes('/label-prints') && r.request().method() === 'POST',
+    )
     await page.getByRole('button', { name: /^打\s*印$/ }).first().click()
     await expect(page.getByText('打印登记成功').first()).toBeVisible({ timeout: 15_000 })
+    const firstBody = await readData<{
+      print_ids: string[]
+      printed_count: number
+      label_print_qty: number
+      is_reprint: boolean
+    }>(firstPrint)
+    // XL 2 手 ⇒ 一手一行 ⇒ 2 个留痕 id；打印张数 2 张；累计 2 张
+    expect(firstBody.print_ids).toHaveLength(2)
+    expect(firstBody.printed_count).toBe(2)
+    expect(firstBody.label_print_qty).toBe(2)
+    expect(firstBody.is_reprint).toBe(false)
+
+    // ---------------- 重打（TC-LE-03） ----------------
+    // ⚠️ **`window.print()` 在 headless Chromium 里是无副作用的空操作**，
+    //   而「打印」按钮是「先登记、再调起打印」两件事连做 —— 所以这条只能断**登记**
+    //   那一半。另一半（真的出纸）**任何自动化都验不了**，别假装能验。
+    // ⚠️ 点 label 里的 **checkbox** 而不是文字：「重打」这两个字同时出现在
+    //   label 与它包着的 span 上，按文本点会命中两个元素（strict mode 报歧义）。
+    //   antd 的 checkbox 的真实 input 是 `input[type=checkbox]`。
+    await page.locator('input[type="checkbox"]').first().check()
+    // ⚠️ **先不填批次序号**：`print_seq` 未填时前端不会带这个键，后端报 **`10002`**
+    //   （少一个必填业务参数，与缺 `hands_seq` 同类）。⚠️ **不是 `10008`** ——
+    //   `10008` 是「这个批次号用过了」（`03 §6` 修订记录第 6 条），两者语义不同，
+    //   而 router 的 docstring 此前把缺参写成了 `10008`（已一并更正）。
+    //   「重打必带 print_seq」这条规则以前只有一句注释守着，现在有断言了。
+    const missingSeq = page.waitForResponse(
+      (r) => r.url().includes('/label-prints') && r.request().method() === 'POST',
+    )
+    await page.getByRole('button', { name: /^打\s*印$/ }).first().click()
+    const missingBody = await readEnvelope(missingSeq)
+    expect(missingBody.code).toBe(10002)
+    // ⚠️ 类名是 `ant-message-error`（antd 4 把类型挂在 **content 那一层**上，
+    //   外层 notice 恒为 `ant-message-notice`）—— 写 `ant-message-notice-error`
+    //   会一直等不到，且看不出是类名记错了。
+    //   断言「**出现了 error 提示**」而不是它的文案：`LabelPrint.vue` 的 catch
+    //   弹的是 `error.message`（业务原文），不是写死的「打印登记失败」——
+    //   那句兜底文案只在**没有 message** 时才出现。按文案断言会把「业务提示换了个
+    //   说法」变成一次假红，而真正该守的「用户看到的是错误提示、不是成功」与文案无关。
+    // ⚠️ **必须 `.last()`**：antd 的提示是**堆叠**的，前面失败那次的还没消失，
+    //   不加 `.last()` 就是 strict mode 报「匹配到 2 个」—— 报错与「提示没出现」
+    //   长得完全不像，而实际是「出现了两次」。
+    await expect(page.locator('.ant-message-error').last()).toBeVisible({ timeout: 15_000 })
+
+    // 补上批次序号再打一次：这一次必须是**新行**（print_ids 与第一次不重叠）
+    const reprint = page.waitForResponse(
+      (r) => r.url().includes('/label-prints') && r.request().method() === 'POST',
+    )
+    // ⚠️ 断**请求体里真的有 print_seq**：只断响应码不够 ——
+    //   上一版这里写的还是 `Form.Item name` 抢 `v-model` 的旧结论，而真实原因是
+    //   antd 受控属性叫 `value` 不叫 `modelValue`（详见 LabelPrint.vue 那段注释）。
+    //   那时这一框**填了字根本没进 model**，请求体里压根没这个键。响应码 `10002`
+    //   只能证明「后端发现缺参」，证不了「用户填的值到了没有」。
+    await page.locator('.ant-input-number-input').last().fill('1')
+    await page.getByRole('button', { name: /^打\s*印$/ }).first().click()
+    await expect(page.getByText('重打登记成功').first()).toBeVisible({ timeout: 15_000 })
+    const reprintBody = await readData<{
+      print_ids: string[]
+      printed_count: number
+      label_print_qty: number
+      is_reprint: boolean
+      print_seq: number | null
+    }>(reprint)
+    expect(reprintBody.is_reprint).toBe(true)
+    expect(reprintBody.print_seq).toBe(1)
+    // ⚠️ **新行**：重打是追加一条留痕、不是改原行 —— 「重打产生新行」是这张卡的
+    //   核心契约，断言「数量对」验不出「有没有覆盖原行」
+    expect(reprintBody.print_ids).toHaveLength(2)
+    for (const id of reprintBody.print_ids) {
+      expect(firstBody.print_ids).not.toContain(id)
+    }
+    // 重打**也累加**累计张数（LabelPrintOut 的 description 明写）
+    expect(reprintBody.label_print_qty).toBe(4)
+
+    // ★ **同一个批次序号再打一次 → `10008`**（03 §6 修订记录第 6 条）。
+    //   这是「没有批次号就无法去重」的**直接证据**：批次号重复必须被拒绝，
+    //   否则重打会退化成「又打了一次正常打印」。而 `04 §7.16` 的 `print_seq`
+    //   **没有唯一索引**，去重全靠 service 里那三步 —— 所以这一条只有端到端才验得了。
+    //   ⚠️ 与上面「缺 `print_seq`」是**不同的码**：缺参 `10002`、重复 `10008`。
+    const duplicateSeq = page.waitForResponse(
+      (r) => r.url().includes('/label-prints') && r.request().method() === 'POST',
+    )
+    await page.getByRole('button', { name: /^打\s*印$/ }).first().click()
+    expect((await readEnvelope(duplicateSeq)).code).toBe(10008)
+    await expect(page.locator('.ant-message-error').last()).toBeVisible({ timeout: 15_000 })
 
     // ---------------- 回到列表确认落库 ----------------
     await page.goto('/bundling/orders')

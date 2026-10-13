@@ -126,6 +126,69 @@ describe('LabelPrint.vue', () => {
     expect(printedQty[0]?.props('min')).toBe(1)
   })
 
+  /**
+   * ★ 断**用户看到的输入框**，而不是组件的 props。
+   *
+   * ⚠️ 本页曾经把四个 antd 控件写成 `v-model`（应为 `v-model:value`）。后果是
+   *   Vue 把值当 `modelValue` 传给子组件，而 antd 的受控属性叫 `value` ——
+   *   于是它变成一个**透传的 DOM 属性**（`<div modelvalue="1" …>`），
+   *   框里**显示空白**、用户**打字不生效**（`print_seq` 压根没进请求体）。
+   *
+   *   为什么单测没抓到：上面那条用例断的是 `InputNumber` 的 **props**
+   *   （`min`/`max`/`placeholder`），那些**确实传对了** —— 断的是
+   *   「组件拿到什么」，没断「用户看到什么」。而**只有渲染后的 DOM 里那个
+   *   `<input>` 的 `value` 才是用户看到的东西**。
+   *
+   * ⚠️ 这也是本页「写错的那一处把类型错误一起吞掉」的教训：写成 `v-model`
+   *   时 `print_seq: number | undefined` 不受 `exactOptionalPropertyTypes` 约束
+   *   （因为 antd 没声明 `modelValue` 这个 prop），于是 vue-tsc 全绿。
+   */
+  it('输入框显示的是模型里的值（不是空白）', async () => {
+    const wrapper = mountLabelPrint()
+    await wrapper.vm.$nextTick()
+    await settle()
+
+    // 起始/结束手号（handsRange 由 bundles 推出 1..2）、每手打印张数
+    const values = wrapper
+      .findAll('.ant-input-number-input')
+      .map((input) => (input.element as HTMLInputElement).value)
+    expect(values).toEqual(['1', '2', '1'])
+    // ⚠️ 顺带确认没有 `modelvalue` 这种**透传属性**落在 DOM 上 ——
+    //   它的存在就说明有人写成了 `v-model`
+    expect(wrapper.find('[modelvalue]').exists()).toBe(false)
+  })
+
+  /**
+   * 用户改「每手打印张数」必须真的进 **API 请求体**。
+   *
+   * ⚠️ 断请求体而不是断组件内部状态：`<script setup>` 不 expose 内部变量，
+   *   硬取 `wrapper.vm.printParams` 既取不到、又会把测试绑到实现细节上。
+   *   而「用户填的数字有没有送到后端」正是这条要守的东西。
+   */
+  it('用户改输入框，填的值会进请求体', async () => {
+    const wrapper = mountLabelPrint()
+    await wrapper.vm.$nextTick()
+    await settle()
+
+    await findButton(wrapper, '生成预览').trigger('click')
+    await settle()
+    // ⚠️ 驱动**原生 `<input>`** 而不是组件：`setValue` 组件只改 prop，
+    //   不会走 antd 内部那条「输入 → update:value」的链，于是 model 不动
+    //   （同 `LineEditor.test.ts` 的 `setValue` + `change` 两步）。
+    const printedQty = wrapper.findAll('input[role="spinbutton"]').at(-1)
+    await printedQty?.setValue('3')
+    await printedQty?.trigger('change')
+    await settle()
+
+    await findButton(wrapper, '打印').trigger('click')
+    await settle()
+
+    expect(registerLabelPrints).toHaveBeenCalledWith(
+      TEST_ORDER_ID,
+      expect.objectContaining({ printed_qty: 3, hands_seq: 1, size_code: 'XL' }),
+    )
+  })
+
   it('generates preview when clicking preview button', async () => {
     const wrapper = mountLabelPrint()
     await wrapper.vm.$nextTick()

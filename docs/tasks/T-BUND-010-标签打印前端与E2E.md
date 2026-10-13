@@ -53,7 +53,7 @@
 - [x] `pnpm test:unit` / `pnpm lint` / `pnpm typecheck` 全过
 - [x] `pnpm e2e p1-bundling-flow` 通过
 - [x] 标签打印预览含手号、件数、二维码、条码
-- [ ] 重打产生 `bundle_label_prints` 新行且 `is_reprint=true` —— **E2E 未覆盖**（见遗留问题）
+- [x] 重打产生 `bundle_label_prints` 新行且 `is_reprint=true`（变更 0143 补齐）
 - [x] 单文件 ≤400 行；闸门 1-5 全绿（含镜像构建）
 
 ## 测试清单
@@ -62,7 +62,7 @@
 | --- | --- | --- | --- |
 | TC-LE-01 | 打印预览含手号 | 「第 3 手 / 共 5 手」 | ✅ `LabelPrint.test.ts` |
 | TC-LE-02 | 打印样式 | 40mm×40mm，无交互元素 | ✅ `LabelPrint.css` + `@media print`（构建产物内作用域标记完好） |
-| TC-LE-03 | 重打 | `is_reprint=true` + 日志 | ✅ 单测断参数；**E2E 未覆盖** |
+| TC-LE-03 | 重打 | `is_reprint=true` + 新行 + 批次号重复拒绝 | ✅ E2E 三条：缺 `print_seq` → `10002`；重打产出**与首次不重叠**的 `print_ids` 且累计张数累加；**同批次号再打 → `10008`** |
 | TC-LE-04 | E2E 审核 | 码数=手数 | ✅ `p1-bundling-flow.spec.ts`（数的是 `GET /bundles` 的**真实码行**，不是表头汇总） |
 | TC-LE-05 | E2E 刷新后仍在 | 数据持久化 | ✅ 末尾回列表核对单号 |
 
@@ -96,7 +96,7 @@
 
 | # | 问题 | 登记到 |
 | --- | --- | --- |
-| E2E 未覆盖**重打**（勾 `is_reprint` + 填 `print_seq` → 断言 `bundle_label_prints` 新行）：`window.print()` 在 headless Chromium 里是无副作用的空操作，而「先登记再打印」的顺序只有登记这一半可断 | `docs/12` L-117（待登记） |
+| 「点打印真的出纸」永远验不了：`window.print()` 在 headless Chromium 里是无副作用的空操作。已能断的那一半（登记）现已全覆盖 | 不可解决，不必再登记 |
 | Playwright 验收视口被 `devices['Desktop Chrome']` 静默覆盖成 1280×720 | `docs/12` L-116 |
 
 ## 自检清单
