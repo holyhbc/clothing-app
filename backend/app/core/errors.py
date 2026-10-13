@@ -97,6 +97,18 @@ class ErrorCode(IntEnum):
     #: ``tests/test_errors_registry.py::DEFERRED_CODES``。
     #: 计件已结算 / 已计件，不可修改（单码作废与反审核共用这一个判定）
     PIECEWORK_SETTLED = 32003
+    #: 同一打菲号本工序已被**他人**计件（ADR-0016 决策 3「一码一员工」）。
+    #: ⚠️ 判定依据是 ``bundles.counted_at IS NOT NULL``，**不是**「查流水表有没有别人的行」
+    #: —— 部分生产时 ``counted_qty < bundle_qty`` 仍算已计件。
+    #: ⚠️ **同一员工重试永远走幂等 200**（``idempotent=true``），永不返回本码。
+    PIECEWORK_COUNTED_BY_OTHER = 32001
+    #: 该员工当日未绑定此工序（BR-PW-04：绑定当天有效，次日需重扫）
+    PIECEWORK_NOT_BOUND = 32002
+    #: 数量必须为整件（尾数不计件、不入库，09 §4.2）
+    PIECEWORK_QTY_NOT_INTEGER = 32005
+    #: 计件数量超过该手件数（**超产**，ADR-0016）。
+    #: ⚠️ 超产**只能**靠追加手解决（新裁剪 + 新打菲），不许改数绕过。
+    PIECEWORK_OVER_PRODUCTION = 32006
 
     # ---- 40xxx 库存 ----
     STOCK_INSUFFICIENT = 40001
@@ -149,6 +161,10 @@ HTTP_STATUS_BY_CODE: dict[ErrorCode, int] = {
     ErrorCode.BUNDLE_HAND_DUPLICATED: HTTPStatus.CONFLICT,
     ErrorCode.BUNDLE_ALREADY_PRINTED: HTTPStatus.CONFLICT,
     ErrorCode.PIECEWORK_SETTLED: HTTPStatus.CONFLICT,
+    ErrorCode.PIECEWORK_COUNTED_BY_OTHER: HTTPStatus.CONFLICT,
+    ErrorCode.PIECEWORK_NOT_BOUND: HTTPStatus.FORBIDDEN,
+    ErrorCode.PIECEWORK_QTY_NOT_INTEGER: HTTPStatus.UNPROCESSABLE_ENTITY,
+    ErrorCode.PIECEWORK_OVER_PRODUCTION: HTTPStatus.CONFLICT,
     ErrorCode.STOCK_INSUFFICIENT: HTTPStatus.CONFLICT,
     ErrorCode.BATCH_STOCK_INSUFFICIENT: HTTPStatus.CONFLICT,
     ErrorCode.INTERNAL: HTTPStatus.INTERNAL_SERVER_ERROR,

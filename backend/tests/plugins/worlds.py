@@ -17,10 +17,12 @@ conftest 的命名空间让 pytest 注册，但那会让「这个夹具定义在
 那正是这个文件 docstring 里记着的 ruff F811 教训。
 """
 
+from collections.abc import AsyncIterator
 from typing import Any
 from uuid import uuid4
 
 import pytest_asyncio
+from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -189,3 +191,49 @@ async def _purge_persisted_world(
                 await conn.execute(text(stmt))
     finally:
         await engine.dispose()
+
+
+# ------------------------------------------------------------------ 计件模块的最小世界
+
+
+@pytest_asyncio.fixture
+async def piecework_world(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: Any, bundling_world: dict[str, Any]
+) -> dict[str, Any]:
+    """计件测试用的「已审核的单 + 已配计件工序与单价 + 一个已绑定的员工」。
+
+    为什么不能只靠 ``bundling_world``：它铺的是「裁剪 + 打菲单」，而计件要多三样 ——
+    **款号工序配置**（``is_piecework``）、**当日生效单价**（``operation_rates``）、
+    **员工当日绑定**（``piecework_bindings``）。少一样，扫码会挂在 ② / ④ / ③ 上，
+    而那三个错误码与「规则写错」长得一模一样（都只是「没成功」），报错指向的
+    方向完全不同。
+
+    建造逻辑在 :func:`tests.factories.piecework_world.build_world`。
+    """
+    from tests.factories.piecework_world import build_world
+
+    return await build_world(client, db_session, auth_headers, bundling_world)
+
+
+@pytest_asyncio.fixture
+async def piecework_world_persisted(
+    app_database_url: str, migration_url: str
+) -> AsyncIterator[dict[str, Any]]:
+    """计件并发用的**真提交**世界（docs/10 §5.4）。
+
+    为什么必须真提交：并发任务各用自己的连接，外层事务没提交的话它们根本看不见
+    这张码（症状是 20 个任务全部报 ``31001`` 打菲号不存在 —— 报错看着像「码没生成」，
+    真因却是事务边界，排查方向完全跑偏）。
+
+    ⚠️ **必须清理**：真提交不在回滚范围内，这些行会长期留在库里，而
+    ``test_stock_views_and_grants`` / ``test_document_logs`` 有「全库计数」断言。
+    清理用迁移账号（``erp_app`` 被 REVOKE 了 DELETE，docs/04 §6.2.1）。
+
+    ⚠️ **给纯 id 而不是 ORM 实体**：实体绑在一个即将 dispose 的 session 上，
+    带出夹具会在 GC 时抛 ``ResourceWarning: unclosed socket``，而 pytest 把它变成
+    **用例失败** —— 报错完全看不出根因是夹具泄漏了连接。
+    """
+    from tests.factories.piecework_world import build_persisted_world
+
+    async for value in build_persisted_world(app_database_url, migration_url):
+        yield value

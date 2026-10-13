@@ -217,6 +217,60 @@
         "title": "ApiResponse[BundlingOrderOut]",
         "type": "object"
       },
+      "ApiResponse_CountPieceworkOut_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CountPieceworkOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[CountPieceworkOut]",
+        "type": "object"
+      },
       "ApiResponse_CuttingOrderOut_": {
         "properties": {
           "code": {
@@ -3737,6 +3791,188 @@
           "rate_source"
         ],
         "title": "CopiedPriceOut",
+        "type": "object"
+      },
+      "CountPieceworkIn": {
+        "additionalProperties": false,
+        "description": "管理端扫码计件请求（``POST /piecework/count``，工位机代员工计件）。\n\n⚠️ ``qty`` **可选**：不传 = 这一手全件（``bundles.bundle_qty``，BR-PW-26），\n传了是**部分生产**（BR-PW-27，≤ ``bundle_qty``）。\n⚠️ **没有默认值 1**：09 §4.2 与 ADR-0016 都否掉了「扫码 +1 件」的旧口径，\n留一个 ``= 1`` 会让漏传的请求静默按 1 件计，事后无从发现。",
+        "properties": {
+          "bundle_no": {
+            "description": "打菲号（扫出来的）",
+            "maxLength": 64,
+            "minLength": 8,
+            "title": "Bundle No",
+            "type": "string"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "扫码枪设备号",
+            "title": "Device Id"
+          },
+          "employee_id": {
+            "description": "操作员（工位机代员工计件，故必传）",
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "qty": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "exclusiveMinimum": 0.0,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                    "type": "string"
+                  }
+                ],
+                "description": "本次实际完成的件数（整件）"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "★ 可选。不传 = 该手全件（bundles.bundle_qty）；传了必须 0 < qty ≤ bundle_qty",
+            "title": "Qty"
+          },
+          "scanned_at": {
+            "description": "扫码时刻；work_date 由它按 Asia/Shanghai 推导",
+            "format": "date-time",
+            "title": "Scanned At",
+            "type": "string"
+          },
+          "station_id": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "工位机编号",
+            "title": "Station Id"
+          }
+        },
+        "required": [
+          "bundle_no",
+          "employee_id",
+          "scanned_at"
+        ],
+        "title": "CountPieceworkIn",
+        "type": "object"
+      },
+      "CountPieceworkOut": {
+        "description": "扫码计件响应（``04-计件 §6.1``「响应要点」列逐项）。\n\n## 手数与件数**并列**，不是二选一\n\nADR-0016 §6：车间的真实产出单位是「手」。60 件的手做完了 → 主计数 **+1 手**、\n副计数 +60 件；只做完 28 件 → 主计数**仍 +1 手**、副计数 +28。\n所以响应里 ``hands`` 与 ``qty`` 都给，``hands`` 才是主计数。",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "string"
+          },
+          "bundle_no": {
+            "title": "Bundle No",
+            "type": "string"
+          },
+          "bundle_qty": {
+            "description": "这一手共几件（权威列 bundles.bundle_qty）",
+            "title": "Bundle Qty",
+            "type": "string"
+          },
+          "color_name": {
+            "title": "Color Name",
+            "type": "string"
+          },
+          "hands": {
+            "description": "第 N 手",
+            "title": "Hands",
+            "type": "integer"
+          },
+          "hands_total_of_size": {
+            "description": "该尺码共 M 手",
+            "title": "Hands Total Of Size",
+            "type": "integer"
+          },
+          "idempotent": {
+            "default": false,
+            "description": "True = 幂等命中，未新增流水",
+            "title": "Idempotent",
+            "type": "boolean"
+          },
+          "log_id": {
+            "format": "uuid",
+            "title": "Log Id",
+            "type": "string"
+          },
+          "operation_no": {
+            "title": "Operation No",
+            "type": "string"
+          },
+          "qty": {
+            "description": "本次实际件数（字符串，05 §3）",
+            "title": "Qty",
+            "type": "string"
+          },
+          "size_name": {
+            "title": "Size Name",
+            "type": "string"
+          },
+          "style_no": {
+            "title": "Style No",
+            "type": "string"
+          },
+          "today_amount": {
+            "title": "Today Amount",
+            "type": "string"
+          },
+          "today_hands": {
+            "description": "★ 主计数：该员工今日手数",
+            "title": "Today Hands",
+            "type": "integer"
+          },
+          "today_qty": {
+            "title": "Today Qty",
+            "type": "string"
+          },
+          "unit_price": {
+            "title": "Unit Price",
+            "type": "string"
+          },
+          "work_date": {
+            "format": "date",
+            "title": "Work Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "log_id",
+          "bundle_no",
+          "style_no",
+          "operation_no",
+          "color_name",
+          "size_name",
+          "hands",
+          "hands_total_of_size",
+          "qty",
+          "bundle_qty",
+          "unit_price",
+          "amount",
+          "work_date",
+          "today_hands",
+          "today_qty",
+          "today_amount"
+        ],
+        "title": "CountPieceworkOut",
         "type": "object"
       },
       "CuttingEntryMode": {
@@ -11385,7 +11621,7 @@
     },
     "/api/v1/bundling-orders/{order_id}/label-prints": {
       "post": {
-        "description": "打印登记。**只写痕迹**，不生成码、不改单据状态。\n\n⚠️ 与「标签导出」**不合并**（03 §6）：实物标签是**先印后核**的 —— 导出 5 手可能只印了\n3 手（卡纸 / 只补两手），合并之后「导出了 5 手」会被记成「打印了 5 手」，\n而车间实物只有 3 张：留痕一旦与实物不符，它就不再是对账证据。\n⚠️ ``hands_seq`` 必传（缺失 → ``10002``）、``size_code`` 必传口径是「每尺码各自编号」，\n重打必带 ``print_seq``（否则与首次打印无从区分 → ``10008``）。\n⚠️ ``Idempotency-Key``：同键同 body → 200 + 首次结果；同键不同 body → ``10002``（05 §5）。",
+        "description": "打印登记。**只写痕迹**，不生成码、不改单据状态。\n\n⚠️ 与「标签导出」**不合并**（03 §6）：实物标签是**先印后核**的 —— 导出 5 手可能只印了\n3 手（卡纸 / 只补两手），合并之后「导出了 5 手」会被记成「打印了 5 手」，\n而车间实物只有 3 张：留痕一旦与实物不符，它就不再是对账证据。\n⚠️ ``hands_seq`` 必传（缺失 → ``10002``）、``size_code`` 必传口径是「每尺码各自编号」，\n重打必带 ``print_seq``（缺失 → ``10002``，与缺 ``hands_seq`` 同类：少一个必填业务参数；\n⚠️ **不是** ``10008`` —— 那是「这个批次号用过了」，见 ``03 §6`` 修订记录第 6 条）。\n⚠️ ``Idempotency-Key``：同键同 body → 200 + 首次结果；同键不同 body → ``10002``（05 §5）。",
         "operationId": "register_label_prints_api_v1_bundling_orders__order_id__label_prints_post",
         "parameters": [
           {
@@ -16544,6 +16780,55 @@
           "基础资料"
         ],
         "x-permission": "base:operation:manage"
+      }
+    },
+    "/api/v1/piecework/count": {
+      "post": {
+        "description": "工位机扫码计件（``04-计件 §5.1`` ①~⑪）。\n\n⚠️ **管理端带 ``employee_id``**：工位机是**组长替员工扫码**，请求体必须有操作员\n（``04-计件 §6.1``）。员工端那个端点**不接受** ``employee_id``（从 token 取），\n两者共用同一个 service 方法 —— 规则完全一致，入口形态不同。\n\n⚠️ **不传 ``qty`` 就是这一手全件**（``bundles.bundle_qty``，BR-PW-26），\n传了才是部分生产（BR-PW-27，≤ 该手件数）。这里**没有**默认 1 —— 那是\nADR-0016 之前的「扫码 +1 件」旧口径。\n\n⚠️ **同一员工重试永远返回 200 + ``idempotent=true``**，不返回 ``32001``；\n``32001`` 只给**别人**已计的码（ADR-0016 决策 3，BR-PW-16/24）。",
+        "operationId": "count_piecework_api_v1_piecework_count_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CountPieceworkIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CountPieceworkOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "扫码计件（★ 一码一员工；不传 qty = 该手全件，传了 = 部分生产；支持 Idempotency-Key）",
+        "tags": [
+          "计件"
+        ],
+        "x-idempotency-key": true,
+        "x-permission": "piecework:count"
       }
     },
     "/api/v1/product-categories": {

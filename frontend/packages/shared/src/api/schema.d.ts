@@ -517,7 +517,8 @@ export interface paths {
          *     3 手（卡纸 / 只补两手），合并之后「导出了 5 手」会被记成「打印了 5 手」，
          *     而车间实物只有 3 张：留痕一旦与实物不符，它就不再是对账证据。
          *     ⚠️ ``hands_seq`` 必传（缺失 → ``10002``）、``size_code`` 必传口径是「每尺码各自编号」，
-         *     重打必带 ``print_seq``（否则与首次打印无从区分 → ``10008``）。
+         *     重打必带 ``print_seq``（缺失 → ``10002``，与缺 ``hands_seq`` 同类：少一个必填业务参数；
+         *     ⚠️ **不是** ``10008`` —— 那是「这个批次号用过了」，见 ``03 §6`` 修订记录第 6 条）。
          *     ⚠️ ``Idempotency-Key``：同键同 body → 200 + 首次结果；同键不同 body → ``10002``（05 §5）。
          */
         post: operations["register_label_prints_api_v1_bundling_orders__order_id__label_prints_post"];
@@ -1433,6 +1434,37 @@ export interface paths {
          * @description 停用。``reason`` 缺失 → ``10001``（Schema 拦），空串 → ``10002``。
          */
         post: operations["disable_resource_api_v1_operations__code__disables_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/piecework/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 扫码计件（★ 一码一员工；不传 qty = 该手全件，传了 = 部分生产；支持 Idempotency-Key）
+         * @description 工位机扫码计件（``04-计件 §5.1`` ①~⑪）。
+         *
+         *     ⚠️ **管理端带 ``employee_id``**：工位机是**组长替员工扫码**，请求体必须有操作员
+         *     （``04-计件 §6.1``）。员工端那个端点**不接受** ``employee_id``（从 token 取），
+         *     两者共用同一个 service 方法 —— 规则完全一致，入口形态不同。
+         *
+         *     ⚠️ **不传 ``qty`` 就是这一手全件**（``bundles.bundle_qty``，BR-PW-26），
+         *     传了才是部分生产（BR-PW-27，≤ 该手件数）。这里**没有**默认 1 —— 那是
+         *     ADR-0016 之前的「扫码 +1 件」旧口径。
+         *
+         *     ⚠️ **同一员工重试永远返回 200 + ``idempotent=true``**，不返回 ``32001``；
+         *     ``32001`` 只给**别人**已计的码（ADR-0016 决策 3，BR-PW-16/24）。
+         */
+        post: operations["count_piecework_api_v1_piecework_count_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3049,6 +3081,35 @@ export interface components {
             code: number;
             /** @description 业务数据；失败时为 null */
             data?: components["schemas"]["BundlingOrderOut"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
+        /** ApiResponse[CountPieceworkOut] */
+        ApiResponse_CountPieceworkOut_: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["CountPieceworkOut"] | null;
             /**
              * Details
              * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
@@ -5050,6 +5111,120 @@ export interface components {
              * @description 四舍五入到 6 位后的新价
              */
             target_unit_price: string;
+        };
+        /**
+         * CountPieceworkIn
+         * @description 管理端扫码计件请求（``POST /piecework/count``，工位机代员工计件）。
+         *
+         *     ⚠️ ``qty`` **可选**：不传 = 这一手全件（``bundles.bundle_qty``，BR-PW-26），
+         *     传了是**部分生产**（BR-PW-27，≤ ``bundle_qty``）。
+         *     ⚠️ **没有默认值 1**：09 §4.2 与 ADR-0016 都否掉了「扫码 +1 件」的旧口径，
+         *     留一个 ``= 1`` 会让漏传的请求静默按 1 件计，事后无从发现。
+         */
+        CountPieceworkIn: {
+            /**
+             * Bundle No
+             * @description 打菲号（扫出来的）
+             */
+            bundle_no: string;
+            /**
+             * Device Id
+             * @description 扫码枪设备号
+             */
+            device_id?: string | null;
+            /**
+             * Employee Id
+             * Format: uuid
+             * @description 操作员（工位机代员工计件，故必传）
+             */
+            employee_id: string;
+            /**
+             * Qty
+             * @description ★ 可选。不传 = 该手全件（bundles.bundle_qty）；传了必须 0 < qty ≤ bundle_qty
+             */
+            qty?: (number | string) | null;
+            /**
+             * Scanned At
+             * Format: date-time
+             * @description 扫码时刻；work_date 由它按 Asia/Shanghai 推导
+             */
+            scanned_at: string;
+            /**
+             * Station Id
+             * @description 工位机编号
+             */
+            station_id?: string | null;
+        };
+        /**
+         * CountPieceworkOut
+         * @description 扫码计件响应（``04-计件 §6.1``「响应要点」列逐项）。
+         *
+         *     ## 手数与件数**并列**，不是二选一
+         *
+         *     ADR-0016 §6：车间的真实产出单位是「手」。60 件的手做完了 → 主计数 **+1 手**、
+         *     副计数 +60 件；只做完 28 件 → 主计数**仍 +1 手**、副计数 +28。
+         *     所以响应里 ``hands`` 与 ``qty`` 都给，``hands`` 才是主计数。
+         */
+        CountPieceworkOut: {
+            /** Amount */
+            amount: string;
+            /** Bundle No */
+            bundle_no: string;
+            /**
+             * Bundle Qty
+             * @description 这一手共几件（权威列 bundles.bundle_qty）
+             */
+            bundle_qty: string;
+            /** Color Name */
+            color_name: string;
+            /**
+             * Hands
+             * @description 第 N 手
+             */
+            hands: number;
+            /**
+             * Hands Total Of Size
+             * @description 该尺码共 M 手
+             */
+            hands_total_of_size: number;
+            /**
+             * Idempotent
+             * @description True = 幂等命中，未新增流水
+             * @default false
+             */
+            idempotent: boolean;
+            /**
+             * Log Id
+             * Format: uuid
+             */
+            log_id: string;
+            /** Operation No */
+            operation_no: string;
+            /**
+             * Qty
+             * @description 本次实际件数（字符串，05 §3）
+             */
+            qty: string;
+            /** Size Name */
+            size_name: string;
+            /** Style No */
+            style_no: string;
+            /** Today Amount */
+            today_amount: string;
+            /**
+             * Today Hands
+             * @description ★ 主计数：该员工今日手数
+             */
+            today_hands: number;
+            /** Today Qty */
+            today_qty: string;
+            /** Unit Price */
+            unit_price: string;
+            /**
+             * Work Date
+             * Format: date
+             */
+            work_date: string;
         };
         /**
          * CuttingEntryMode
@@ -10968,6 +11143,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_DisableOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    count_piecework_api_v1_piecework_count_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CountPieceworkIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_CountPieceworkOut_"];
                 };
             };
             /** @description Validation Error */
