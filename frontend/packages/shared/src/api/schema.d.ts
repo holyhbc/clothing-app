@@ -1440,6 +1440,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/piecework-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 计件流水分页列表（★ 手数与件数并列；数据范围由 service 注入）
+         * @description 流水列表。⚠️ **筛选与导出、汇总完全同源**（见 :func:`_query` 的注）。
+         *
+         *     ⚠️ 默认排序 ``-work_date`` 且**带 ``employee_id`` 兜底**：排序键不唯一时，
+         *     「同一行在第 1 页和第 2 页各出现一次」看起来就像分页坏了。
+         */
+        get: operations["list_piecework_logs_api_v1_piecework_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/piecework-logs/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 导出租水 CSV（UTF-8 BOM；与列表同一套筛选；上限 500 行）
+         * @description 导出 CSV。
+         *
+         *     ⚠️ 需要**两个**权限点：``piecework:export``（07 §2.2 已登记并授予计件员）
+         *     + ``system:export:manage``（导出总开关，防拖库）。
+         *     ⚠️ ``04-计件 §6.1`` 那一格原写 ``piecework:read`` —— 与
+         *     「权限点已登记却没人用」矛盾，本次按 ``07 §2.2`` 修正并同步文档。
+         *
+         *     ⚠️ **BOM 必须真写进字节里**：Excel 不看 charset 参数去猜编码，没 BOM 就按
+         *     GBK 打开 → 中文全是乱码，而「生成成功、下载打不开」排查起来极贵。
+         *     ⚠️ 文件名带时间戳（05 §9.1）：同一份下载两次会命中浏览器缓存，于是
+         *     「重导了一次」看到的还是旧文件。
+         */
+        get: operations["export_piecework_logs_api_v1_piecework_logs_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/piecework-logs/{log_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 流水详情（+ 码信息 + 关联红冲流水；查不到与越权都回 12002）
+         * @description ⚠️ **按 ID 直查也要过数据范围**（07 §3.2 铁律 2）—— 列表过滤了不代表
+         *     「把 id 换一下就能看到别人的」，那是最常见的一处越权。
+         */
+        get: operations["get_piecework_log_api_v1_piecework_logs__log_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/piecework/count": {
         parameters: {
             query?: never;
@@ -1465,6 +1539,53 @@ export interface paths {
          *     ``32001`` 只给**别人**已计的码（ADR-0016 决策 3，BR-PW-16/24）。
          */
         post: operations["count_piecework_api_v1_piecework_count_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/piecework/stations/{station_no}/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 工位机今日大字卡（手数为主计数）
+         * @description 工位机今日统计。
+         *
+         *     ⚠️ **不套车间数据范围**：这张卡查的是「**本工位**今日」，而工位机的 token
+         *     数据范围往往就是 SELF —— 套上车间过滤会让组别主管在工位机上看到 0，
+         *     那不是「更安全」，是「坏了」。
+         */
+        get: operations["piecework_station_today_api_v1_piecework_stations__station_no__today_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/piecework/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 计件汇总（★ 手数与件数并列；按 employee / style / operation 分组）
+         * @description 汇总。⚠️ BR-PW-31：**手数与件数并列**，车间的主计数是「手」。
+         *
+         *     ⚠️ ``total_amount`` 是**净额**（红冲取负值，``ck_piecework_logs_sign`` 钉死），
+         *     所以「汇总 ≠ 明细相加」在有红冲时不是 bug。
+         */
+        get: operations["piecework_summary_api_v1_piecework_summary_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3303,6 +3424,35 @@ export interface components {
              */
             request_id?: string | null;
         };
+        /** ApiResponse[LogDetailOut] */
+        ApiResponse_LogDetailOut_: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["LogDetailOut"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
         /** ApiResponse[LoginResponse] */
         ApiResponse_LoginResponse_: {
             /**
@@ -3567,6 +3717,35 @@ export interface components {
              */
             request_id?: string | null;
         };
+        /** ApiResponse[PageData[LogRowOut]] */
+        ApiResponse_PageData_LogRowOut__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["PageData_LogRowOut_"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
         /** ApiResponse[PageData[OperationRateOut]] */
         ApiResponse_PageData_OperationRateOut__: {
             /**
@@ -3780,6 +3959,35 @@ export interface components {
             code: number;
             /** @description 业务数据；失败时为 null */
             data?: components["schemas"]["SplitPreviewOut"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
+        /** ApiResponse[StationTodayOut] */
+        ApiResponse_StationTodayOut_: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["StationTodayOut"] | null;
             /**
              * Details
              * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
@@ -4514,6 +4722,38 @@ export interface components {
              */
             request_id?: string | null;
         };
+        /** ApiResponse[list[SummaryRowOut]] */
+        ApiResponse_list_SummaryRowOut__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /**
+             * Data
+             * @description 业务数据；失败时为 null
+             */
+            data?: components["schemas"]["SummaryRowOut"][] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
         /** ApiResponse[list[UserOptionOut]] */
         ApiResponse_list_UserOptionOut__: {
             /**
@@ -4773,6 +5013,28 @@ export interface components {
              * @description 作废时间（未作废为空）
              */
             voided_at?: unknown | null;
+        };
+        /**
+         * BundleInfo
+         * @description 详情里的 ``bundle``（§6.1「响应要点」第二行）。
+         */
+        BundleInfo: {
+            /**
+             * Bundle Qty
+             * @default 0.000
+             */
+            bundle_qty: string;
+            /** Counted By Name */
+            counted_by_name?: string | null;
+            /**
+             * Counted Qty
+             * @default 0.000
+             */
+            counted_qty: string;
+            /** Cutting Size Line Id */
+            cutting_size_line_id?: string | null;
+            /** Hands */
+            hands: number;
         };
         /**
          * BundleListOut
@@ -6236,6 +6498,155 @@ export interface components {
             workstation_no?: string | null;
         };
         /**
+         * LogDetailOut
+         * @description 流水详情（§6.1）：本体 + ``bundle`` 子对象 + 关联流水。
+         */
+        LogDetailOut: {
+            /**
+             * Amount
+             * @default 0.0000
+             */
+            amount: string;
+            bundle?: components["schemas"]["BundleInfo"] | null;
+            /** Bundle No */
+            bundle_no: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Employee Name */
+            employee_name?: string | null;
+            /** Group No */
+            group_no?: string | null;
+            /**
+             * Log Id
+             * Format: uuid
+             */
+            log_id: string;
+            log_type: components["schemas"]["PieceworkLogType"];
+            /** Operation No */
+            operation_no: string;
+            /** Payroll Id */
+            payroll_id?: string | null;
+            /**
+             * Qty
+             * @default 0.000
+             */
+            qty: string;
+            /** Remark */
+            remark?: string | null;
+            reversal_of?: components["schemas"]["RelatedLog"] | null;
+            /** Reversal Of Id */
+            reversal_of_id?: string | null;
+            /** Reversed By */
+            reversed_by?: components["schemas"]["RelatedLog"][];
+            /**
+             * Scanned At
+             * Format: date-time
+             */
+            scanned_at: string;
+            /** Style No */
+            style_no: string;
+            /**
+             * Unit Price
+             * @default 0.000000
+             */
+            unit_price: string;
+            /**
+             * Work Date
+             * Format: date
+             */
+            work_date: string;
+        };
+        /**
+         * LogRowOut
+         * @description 列表 / 导出的一行（``04-计件 §6.1``「响应要点」逐项）。
+         *
+         *     ⚠️ **手数与件数都在**：``hands`` 是第几手、``hands_total_of_size`` 是该尺码共几手，
+         *     而 ``qty`` 是这次实际做的件数（可能 < ``bundle_qty``，部分生产）。
+         *     三者混用会让主管看到「第 1 手做了 60 件」而其实是「第 2 手做了 28 件」。
+         */
+        LogRowOut: {
+            /**
+             * Amount
+             * @default 0.0000
+             */
+            amount: string;
+            /**
+             * Bundle No
+             * @description 完整不截断（BR-PW-30）：前端要拿它扫回那一张单
+             */
+            bundle_no: string;
+            /**
+             * Bundle Qty
+             * @default 0.000
+             */
+            bundle_qty: string;
+            /** Color Name */
+            color_name?: string | null;
+            /**
+             * Employee Id
+             * Format: uuid
+             */
+            employee_id: string;
+            /** Employee Name */
+            employee_name?: string | null;
+            /** Employee No */
+            employee_no?: string | null;
+            /** Group No */
+            group_no?: string | null;
+            /** Hands */
+            hands?: number | null;
+            /** Hands Total Of Size */
+            hands_total_of_size?: number | null;
+            /**
+             * Is Settled
+             * @default false
+             */
+            is_settled: boolean;
+            /**
+             * Log Id
+             * Format: uuid
+             */
+            log_id: string;
+            log_type: components["schemas"]["PieceworkLogType"];
+            /** Operation Name */
+            operation_name?: string | null;
+            /** Operation No */
+            operation_no: string;
+            /** Payroll Id */
+            payroll_id?: string | null;
+            /**
+             * Qty
+             * @default 0.000
+             */
+            qty: string;
+            /** Size Code */
+            size_code?: string | null;
+            /** Size Name */
+            size_name?: string | null;
+            /** Style No */
+            style_no: string;
+            /**
+             * Unit Price
+             * @default 0.000000
+             */
+            unit_price: string;
+            /**
+             * Work Date
+             * Format: date
+             */
+            work_date: string;
+            /** Workshop Name */
+            workshop_name?: string | null;
+        };
+        /**
          * LoginRequest
          * @description ``POST /auth/login`` 请求体。
          * @example {
@@ -6748,6 +7159,37 @@ export interface components {
             total: number;
         };
         /**
+         * PageData[LogRowOut]
+         * @example {
+         *       "items": [],
+         *       "page": 1,
+         *       "page_size": 20,
+         *       "total": 0
+         *     }
+         */
+        PageData_LogRowOut_: {
+            /**
+             * Items
+             * @description 当前页数据
+             */
+            items: components["schemas"]["LogRowOut"][];
+            /**
+             * Page
+             * @description 当前页码，从 1 起
+             */
+            page: number;
+            /**
+             * Page Size
+             * @description 每页条数，上限 200
+             */
+            page_size: number;
+            /**
+             * Total
+             * @description 总条数（用于分页器）
+             */
+            total: number;
+        };
+        /**
          * PageData[OperationRateOut]
          * @example {
          *       "items": [],
@@ -6886,6 +7328,16 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * PieceworkLogType
+         * @description 计件流水的四种来源（``docs/04 §7.1`` 的 ``CREATE TYPE piecework_log_type``）。
+         *
+         *     ⚠️ ``REVERSAL`` 是**唯一取负值**的类型，其余三类都为正 ——
+         *     ``ck_piecework_logs_sign`` 把它钉死。纠错**永远走红冲 + 重入**（INV-2），
+         *     不允许改原行。
+         * @enum {string}
+         */
+        PieceworkLogType: "SCAN" | "MANUAL" | "REVERSAL" | "SUPPLEMENT";
         /**
          * PutColorsIn
          * @description 行内颜色全量替换（``PUT /lines/{line_id}/colors``）。
@@ -7137,6 +7589,33 @@ export interface components {
              * @description 驳回原因（必填，≤500 字）
              */
             reason: string;
+        };
+        /**
+         * RelatedLog
+         * @description 关联流水（红冲 ↔ 原单）。
+         */
+        RelatedLog: {
+            /**
+             * Amount
+             * @default 0.0000
+             */
+            amount: string;
+            /**
+             * Log Id
+             * Format: uuid
+             */
+            log_id: string;
+            log_type: components["schemas"]["PieceworkLogType"];
+            /**
+             * Qty
+             * @default 0.000
+             */
+            qty: string;
+            /**
+             * Work Date
+             * Format: date
+             */
+            work_date: string;
         };
         /**
          * ReplacePermissionsRequest
@@ -7625,6 +8104,40 @@ export interface components {
              * @description 未计件手数合计
              */
             uncounted_hands: number;
+        };
+        /**
+         * StationTodayOut
+         * @description 工位机大字卡数据（``GET /piecework/stations/{station_no}/today``）。
+         */
+        StationTodayOut: {
+            /** Last Bundle No */
+            last_bundle_no?: string | null;
+            /** Last Hands */
+            last_hands?: number | null;
+            /** Last Scanned At */
+            last_scanned_at?: string | null;
+            /** Station No */
+            station_no: string;
+            /**
+             * Today Amount
+             * @default 0.0000
+             */
+            today_amount: string;
+            /**
+             * Today Hands
+             * @description ★ 主计数：今日做了多少**手**
+             */
+            today_hands: number;
+            /**
+             * Today Qty
+             * @default 0.000
+             */
+            today_qty: string;
+            /**
+             * Work Date
+             * Format: date
+             */
+            work_date: string;
         };
         /**
          * StatisticsOut
@@ -8284,6 +8797,44 @@ export interface components {
              * @description 建议款号，如 HB-2026-0001；**不保证最终被采用**
              */
             style_no: string;
+        };
+        /**
+         * SummaryRowOut
+         * @description 汇总行（``GET /piecework/summary``）。
+         *
+         *     ⚠️ **手数与件数并列**（BR-PW-31、ADR-0016 §6）：车间的主计数是「手」，
+         *     只给 ``total_qty`` 的话主管看到的是「做完了 3600 件」而不是「做了 60 手」。
+         */
+        SummaryRowOut: {
+            /** Color Name */
+            color_name?: string | null;
+            /** Employee Id */
+            employee_id?: string | null;
+            /** Employee Name */
+            employee_name?: string | null;
+            /** Employee No */
+            employee_no?: string | null;
+            /** Group No */
+            group_no?: string | null;
+            /** Operation No */
+            operation_no?: string | null;
+            /** Style No */
+            style_no?: string | null;
+            /**
+             * Total Amount
+             * @default 0.0000
+             */
+            total_amount: string;
+            /**
+             * Total Hands
+             * @description ★ 手数（COUNT(*)）
+             */
+            total_hands: number;
+            /**
+             * Total Qty
+             * @default 0.000
+             */
+            total_qty: string;
         };
         /**
          * TemplateCopyIn
@@ -11156,6 +11707,122 @@ export interface operations {
             };
         };
     };
+    list_piecework_logs_api_v1_piecework_logs_get: {
+        parameters: {
+            query?: {
+                work_date_from?: string | null;
+                work_date_to?: string | null;
+                style_no?: string | null;
+                operation_no?: string | null;
+                workshop_id?: string | null;
+                group_no?: string | null;
+                employee_id?: string | null;
+                log_type?: components["schemas"]["PieceworkLogType"] | null;
+                bundle_no?: string | null;
+                is_settled?: boolean | null;
+                sort?: string;
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PageData_LogRowOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_piecework_logs_api_v1_piecework_logs_export_get: {
+        parameters: {
+            query?: {
+                work_date_from?: string | null;
+                work_date_to?: string | null;
+                style_no?: string | null;
+                operation_no?: string | null;
+                workshop_id?: string | null;
+                group_no?: string | null;
+                employee_id?: string | null;
+                log_type?: components["schemas"]["PieceworkLogType"] | null;
+                bundle_no?: string | null;
+                is_settled?: boolean | null;
+                sort?: string;
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_piecework_log_api_v1_piecework_logs__log_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 计件流水 id */
+                log_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_LogDetailOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     count_piecework_api_v1_piecework_count_post: {
         parameters: {
             query?: never;
@@ -11176,6 +11843,83 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_CountPieceworkOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    piecework_station_today_api_v1_piecework_stations__station_no__today_get: {
+        parameters: {
+            query?: {
+                work_date?: string | null;
+            };
+            header?: never;
+            path: {
+                station_no: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_StationTodayOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    piecework_summary_api_v1_piecework_summary_get: {
+        parameters: {
+            query?: {
+                group_by?: string;
+                work_date_from?: string | null;
+                work_date_to?: string | null;
+                style_no?: string | null;
+                operation_no?: string | null;
+                workshop_id?: string | null;
+                group_no?: string | null;
+                employee_id?: string | null;
+                log_type?: components["schemas"]["PieceworkLogType"] | null;
+                bundle_no?: string | null;
+                is_settled?: boolean | null;
+                sort?: string;
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_SummaryRowOut__"];
                 };
             };
             /** @description Validation Error */

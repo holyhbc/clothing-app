@@ -233,7 +233,30 @@ async def piecework_world_persisted(
     带出夹具会在 GC 时抛 ``ResourceWarning: unclosed socket``，而 pytest 把它变成
     **用例失败** —— 报错完全看不出根因是夹具泄漏了连接。
     """
-    from tests.factories.piecework_world import build_persisted_world
+    from tests.factories.piecework_world_persisted import build_persisted_world
 
     async for value in build_persisted_world(app_database_url, migration_url):
         yield value
+
+
+@pytest_asyncio.fixture
+async def other_piecework_world(
+    client: AsyncClient, db_session: AsyncSession, auth_headers: Any
+) -> dict[str, Any]:
+    """**另一个车间**的计件世界（款号也不同）。
+
+    ⚠️ 为什么必须有「另一个」：只铺一个车间的话，WORKSHOP 与 FACTORY 两个 token
+    看到的行数一样多，那条数据范围用例等于没验 —— 而这正是最该验的一条
+    （导出是绕过界面的口子，页面上看不见、CSV 里却有，审查看不出来）。
+    """
+    from tests.factories.bundling import build_world
+    from tests.factories.piecework_world import build_world as build_piecework_world
+
+    style_no = f"PW-OTHER-{uuid4().hex[:8].upper()}"
+    other = await build_world(db_session, style_no=style_no)
+    # ⚠️ **必须换 employee_no**：``approved_order`` 的审核人默认 ``A002``，
+    #    两个世界在同一个用例里各建一次 → 撞 ``uq_users_employee_no``，
+    #    报错是「工号重复」，与「数据范围对不对」隔了十万八千里。
+    return await build_piecework_world(
+        client, db_session, auth_headers, other, reviewer_employee_no="B002"
+    )

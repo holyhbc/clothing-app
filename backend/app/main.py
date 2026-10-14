@@ -66,6 +66,7 @@ def _register_module_routers(app: FastAPI) -> None:
     from app.modules.base.router import router as base_router
     from app.modules.bundling.router import router as bundling_router
     from app.modules.cutting.router import router as cutting_router
+    from app.modules.piecework.query_router import router as piecework_query_router
     from app.modules.piecework.router import router as piecework_router
     from app.modules.system.router import router as system_router
 
@@ -74,6 +75,7 @@ def _register_module_routers(app: FastAPI) -> None:
     app.include_router(bundling_router, prefix=API_PREFIX)
     app.include_router(cutting_router, prefix=API_PREFIX)
     app.include_router(piecework_router, prefix=API_PREFIX)
+    app.include_router(piecework_query_router, prefix=API_PREFIX)
     app.include_router(system_router, prefix=API_PREFIX)
 
 

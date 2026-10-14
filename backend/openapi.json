@@ -595,6 +595,60 @@
         "title": "ApiResponse[LabelPrintOut]",
         "type": "object"
       },
+      "ApiResponse_LogDetailOut_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LogDetailOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[LogDetailOut]",
+        "type": "object"
+      },
       "ApiResponse_LoginResponse_": {
         "properties": {
           "code": {
@@ -1075,6 +1129,60 @@
         "title": "ApiResponse[PageData[DocumentLogOut]]",
         "type": "object"
       },
+      "ApiResponse_PageData_LogRowOut__": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageData_LogRowOut_"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[PageData[LogRowOut]]",
+        "type": "object"
+      },
       "ApiResponse_PageData_OperationRateOut__": {
         "properties": {
           "code": {
@@ -1505,6 +1613,60 @@
           }
         },
         "title": "ApiResponse[SplitPreviewOut]",
+        "type": "object"
+      },
+      "ApiResponse_StationTodayOut_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StationTodayOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[StationTodayOut]",
         "type": "object"
       },
       "ApiResponse_StatisticsOut_": {
@@ -2801,6 +2963,64 @@
         "title": "ApiResponse[list[StyleSizeOut]]",
         "type": "object"
       },
+      "ApiResponse_list_SummaryRowOut__": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SummaryRowOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null",
+            "title": "Data"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[list[SummaryRowOut]]",
+        "type": "object"
+      },
       "ApiResponse_list_UserOptionOut__": {
         "properties": {
           "code": {
@@ -3211,6 +3431,53 @@
           "cutting_size_line_id"
         ],
         "title": "BundleDetailOut",
+        "type": "object"
+      },
+      "BundleInfo": {
+        "description": "详情里的 ``bundle``（§6.1「响应要点」第二行）。",
+        "properties": {
+          "bundle_qty": {
+            "default": "0.000",
+            "title": "Bundle Qty",
+            "type": "string"
+          },
+          "counted_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counted By Name"
+          },
+          "counted_qty": {
+            "default": "0.000",
+            "title": "Counted Qty",
+            "type": "string"
+          },
+          "cutting_size_line_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutting Size Line Id"
+          },
+          "hands": {
+            "title": "Hands",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hands"
+        ],
+        "title": "BundleInfo",
         "type": "object"
       },
       "BundleListOut": {
@@ -5791,6 +6058,357 @@
         "title": "LineOut",
         "type": "object"
       },
+      "LogDetailOut": {
+        "description": "流水详情（§6.1）：本体 + ``bundle`` 子对象 + 关联流水。",
+        "properties": {
+          "amount": {
+            "default": "0.0000",
+            "title": "Amount",
+            "type": "string"
+          },
+          "bundle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BundleInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bundle_no": {
+            "title": "Bundle No",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "employee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Name"
+          },
+          "group_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group No"
+          },
+          "log_id": {
+            "format": "uuid",
+            "title": "Log Id",
+            "type": "string"
+          },
+          "log_type": {
+            "$ref": "#/components/schemas/PieceworkLogType"
+          },
+          "operation_no": {
+            "title": "Operation No",
+            "type": "string"
+          },
+          "payroll_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payroll Id"
+          },
+          "qty": {
+            "default": "0.000",
+            "title": "Qty",
+            "type": "string"
+          },
+          "remark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remark"
+          },
+          "reversal_of": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RelatedLog"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reversal_of_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversal Of Id"
+          },
+          "reversed_by": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedLog"
+            },
+            "title": "Reversed By",
+            "type": "array"
+          },
+          "scanned_at": {
+            "format": "date-time",
+            "title": "Scanned At",
+            "type": "string"
+          },
+          "style_no": {
+            "title": "Style No",
+            "type": "string"
+          },
+          "unit_price": {
+            "default": "0.000000",
+            "title": "Unit Price",
+            "type": "string"
+          },
+          "work_date": {
+            "format": "date",
+            "title": "Work Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "log_id",
+          "bundle_no",
+          "style_no",
+          "operation_no",
+          "employee_id",
+          "work_date",
+          "log_type",
+          "scanned_at",
+          "created_at"
+        ],
+        "title": "LogDetailOut",
+        "type": "object"
+      },
+      "LogRowOut": {
+        "description": "列表 / 导出的一行（``04-计件 §6.1``「响应要点」逐项）。\n\n⚠️ **手数与件数都在**：``hands`` 是第几手、``hands_total_of_size`` 是该尺码共几手，\n而 ``qty`` 是这次实际做的件数（可能 < ``bundle_qty``，部分生产）。\n三者混用会让主管看到「第 1 手做了 60 件」而其实是「第 2 手做了 28 件」。",
+        "properties": {
+          "amount": {
+            "default": "0.0000",
+            "title": "Amount",
+            "type": "string"
+          },
+          "bundle_no": {
+            "description": "完整不截断（BR-PW-30）：前端要拿它扫回那一张单",
+            "title": "Bundle No",
+            "type": "string"
+          },
+          "bundle_qty": {
+            "default": "0.000",
+            "title": "Bundle Qty",
+            "type": "string"
+          },
+          "color_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Name"
+          },
+          "employee_id": {
+            "format": "uuid",
+            "title": "Employee Id",
+            "type": "string"
+          },
+          "employee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Name"
+          },
+          "employee_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee No"
+          },
+          "group_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group No"
+          },
+          "hands": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hands"
+          },
+          "hands_total_of_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hands Total Of Size"
+          },
+          "is_settled": {
+            "default": false,
+            "title": "Is Settled",
+            "type": "boolean"
+          },
+          "log_id": {
+            "format": "uuid",
+            "title": "Log Id",
+            "type": "string"
+          },
+          "log_type": {
+            "$ref": "#/components/schemas/PieceworkLogType"
+          },
+          "operation_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Name"
+          },
+          "operation_no": {
+            "title": "Operation No",
+            "type": "string"
+          },
+          "payroll_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payroll Id"
+          },
+          "qty": {
+            "default": "0.000",
+            "title": "Qty",
+            "type": "string"
+          },
+          "size_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Code"
+          },
+          "size_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Name"
+          },
+          "style_no": {
+            "title": "Style No",
+            "type": "string"
+          },
+          "unit_price": {
+            "default": "0.000000",
+            "title": "Unit Price",
+            "type": "string"
+          },
+          "work_date": {
+            "format": "date",
+            "title": "Work Date",
+            "type": "string"
+          },
+          "workshop_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workshop Name"
+          }
+        },
+        "required": [
+          "log_id",
+          "bundle_no",
+          "style_no",
+          "operation_no",
+          "employee_id",
+          "work_date",
+          "log_type"
+        ],
+        "title": "LogRowOut",
+        "type": "object"
+      },
       "LoginRequest": {
         "description": "``POST /auth/login`` 请求体。",
         "example": {
@@ -6660,6 +7278,51 @@
         "title": "PageData[DocumentLogOut]",
         "type": "object"
       },
+      "PageData_LogRowOut_": {
+        "example": {
+          "items": [],
+          "page": 1,
+          "page_size": 20,
+          "total": 0
+        },
+        "properties": {
+          "items": {
+            "description": "当前页数据",
+            "items": {
+              "$ref": "#/components/schemas/LogRowOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "description": "当前页码，从 1 起",
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "description": "每页条数，上限 200",
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "description": "总条数（用于分页器）",
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "PageData[LogRowOut]",
+        "type": "object"
+      },
       "PageData_OperationRateOut_": {
         "example": {
           "items": [],
@@ -6867,6 +7530,17 @@
         ],
         "title": "PermissionOut",
         "type": "object"
+      },
+      "PieceworkLogType": {
+        "description": "计件流水的四种来源（``docs/04 §7.1`` 的 ``CREATE TYPE piecework_log_type``）。\n\n⚠️ ``REVERSAL`` 是**唯一取负值**的类型，其余三类都为正 ——\n``ck_piecework_logs_sign`` 把它钉死。纠错**永远走红冲 + 重入**（INV-2），\n不允许改原行。",
+        "enum": [
+          "SCAN",
+          "MANUAL",
+          "REVERSAL",
+          "SUPPLEMENT"
+        ],
+        "title": "PieceworkLogType",
+        "type": "string"
       },
       "PutColorsIn": {
         "additionalProperties": false,
@@ -7242,6 +7916,41 @@
           "reason"
         ],
         "title": "RejectIn",
+        "type": "object"
+      },
+      "RelatedLog": {
+        "description": "关联流水（红冲 ↔ 原单）。",
+        "properties": {
+          "amount": {
+            "default": "0.0000",
+            "title": "Amount",
+            "type": "string"
+          },
+          "log_id": {
+            "format": "uuid",
+            "title": "Log Id",
+            "type": "string"
+          },
+          "log_type": {
+            "$ref": "#/components/schemas/PieceworkLogType"
+          },
+          "qty": {
+            "default": "0.000",
+            "title": "Qty",
+            "type": "string"
+          },
+          "work_date": {
+            "format": "date",
+            "title": "Work Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "log_id",
+          "log_type",
+          "work_date"
+        ],
+        "title": "RelatedLog",
         "type": "object"
       },
       "ReplacePermissionsRequest": {
@@ -8064,6 +8773,76 @@
           "uncounted_hands"
         ],
         "title": "StatTotalsOut",
+        "type": "object"
+      },
+      "StationTodayOut": {
+        "description": "工位机大字卡数据（``GET /piecework/stations/{station_no}/today``）。",
+        "properties": {
+          "last_bundle_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Bundle No"
+          },
+          "last_hands": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Hands"
+          },
+          "last_scanned_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Scanned At"
+          },
+          "station_no": {
+            "title": "Station No",
+            "type": "string"
+          },
+          "today_amount": {
+            "default": "0.0000",
+            "title": "Today Amount",
+            "type": "string"
+          },
+          "today_hands": {
+            "description": "★ 主计数：今日做了多少**手**",
+            "title": "Today Hands",
+            "type": "integer"
+          },
+          "today_qty": {
+            "default": "0.000",
+            "title": "Today Qty",
+            "type": "string"
+          },
+          "work_date": {
+            "format": "date",
+            "title": "Work Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "station_no",
+          "work_date",
+          "today_hands"
+        ],
+        "title": "StationTodayOut",
         "type": "object"
       },
       "StatisticsOut": {
@@ -9326,6 +10105,109 @@
           "style_no"
         ],
         "title": "SuggestedStyleNoOut",
+        "type": "object"
+      },
+      "SummaryRowOut": {
+        "description": "汇总行（``GET /piecework/summary``）。\n\n⚠️ **手数与件数并列**（BR-PW-31、ADR-0016 §6）：车间的主计数是「手」，\n只给 ``total_qty`` 的话主管看到的是「做完了 3600 件」而不是「做了 60 手」。",
+        "properties": {
+          "color_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Name"
+          },
+          "employee_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Id"
+          },
+          "employee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee Name"
+          },
+          "employee_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employee No"
+          },
+          "group_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group No"
+          },
+          "operation_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation No"
+          },
+          "style_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style No"
+          },
+          "total_amount": {
+            "default": "0.0000",
+            "title": "Total Amount",
+            "type": "string"
+          },
+          "total_hands": {
+            "description": "★ 手数（COUNT(*)）",
+            "title": "Total Hands",
+            "type": "integer"
+          },
+          "total_qty": {
+            "default": "0.000",
+            "title": "Total Qty",
+            "type": "string"
+          }
+        },
+        "required": [
+          "total_hands"
+        ],
+        "title": "SummaryRowOut",
         "type": "object"
       },
       "TemplateCopyIn": {
@@ -16782,6 +17664,535 @@
         "x-permission": "base:operation:manage"
       }
     },
+    "/api/v1/piecework-logs": {
+      "get": {
+        "description": "流水列表。⚠️ **筛选与导出、汇总完全同源**（见 :func:`_query` 的注）。\n\n⚠️ 默认排序 ``-work_date`` 且**带 ``employee_id`` 兜底**：排序键不唯一时，\n「同一行在第 1 页和第 2 页各出现一次」看起来就像分页坏了。",
+        "operationId": "list_piecework_logs_api_v1_piecework_logs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "work_date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Date From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "work_date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Date To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "style_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Style No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "operation_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Operation No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workshop_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workshop Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "employee_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Employee Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "log_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PieceworkLogType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Log Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bundle_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bundle No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_settled",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Settled"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "-work_date",
+              "maxLength": 32,
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PageData_LogRowOut__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "计件流水分页列表（★ 手数与件数并列；数据范围由 service 注入）",
+        "tags": [
+          "计件"
+        ],
+        "x-permission": "piecework:read"
+      }
+    },
+    "/api/v1/piecework-logs/export": {
+      "get": {
+        "description": "导出 CSV。\n\n⚠️ 需要**两个**权限点：``piecework:export``（07 §2.2 已登记并授予计件员）\n+ ``system:export:manage``（导出总开关，防拖库）。\n⚠️ ``04-计件 §6.1`` 那一格原写 ``piecework:read`` —— 与\n「权限点已登记却没人用」矛盾，本次按 ``07 §2.2`` 修正并同步文档。\n\n⚠️ **BOM 必须真写进字节里**：Excel 不看 charset 参数去猜编码，没 BOM 就按\nGBK 打开 → 中文全是乱码，而「生成成功、下载打不开」排查起来极贵。\n⚠️ 文件名带时间戳（05 §9.1）：同一份下载两次会命中浏览器缓存，于是\n「重导了一次」看到的还是旧文件。",
+        "operationId": "export_piecework_logs_api_v1_piecework_logs_export_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "work_date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Date From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "work_date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Date To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "style_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Style No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "operation_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Operation No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workshop_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workshop Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "employee_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Employee Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "log_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PieceworkLogType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Log Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bundle_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bundle No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_settled",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Settled"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "-work_date",
+              "maxLength": 32,
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "导出租水 CSV（UTF-8 BOM；与列表同一套筛选；上限 500 行）",
+        "tags": [
+          "计件"
+        ],
+        "x-permission": "piecework:export 且 system:export:manage"
+      }
+    },
+    "/api/v1/piecework-logs/{log_id}": {
+      "get": {
+        "description": "⚠️ **按 ID 直查也要过数据范围**（07 §3.2 铁律 2）—— 列表过滤了不代表\n「把 id 换一下就能看到别人的」，那是最常见的一处越权。",
+        "operationId": "get_piecework_log_api_v1_piecework_logs__log_id__get",
+        "parameters": [
+          {
+            "description": "计件流水 id",
+            "in": "path",
+            "name": "log_id",
+            "required": true,
+            "schema": {
+              "description": "计件流水 id",
+              "format": "uuid",
+              "title": "Log Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_LogDetailOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "流水详情（+ 码信息 + 关联红冲流水；查不到与越权都回 12002）",
+        "tags": [
+          "计件"
+        ],
+        "x-permission": "piecework:read"
+      }
+    },
     "/api/v1/piecework/count": {
       "post": {
         "description": "工位机扫码计件（``04-计件 §5.1`` ①~⑪）。\n\n⚠️ **管理端带 ``employee_id``**：工位机是**组长替员工扫码**，请求体必须有操作员\n（``04-计件 §6.1``）。员工端那个端点**不接受** ``employee_id``（从 token 取），\n两者共用同一个 service 方法 —— 规则完全一致，入口形态不同。\n\n⚠️ **不传 ``qty`` 就是这一手全件**（``bundles.bundle_qty``，BR-PW-26），\n传了才是部分生产（BR-PW-27，≤ 该手件数）。这里**没有**默认 1 —— 那是\nADR-0016 之前的「扫码 +1 件」旧口径。\n\n⚠️ **同一员工重试永远返回 200 + ``idempotent=true``**，不返回 ``32001``；\n``32001`` 只给**别人**已计的码（ADR-0016 决策 3，BR-PW-16/24）。",
@@ -16829,6 +18240,327 @@
         ],
         "x-idempotency-key": true,
         "x-permission": "piecework:count"
+      }
+    },
+    "/api/v1/piecework/stations/{station_no}/today": {
+      "get": {
+        "description": "工位机今日统计。\n\n⚠️ **不套车间数据范围**：这张卡查的是「**本工位**今日」，而工位机的 token\n数据范围往往就是 SELF —— 套上车间过滤会让组别主管在工位机上看到 0，\n那不是「更安全」，是「坏了」。",
+        "operationId": "piecework_station_today_api_v1_piecework_stations__station_no__today_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "station_no",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Station No",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "work_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_StationTodayOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "工位机今日大字卡（手数为主计数）",
+        "tags": [
+          "计件"
+        ],
+        "x-permission": "piecework:read"
+      }
+    },
+    "/api/v1/piecework/summary": {
+      "get": {
+        "description": "汇总。⚠️ BR-PW-31：**手数与件数并列**，车间的主计数是「手」。\n\n⚠️ ``total_amount`` 是**净额**（红冲取负值，``ck_piecework_logs_sign`` 钉死），\n所以「汇总 ≠ 明细相加」在有红冲时不是 bug。",
+        "operationId": "piecework_summary_api_v1_piecework_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "default": "employee",
+              "pattern": "^(employee|style|operation)$",
+              "title": "Group By",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "work_date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Date From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "work_date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Date To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "style_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Style No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "operation_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Operation No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workshop_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workshop Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "employee_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Employee Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "log_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PieceworkLogType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Log Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bundle_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bundle No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_settled",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Settled"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "-work_date",
+              "maxLength": 32,
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_SummaryRowOut__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "计件汇总（★ 手数与件数并列；按 employee / style / operation 分组）",
+        "tags": [
+          "计件"
+        ],
+        "x-permission": "piecework:read"
       }
     },
     "/api/v1/product-categories": {

@@ -25,6 +25,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.pydantic_types import Str
+from app.modules.piecework.models import PieceworkLogType
 
 #: ``qty`` 的下界用 ``gt=0``：``<= 0`` 由 schema 直接挡掉并回 422（``10001``），
 #: service 里**不再重复判** —— 两处判就会漂移（改了 schema 忘了 service 是常见坑）。
@@ -121,3 +122,145 @@ class SelfTodayOut(BaseModel):
     month_hands: int
     month_qty: str
     month_amount: str
+
+
+# ====================================================================== 只读查询（T-PIECE-003）
+
+
+class LogQuery(BaseModel):
+    """计件流水筛选条件（``GET /piecework-logs`` / ``export`` / ``summary`` **共用**）。
+
+    ⚠️ **列表、导出、汇总共用同一个对象**（07 §3.2 铁律 3）：三处各写一套筛选，
+    「列表看到的」与「导出的」就会在对账时不一致 —— 而对账恰恰是导出存在的理由。
+
+    ⚠️ ``is_settled`` 是**算出来的**（判据 ``payroll_id IS NULL``，04 §7.1），
+    不是某个布尔列：两个来源必然漂移，而结算回写是 service 行为、不允许手工填。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    work_date_from: date | None = None
+    work_date_to: date | None = None
+    style_no: str | None = Field(default=None, max_length=32)
+    operation_no: str | None = Field(default=None, max_length=16)
+    workshop_id: UUID | None = None
+    group_no: str | None = Field(default=None, max_length=32)
+    employee_id: UUID | None = None
+    log_type: PieceworkLogType | None = None
+    bundle_no: str | None = Field(default=None, max_length=64)
+    is_settled: bool | None = Field(default=None, description="True=已结算（payroll_id 非空）")
+    sort: str = Field(default="-work_date", max_length=32, description="白名单字段，可加 - 前缀")
+    page: int = Field(default=1, ge=1)
+    size: int = Field(default=20, ge=1, le=200, description="上限 200（05 §2）")
+
+
+class LogRowOut(BaseModel):
+    """列表 / 导出的一行（``04-计件 §6.1``「响应要点」逐项）。
+
+    ⚠️ **手数与件数都在**：``hands`` 是第几手、``hands_total_of_size`` 是该尺码共几手，
+    而 ``qty`` 是这次实际做的件数（可能 < ``bundle_qty``，部分生产）。
+    三者混用会让主管看到「第 1 手做了 60 件」而其实是「第 2 手做了 28 件」。
+    """
+
+    log_id: UUID
+    bundle_no: str = Field(description="完整不截断（BR-PW-30）：前端要拿它扫回那一张单")
+    style_no: str
+    operation_no: str
+    operation_name: str | None = None
+    color_name: str | None = None
+    size_code: str | None = None
+    size_name: str | None = None
+    employee_id: UUID
+    employee_no: str | None = None
+    employee_name: str | None = None
+    group_no: str | None = None
+    workshop_name: str | None = None
+    work_date: date
+    hands: int | None = None
+    hands_total_of_size: int | None = None
+    bundle_qty: Str = "0.000"
+    qty: Str = "0.000"
+    unit_price: Str = "0.000000"
+    amount: Str = "0.0000"
+    log_type: PieceworkLogType
+    payroll_id: UUID | None = None
+    is_settled: bool = False
+
+
+class LogDetailOut(BaseModel):
+    """流水详情（§6.1）：本体 + ``bundle`` 子对象 + 关联流水。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    log_id: UUID
+    bundle_no: str
+    style_no: str
+    operation_no: str
+    employee_id: UUID
+    employee_name: str | None = None
+    group_no: str | None = None
+    work_date: date
+    qty: Str = "0.000"
+    unit_price: Str = "0.000000"
+    amount: Str = "0.0000"
+    log_type: PieceworkLogType
+    payroll_id: UUID | None = None
+    reversal_of_id: UUID | None = None
+    remark: str | None = None
+    scanned_at: datetime
+    created_at: datetime
+    bundle: BundleInfo | None = None
+    reversal_of: RelatedLog | None = None
+    reversed_by: list[RelatedLog] = Field(default_factory=list)
+
+
+class BundleInfo(BaseModel):
+    """详情里的 ``bundle``（§6.1「响应要点」第二行）。"""
+
+    hands: int
+    bundle_qty: Str = "0.000"
+    counted_qty: Str = "0.000"
+    counted_by_name: str | None = None
+    cutting_size_line_id: UUID | None = None
+
+
+class RelatedLog(BaseModel):
+    """关联流水（红冲 ↔ 原单）。"""
+
+    log_id: UUID
+    log_type: PieceworkLogType
+    qty: Str = "0.000"
+    amount: Str = "0.0000"
+    work_date: date
+
+
+class SummaryRowOut(BaseModel):
+    """汇总行（``GET /piecework/summary``）。
+
+    ⚠️ **手数与件数并列**（BR-PW-31、ADR-0016 §6）：车间的主计数是「手」，
+    只给 ``total_qty`` 的话主管看到的是「做完了 3600 件」而不是「做了 60 手」。
+    """
+
+    employee_id: UUID | None = None
+    employee_no: str | None = None
+    employee_name: str | None = None
+    style_no: str | None = None
+    color_name: str | None = None
+    operation_no: str | None = None
+    group_no: str | None = None
+    total_hands: int = Field(description="★ 手数（COUNT(*)）")
+    total_qty: Str = "0.000"
+    total_amount: Str = "0.0000"
+
+
+class StationTodayOut(BaseModel):
+    """工位机大字卡数据（``GET /piecework/stations/{station_no}/today``）。"""
+
+    station_no: str
+    work_date: date
+    today_hands: int = Field(description="★ 主计数：今日做了多少**手**")
+    today_qty: Str = "0.000"
+    today_amount: Str = "0.0000"
+    last_bundle_no: str | None = None
+    last_hands: int | None = None
+    last_scanned_at: datetime | None = None

@@ -315,7 +315,7 @@ async def test_tc_pw_17_today_totals_accumulate(db_session, piecework_world) -> 
     out = await _count(db_session, piecework_world, bundle_no=second_bundle_no)
     assert out.today_hands == 2
     assert out.today_qty == "120.000"
-    assert out.hands == 2 and out.hands_total_of_size == 2
+    assert out.hands == 2 and out.hands_total_of_size == 3, "世界铺了 3 手"
 
 
 async def _second_bundle_no(db_session: Any, world: dict[str, Any]) -> str:

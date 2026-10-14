@@ -70,7 +70,7 @@ async def test_tc_pw_r02_success_shape(client, auth_headers, piecework_world) ->
     # 前端的金额累加就会开始出现 25.199999999999996。
     for field in ("qty", "bundle_qty", "unit_price", "amount", "today_qty", "today_amount"):
         assert isinstance(data[field], str), f"{field} 必须是字符串，实际 {type(data[field])}"
-    assert data["hands"] == 1 and data["hands_total_of_size"] == 2
+    assert data["hands"] == 1 and data["hands_total_of_size"] == 3, "世界铺了 3 手"
     assert data["today_hands"] == 1
     assert data["work_date"] == datetime.now(tz=BUSINESS_TZ).date().isoformat()
     assert data["idempotent"] is False
