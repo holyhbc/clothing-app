@@ -1345,6 +1345,60 @@
         "title": "ApiResponse[PageData[UserOut]]",
         "type": "object"
       },
+      "ApiResponse_PieceworkLogWriteOut_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PieceworkLogWriteOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[PieceworkLogWriteOut]",
+        "type": "object"
+      },
       "ApiResponse_RateResolveOut_": {
         "properties": {
           "code": {
@@ -1505,6 +1559,60 @@
           }
         },
         "title": "ApiResponse[RefreshResponse]",
+        "type": "object"
+      },
+      "ApiResponse_ReverseOut_": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReverseOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[ReverseOut]",
         "type": "object"
       },
       "ApiResponse_RoleOut_": {
@@ -7531,6 +7639,83 @@
         "title": "PermissionOut",
         "type": "object"
       },
+      "PieceworkLogIn": {
+        "additionalProperties": false,
+        "description": "手工补录 / 补录请求（``POST /piecework-logs``，§5.3 步骤 4 + §5.4）。\n\n⚠️ ``log_type`` 决定两个分支：\n- ``MANUAL``（漏扫码）：``reversal_of_id`` **不许传**，``remark`` 必填\n- ``SUPPLEMENT``（返工补录）：``reversal_of_id`` **必填**，``remark`` 必填\n\n⚠️ **故意不接受 ``employee_id``**：工位机是组长代员工补录，操作员走 token；\n员工本人是谁，从被补录的原流水 / 绑定的业务语义来。这在类型上就表达不出来 ——\n前端想「补录时随手写个员工」根本传不进来。",
+        "properties": {
+          "bundle_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选，服务端可反查",
+            "title": "Bundle Id"
+          },
+          "bundle_no": {
+            "maxLength": 64,
+            "minLength": 8,
+            "title": "Bundle No",
+            "type": "string"
+          },
+          "log_type": {
+            "$ref": "#/components/schemas/PieceworkLogType",
+            "description": "MANUAL 或 SUPPLEMENT"
+          },
+          "qty": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "exclusiveMinimum": 0.0,
+                    "type": "number"
+                  },
+                  {
+                    "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                    "type": "string"
+                  }
+                ],
+                "description": "本次实际完成的件数（整件）"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "默认 = bundle_qty；≤ bundle_qty（32006）",
+            "title": "Qty"
+          },
+          "remark": {
+            "default": "",
+            "description": "补录原因；空串由 service 回 10002",
+            "maxLength": 500,
+            "title": "Remark",
+            "type": "string"
+          },
+          "reversal_of_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "SUPPLEMENT 必填",
+            "title": "Reversal Of Id"
+          }
+        },
+        "required": [
+          "log_type",
+          "bundle_no"
+        ],
+        "title": "PieceworkLogIn",
+        "type": "object"
+      },
       "PieceworkLogType": {
         "description": "计件流水的四种来源（``docs/04 §7.1`` 的 ``CREATE TYPE piecework_log_type``）。\n\n⚠️ ``REVERSAL`` 是**唯一取负值**的类型，其余三类都为正 ——\n``ck_piecework_logs_sign`` 把它钉死。纠错**永远走红冲 + 重入**（INV-2），\n不允许改原行。",
         "enum": [
@@ -7541,6 +7726,90 @@
         ],
         "title": "PieceworkLogType",
         "type": "string"
+      },
+      "PieceworkLogWriteOut": {
+        "description": "手工补录 / 补录响应（§6.1「同上 + document_log_id」）。",
+        "properties": {
+          "amount": {
+            "default": "0.0000",
+            "title": "Amount",
+            "type": "string"
+          },
+          "bundle_no": {
+            "title": "Bundle No",
+            "type": "string"
+          },
+          "bundle_qty": {
+            "default": "0.000",
+            "title": "Bundle Qty",
+            "type": "string"
+          },
+          "document_log_id": {
+            "format": "uuid",
+            "title": "Document Log Id",
+            "type": "string"
+          },
+          "log_id": {
+            "format": "uuid",
+            "title": "Log Id",
+            "type": "string"
+          },
+          "log_type": {
+            "$ref": "#/components/schemas/PieceworkLogType"
+          },
+          "operation_no": {
+            "title": "Operation No",
+            "type": "string"
+          },
+          "qty": {
+            "default": "0.000",
+            "title": "Qty",
+            "type": "string"
+          },
+          "style_no": {
+            "title": "Style No",
+            "type": "string"
+          },
+          "unit_price": {
+            "default": "0.000000",
+            "title": "Unit Price",
+            "type": "string"
+          },
+          "work_date": {
+            "format": "date",
+            "title": "Work Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "log_id",
+          "document_log_id",
+          "bundle_no",
+          "style_no",
+          "operation_no",
+          "log_type",
+          "work_date"
+        ],
+        "title": "PieceworkLogWriteOut",
+        "type": "object"
+      },
+      "PieceworkReverseIn": {
+        "additionalProperties": false,
+        "description": "红冲请求（``POST /piecework-logs/{log_id}/reverse``，§5.3 步骤 3）。\n\n⚠️ **类名带 `Piecework` 前缀**：`bundling` 模块已有同名 `ReverseIn`\n（打菲反审核），两个同名类会让 FastAPI 把**两份**组件都改名成带模块路径的\n`app__modules__...__ReverseIn` —— 那会把已发布的 `bundling.ReverseIn`\n一起改名，是破坏性的契约变更。所以新加的这份显式取唯一名。\n\n⚠️ **只有 ``reason`` 一个字段**（结构上只容得下这一个动作）：\n不接受 ``force`` / 自定义数量 —— 红冲是「把这手撤销回未计件」，\n数量必须**从原流水抄**（``qty=-L1.qty``），不能由前端传一个来改。\n``super_admin`` 的自审例外沿用打菲的做法（不做 ``force``，见 08 §4 注释）。",
+        "properties": {
+          "reason": {
+            "description": "为什么红冲（必填，10002 兜底）",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "PieceworkReverseIn",
+        "type": "object"
       },
       "PutColorsIn": {
         "additionalProperties": false,
@@ -7993,6 +8262,52 @@
           "reason"
         ],
         "title": "ReverseIn",
+        "type": "object"
+      },
+      "ReverseOut": {
+        "description": "红冲响应。⚠️ ``bundle_counted_reset`` 回答「这手是不是回到未计件了」。",
+        "properties": {
+          "bundle_counted_reset": {
+            "description": "bundles.counted_* 是否已清空（true = 该手未计件）",
+            "title": "Bundle Counted Reset",
+            "type": "boolean"
+          },
+          "bundle_no": {
+            "title": "Bundle No",
+            "type": "string"
+          },
+          "operation_no": {
+            "title": "Operation No",
+            "type": "string"
+          },
+          "reversal_log_id": {
+            "format": "uuid",
+            "title": "Reversal Log Id",
+            "type": "string"
+          },
+          "reversed_amount": {
+            "default": "0.0000",
+            "title": "Reversed Amount",
+            "type": "string"
+          },
+          "reversed_qty": {
+            "default": "0.000",
+            "title": "Reversed Qty",
+            "type": "string"
+          },
+          "style_no": {
+            "title": "Style No",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reversal_log_id",
+          "bundle_no",
+          "style_no",
+          "operation_no",
+          "bundle_counted_reset"
+        ],
+        "title": "ReverseOut",
         "type": "object"
       },
       "RoleBrief": {
@@ -17904,6 +18219,52 @@
           "计件"
         ],
         "x-permission": "piecework:read"
+      },
+      "post": {
+        "description": "§5.3 步骤 4（SUPPLEMENT）+ §5.4 流程 D（MANUAL）。\n\n⚠️ ``SUPPLEMENT`` 必须 ``reversal_of_id``；``MANUAL`` 不许带。两者 ``remark``\n必填（``10002`` 兜底）。``qty`` 默认整手、``≤ bundle_qty``（``32006``）。\n\n⚠️ 幂等键：唯一键 ``(bundle_no, operation_no, employee_id, work_date, log_type)``\n命中 → 返回既有（§6.3）。离线补录重传不会重复计数。",
+        "operationId": "create_piecework_log_api_v1_piecework_logs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PieceworkLogIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PieceworkLogWriteOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "手工补录 / 返工补录（MANUAL 漏扫码 / SUPPLEMENT 红冲后重录；幂等）",
+        "tags": [
+          "计件"
+        ],
+        "x-permission": "piecework:manual"
       }
     },
     "/api/v1/piecework-logs/export": {
@@ -18191,6 +18552,68 @@
           "计件"
         ],
         "x-permission": "piecework:read"
+      }
+    },
+    "/api/v1/piecework-logs/{log_id}/reverse": {
+      "post": {
+        "description": "§5.3 步骤 3。\n\n⚠️ **``reason`` 必填**（schema 层已挡，service 层 `10002` 兜底）：红冲是纠错，\n不记为什么，月底对账时「谁红冲了、为什么」就无从查起。\n\n⚠️ **幂等**：同 ``reversal_of_id`` 已有 ``REVERSAL`` → 返回既有红冲流水（§6.3），\n不重复生成。网络重试再点一次不会把同一笔红冲执行两遍。",
+        "operationId": "reverse_piecework_log_api_v1_piecework_logs__log_id__reverse_post",
+        "parameters": [
+          {
+            "description": "被红冲的原流水 id",
+            "in": "path",
+            "name": "log_id",
+            "required": true,
+            "schema": {
+              "description": "被红冲的原流水 id",
+              "format": "uuid",
+              "title": "Log Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PieceworkReverseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ReverseOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "红冲流水（REVERSAL + 同事务清空 bundles.counted_*；幂等）",
+        "tags": [
+          "计件"
+        ],
+        "x-permission": "piecework:reverse"
       }
     },
     "/api/v1/piecework/count": {

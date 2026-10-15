@@ -264,3 +264,79 @@ class StationTodayOut(BaseModel):
     last_bundle_no: str | None = None
     last_hands: int | None = None
     last_scanned_at: datetime | None = None
+
+
+# ====================================================================== 红冲 / 补录（T-PIECE-004）
+
+
+class PieceworkReverseIn(BaseModel):
+    """红冲请求（``POST /piecework-logs/{log_id}/reverse``，§5.3 步骤 3）。
+
+    ⚠️ **类名带 `Piecework` 前缀**：`bundling` 模块已有同名 `ReverseIn`
+    （打菲反审核），两个同名类会让 FastAPI 把**两份**组件都改名成带模块路径的
+    `app__modules__...__ReverseIn` —— 那会把已发布的 `bundling.ReverseIn`
+    一起改名，是破坏性的契约变更。所以新加的这份显式取唯一名。
+
+    ⚠️ **只有 ``reason`` 一个字段**（结构上只容得下这一个动作）：
+    不接受 ``force`` / 自定义数量 —— 红冲是「把这手撤销回未计件」，
+    数量必须**从原流水抄**（``qty=-L1.qty``），不能由前端传一个来改。
+    ``super_admin`` 的自审例外沿用打菲的做法（不做 ``force``，见 08 §4 注释）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=500, description="为什么红冲（必填，10002 兜底）")
+
+
+class ReverseOut(BaseModel):
+    """红冲响应。⚠️ ``bundle_counted_reset`` 回答「这手是不是回到未计件了」。"""
+
+    reversal_log_id: UUID
+    bundle_no: str
+    style_no: str
+    operation_no: str
+    reversed_qty: Str = "0.000"
+    reversed_amount: Str = "0.0000"
+    bundle_counted_reset: bool = Field(
+        description="bundles.counted_* 是否已清空（true = 该手未计件）"
+    )
+
+
+class PieceworkLogIn(BaseModel):
+    """手工补录 / 补录请求（``POST /piecework-logs``，§5.3 步骤 4 + §5.4）。
+
+    ⚠️ ``log_type`` 决定两个分支：
+    - ``MANUAL``（漏扫码）：``reversal_of_id`` **不许传**，``remark`` 必填
+    - ``SUPPLEMENT``（返工补录）：``reversal_of_id`` **必填**，``remark`` 必填
+
+    ⚠️ **故意不接受 ``employee_id``**：工位机是组长代员工补录，操作员走 token；
+    员工本人是谁，从被补录的原流水 / 绑定的业务语义来。这在类型上就表达不出来 ——
+    前端想「补录时随手写个员工」根本传不进来。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    log_type: PieceworkLogType = Field(description="MANUAL 或 SUPPLEMENT")
+    bundle_no: str = Field(min_length=8, max_length=64)
+    bundle_id: UUID | None = Field(default=None, description="可选，服务端可反查")
+    reversal_of_id: UUID | None = Field(default=None, description="SUPPLEMENT 必填")
+    remark: str = Field(default="", max_length=500, description="补录原因；空串由 service 回 10002")
+    qty: PositiveQty | None = Field(
+        default=None, description="默认 = bundle_qty；≤ bundle_qty（32006）"
+    )
+
+
+class PieceworkLogWriteOut(BaseModel):
+    """手工补录 / 补录响应（§6.1「同上 + document_log_id」）。"""
+
+    log_id: UUID
+    document_log_id: UUID
+    bundle_no: str
+    style_no: str
+    operation_no: str
+    qty: Str = "0.000"
+    bundle_qty: Str = "0.000"
+    unit_price: Str = "0.000000"
+    amount: Str = "0.0000"
+    log_type: PieceworkLogType
+    work_date: date

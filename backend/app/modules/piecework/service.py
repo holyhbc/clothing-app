@@ -47,6 +47,7 @@ from app.modules.piecework.guard import (
     guard_bundle,
     resolve_qty,
 )
+from app.modules.piecework.manual import ManualMixin
 from app.modules.piecework.models import PieceworkLog, PieceworkLogType
 from app.modules.piecework.pricing import resolve_price
 from app.modules.piecework.repository import (
@@ -59,6 +60,7 @@ from app.modules.piecework.repository import (
     build_style_operation_stmt,
     build_today_stmt,
 )
+from app.modules.piecework.reverse import ReverseMixin
 from app.modules.piecework.schemas import CountPieceworkOut
 
 #: 三个精度（照抄 ``piecework_logs`` 的列定义：``numeric(14,3)`` / ``numeric(12,6)`` /
@@ -81,7 +83,7 @@ def _at(value: Decimal, scale: Decimal) -> Decimal:
     return value.quantize(scale)
 
 
-class PieceworkService:
+class PieceworkService(ManualMixin, ReverseMixin):
     """计件 service。所有写方法的**事务入口是** :func:`unit_of_work`（03 §1.1 第 5 条）。"""
 
     def __init__(self, session: AsyncSession) -> None:

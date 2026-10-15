@@ -274,3 +274,89 @@ async def test_tc_pw_r2_partials_never_stack(app_database_url, piecework_world_p
         assert bundle.counted_qty == rows[0].qty != BUNDLE_QTY
     finally:
         await engine.dispose()
+
+
+# ============================================================== TC-50 红冲与他人扫同码并发
+
+
+async def test_tc_pw_50_reverse_vs_other_scan_concurrent(
+    app_database_url, piecework_world_persisted
+) -> None:
+    """§7.3 / TC-50：A 的流水被红冲的**同时**，B 扫同码 → 必须串行，终值唯一。
+
+    ⚠️ 这是「红冲也锁码」这条规则唯一的真并发验证：不锁码的话，
+    红冲清空 ``counted_*`` 的那一瞬，B 的扫码读到的要么是「未计件」要么是「已计」，
+    而两者与红冲交错会造出「B 计了、红冲又清了」或「红冲清了、B 也计了」
+    的中间态 —— ``counted_qty`` 终值无法保证唯一。
+
+    ⚠️ 结果只能两种（都合法）：
+    - 红冲先 → B 重扫整手成功（``counted_qty = 60``）
+    - B 先 → 红冲校验 ``counted_qty(60) != 原流水 qty(28)`` → 拒绝（``10008``）
+
+    断言的是「**恰好一种结局**、表里 REVERSAL ≤ 1、B 的扫码要么成要么是被红冲清空后成」，
+    而不是某一边必须赢 —— 谁先赢由数据库调度决定，写死一边就是看运气。
+    """
+    from decimal import Decimal
+
+    engine = create_async_engine(app_database_url, pool_pre_ping=True)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    world = piecework_world_persisted
+    try:
+        async with factory() as session:
+            # A 先计 28 件（部分生产），落库并回写 counted_*
+            a = await PieceworkService(session).count_piecework(
+                bundle_no=world["bundle_no"],
+                employee_id=world["employee_ids"][0],
+                scanned_at=scanned_at(),
+                qty=Decimal(28),
+                operator_id=ctx_for().user_id,
+                ctx=ctx_for(),
+            )
+        # 并发：A 红冲这条流水 vs B 扫同码整手
+        stranger = uuid.uuid4()
+        results = await asyncio.gather(
+            _reverse_once(factory, a.log_id, stranger),
+            *(
+                _count_once(
+                    factory,
+                    bundle_no=world["bundle_no"],
+                    employee_id=world["employee_ids"][1],
+                    operation_no=world["operation_no"],
+                )
+                for _ in range(3)
+            ),
+        )
+        rows = await _log_rows(factory, world["bundle_no"])
+        reversals = [r for r in rows if r.log_type == "REVERSAL"]
+        scans = [r for r in rows if r.log_type == "SCAN"]
+        assert len(reversals) <= 1, f"红冲最多 1 条，实际 {len(reversals)}"
+        assert len(scans) >= 1, "B 扫码要么成功、要么红冲先清空后被重扫"
+        # 终值唯一：counted_qty 只能是 0（红冲后未计）或 60（B 重扫整手），不可能出现中间态
+        bundle = await _bundle_row(factory, world["bundle_id"])
+        assert bundle.counted_qty in (Decimal(0), Decimal(60)), (
+            f"counted_qty 终值非法：{bundle.counted_qty}"
+        )
+        # ⚠️ 红冲要么成功、要么因 B 先占了码而拒绝；B 的扫码要么 32001、要么幂等重扫
+        assert any(kind == "ok" for kind, _ in results), "红冲或 B 扫码至少有一个成功"
+    finally:
+        await engine.dispose()
+
+
+async def _reverse_once(factory: Any, log_id: Any, operator_id: Any) -> tuple[str, str]:
+    """红冲一次（**operator 必须是陌生人**，否则自审 10005 永远不会执行红冲）。"""
+    from app.modules.piecework.schemas import PieceworkReverseIn
+
+    async with factory() as session:
+        try:
+            out = await PieceworkService(session).reverse_log(
+                log_id,
+                PieceworkReverseIn(reason="TC-50 红冲 vs 他人扫并发"),
+                operator_id,
+                ctx_for(user_id=operator_id),
+            )
+            return "ok", str(out.reversal_log_id)
+        except Exception as exc:  # noqa: BLE001 —— 并发竞态下错误码即结果
+            return (
+                "error",
+                f"{type(exc).__name__}:{getattr(exc, 'orig', None) or getattr(exc, 'code', None)}",
+            )

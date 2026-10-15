@@ -51,6 +51,8 @@ async def write_document_log(
     employee_id: UUID,
     qty: Decimal,
     amount: Decimal,
+    action: str = "COUNT",
+    to_status: str = "COUNTED",
 ) -> None:
     """写 ``document_logs``。
 
@@ -67,9 +69,9 @@ async def write_document_log(
             doc_type=DOC_TYPE_PIECEWORK,
             doc_id=log_id,
             doc_no=str(bundle["bundle_no"]),
-            action="COUNT",
+            action=action,
             from_status=None,
-            to_status="COUNTED",
+            to_status=to_status,
             operator_id=operator_id,
             operator_name="系统",  # TODO: 接真实操作人姓名（同打菲 _write_log）
             reason=None,

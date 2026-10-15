@@ -1456,7 +1456,17 @@ export interface paths {
          */
         get: operations["list_piecework_logs_api_v1_piecework_logs_get"];
         put?: never;
-        post?: never;
+        /**
+         * 手工补录 / 返工补录（MANUAL 漏扫码 / SUPPLEMENT 红冲后重录；幂等）
+         * @description §5.3 步骤 4（SUPPLEMENT）+ §5.4 流程 D（MANUAL）。
+         *
+         *     ⚠️ ``SUPPLEMENT`` 必须 ``reversal_of_id``；``MANUAL`` 不许带。两者 ``remark``
+         *     必填（``10002`` 兜底）。``qty`` 默认整手、``≤ bundle_qty``（``32006``）。
+         *
+         *     ⚠️ 幂等键：唯一键 ``(bundle_no, operation_no, employee_id, work_date, log_type)``
+         *     命中 → 返回既有（§6.3）。离线补录重传不会重复计数。
+         */
+        post: operations["create_piecework_log_api_v1_piecework_logs_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1508,6 +1518,32 @@ export interface paths {
         get: operations["get_piecework_log_api_v1_piecework_logs__log_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/piecework-logs/{log_id}/reverse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 红冲流水（REVERSAL + 同事务清空 bundles.counted_*；幂等）
+         * @description §5.3 步骤 3。
+         *
+         *     ⚠️ **``reason`` 必填**（schema 层已挡，service 层 `10002` 兜底）：红冲是纠错，
+         *     不记为什么，月底对账时「谁红冲了、为什么」就无从查起。
+         *
+         *     ⚠️ **幂等**：同 ``reversal_of_id`` 已有 ``REVERSAL`` → 返回既有红冲流水（§6.3），
+         *     不重复生成。网络重试再点一次不会把同一笔红冲执行两遍。
+         */
+        post: operations["reverse_piecework_log_api_v1_piecework_logs__log_id__reverse_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3833,6 +3869,35 @@ export interface components {
              */
             request_id?: string | null;
         };
+        /** ApiResponse[PieceworkLogWriteOut] */
+        ApiResponse_PieceworkLogWriteOut_: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["PieceworkLogWriteOut"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
         /** ApiResponse[RateResolveOut] */
         ApiResponse_RateResolveOut_: {
             /**
@@ -3901,6 +3966,35 @@ export interface components {
             code: number;
             /** @description 业务数据；失败时为 null */
             data?: components["schemas"]["RefreshResponse"] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
+        /** ApiResponse[ReverseOut] */
+        ApiResponse_ReverseOut_: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /** @description 业务数据；失败时为 null */
+            data?: components["schemas"]["ReverseOut"] | null;
             /**
              * Details
              * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
@@ -7329,6 +7423,45 @@ export interface components {
             name: string;
         };
         /**
+         * PieceworkLogIn
+         * @description 手工补录 / 补录请求（``POST /piecework-logs``，§5.3 步骤 4 + §5.4）。
+         *
+         *     ⚠️ ``log_type`` 决定两个分支：
+         *     - ``MANUAL``（漏扫码）：``reversal_of_id`` **不许传**，``remark`` 必填
+         *     - ``SUPPLEMENT``（返工补录）：``reversal_of_id`` **必填**，``remark`` 必填
+         *
+         *     ⚠️ **故意不接受 ``employee_id``**：工位机是组长代员工补录，操作员走 token；
+         *     员工本人是谁，从被补录的原流水 / 绑定的业务语义来。这在类型上就表达不出来 ——
+         *     前端想「补录时随手写个员工」根本传不进来。
+         */
+        PieceworkLogIn: {
+            /**
+             * Bundle Id
+             * @description 可选，服务端可反查
+             */
+            bundle_id?: string | null;
+            /** Bundle No */
+            bundle_no: string;
+            /** @description MANUAL 或 SUPPLEMENT */
+            log_type: components["schemas"]["PieceworkLogType"];
+            /**
+             * Qty
+             * @description 默认 = bundle_qty；≤ bundle_qty（32006）
+             */
+            qty?: (number | string) | null;
+            /**
+             * Remark
+             * @description 补录原因；空串由 service 回 10002
+             * @default
+             */
+            remark: string;
+            /**
+             * Reversal Of Id
+             * @description SUPPLEMENT 必填
+             */
+            reversal_of_id?: string | null;
+        };
+        /**
          * PieceworkLogType
          * @description 计件流水的四种来源（``docs/04 §7.1`` 的 ``CREATE TYPE piecework_log_type``）。
          *
@@ -7338,6 +7471,75 @@ export interface components {
          * @enum {string}
          */
         PieceworkLogType: "SCAN" | "MANUAL" | "REVERSAL" | "SUPPLEMENT";
+        /**
+         * PieceworkLogWriteOut
+         * @description 手工补录 / 补录响应（§6.1「同上 + document_log_id」）。
+         */
+        PieceworkLogWriteOut: {
+            /**
+             * Amount
+             * @default 0.0000
+             */
+            amount: string;
+            /** Bundle No */
+            bundle_no: string;
+            /**
+             * Bundle Qty
+             * @default 0.000
+             */
+            bundle_qty: string;
+            /**
+             * Document Log Id
+             * Format: uuid
+             */
+            document_log_id: string;
+            /**
+             * Log Id
+             * Format: uuid
+             */
+            log_id: string;
+            log_type: components["schemas"]["PieceworkLogType"];
+            /** Operation No */
+            operation_no: string;
+            /**
+             * Qty
+             * @default 0.000
+             */
+            qty: string;
+            /** Style No */
+            style_no: string;
+            /**
+             * Unit Price
+             * @default 0.000000
+             */
+            unit_price: string;
+            /**
+             * Work Date
+             * Format: date
+             */
+            work_date: string;
+        };
+        /**
+         * PieceworkReverseIn
+         * @description 红冲请求（``POST /piecework-logs/{log_id}/reverse``，§5.3 步骤 3）。
+         *
+         *     ⚠️ **类名带 `Piecework` 前缀**：`bundling` 模块已有同名 `ReverseIn`
+         *     （打菲反审核），两个同名类会让 FastAPI 把**两份**组件都改名成带模块路径的
+         *     `app__modules__...__ReverseIn` —— 那会把已发布的 `bundling.ReverseIn`
+         *     一起改名，是破坏性的契约变更。所以新加的这份显式取唯一名。
+         *
+         *     ⚠️ **只有 ``reason`` 一个字段**（结构上只容得下这一个动作）：
+         *     不接受 ``force`` / 自定义数量 —— 红冲是「把这手撤销回未计件」，
+         *     数量必须**从原流水抄**（``qty=-L1.qty``），不能由前端传一个来改。
+         *     ``super_admin`` 的自审例外沿用打菲的做法（不做 ``force``，见 08 §4 注释）。
+         */
+        PieceworkReverseIn: {
+            /**
+             * Reason
+             * @description 为什么红冲（必填，10002 兜底）
+             */
+            reason: string;
+        };
         /**
          * PutColorsIn
          * @description 行内颜色全量替换（``PUT /lines/{line_id}/colors``）。
@@ -7644,6 +7846,38 @@ export interface components {
              * @description 反审核原因（必填，≤500 字）
              */
             reason: string;
+        };
+        /**
+         * ReverseOut
+         * @description 红冲响应。⚠️ ``bundle_counted_reset`` 回答「这手是不是回到未计件了」。
+         */
+        ReverseOut: {
+            /**
+             * Bundle Counted Reset
+             * @description bundles.counted_* 是否已清空（true = 该手未计件）
+             */
+            bundle_counted_reset: boolean;
+            /** Bundle No */
+            bundle_no: string;
+            /** Operation No */
+            operation_no: string;
+            /**
+             * Reversal Log Id
+             * Format: uuid
+             */
+            reversal_log_id: string;
+            /**
+             * Reversed Amount
+             * @default 0.0000
+             */
+            reversed_amount: string;
+            /**
+             * Reversed Qty
+             * @default 0.000
+             */
+            reversed_qty: string;
+            /** Style No */
+            style_no: string;
         };
         /**
          * RoleBrief
@@ -11750,6 +11984,39 @@ export interface operations {
             };
         };
     };
+    create_piecework_log_api_v1_piecework_logs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PieceworkLogIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PieceworkLogWriteOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_piecework_logs_api_v1_piecework_logs_export_get: {
         parameters: {
             query?: {
@@ -11810,6 +12077,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_LogDetailOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reverse_piecework_log_api_v1_piecework_logs__log_id__reverse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 被红冲的原流水 id */
+                log_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PieceworkReverseIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ReverseOut_"];
                 };
             };
             /** @description Validation Error */

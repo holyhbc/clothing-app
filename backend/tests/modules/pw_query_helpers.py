@@ -73,6 +73,7 @@ async def hdr(
     *,
     data_scope: DataScope = DataScope.FACTORY,
     workshop_id: Any = None,
+    user_id: Any = None,
 ) -> dict[str, str]:
     """造一个**权限点恰好等于 ``perms``** 的用户的请求头。
 
@@ -83,6 +84,9 @@ async def hdr(
     那种绿是假的：它验的是「角色上碰巧有这些权限」，不是「这次请求的权限判定对不对」。
 
     所以这里**每个请求自建一个唯一 code 的角色**，权限集就是 ``perms`` 本身。
+
+    ⚠️ ``user_id`` 存在时**用那个已有用户**（自审 / 归属校验要测「操作者是谁」），
+    但必须**先给他挂上 ``perms`` 角色** —— 不然他是裸的、没有任何权限点。
     """
     from tests.factories.user import RoleFactory, UserFactory, UserRoleFactory, grant_permissions
 
@@ -94,6 +98,9 @@ async def hdr(
     )
     if perms:
         await grant_permissions(db_session, role=role, codes=perms)
+    if user_id is not None:
+        await UserRoleFactory.create(db_session, user_id=user_id, role_id=role.id)
+        return await auth_headers(user_id=user_id)
     user = await UserFactory.create(
         db_session,
         employee_no=f"Q{uuid4().hex[:7].upper()}",

@@ -176,6 +176,8 @@ def build_insert_log_stmt(log: PieceworkLog) -> Insert:
         scanned_at=log.scanned_at,
         device_id=log.device_id,
         idempotency_key=log.idempotency_key,
+        reversal_of_id=log.reversal_of_id,
+        remark=log.remark,
         created_by=log.created_by,
         updated_by=log.updated_by,
     )
@@ -261,8 +263,85 @@ __all__ = [
     "build_hands_total_stmt",
     "build_insert_log_stmt",
     "build_is_counted_stmt",
+    "build_lock_bundle_by_id_stmt",
     "build_lock_bundle_stmt",
+    "build_log_for_update_stmt",
     "build_mark_counted_stmt",
+    "build_reset_counted_stmt",
     "build_style_operation_stmt",
     "build_today_stmt",
 ]
+
+
+def build_lock_bundle_by_id_stmt(bundle_id: UUID) -> Select[Any]:
+    """红冲 / 补录时**锁码**（§7.3：红冲也要 ``FOR UPDATE``，否则与"他人扫同码"
+    并发会两头各写各的 —— 红冲清空 `counted_*` 的那一刻，别人扫进来就撞空）。
+
+    ⚠️ 与 :func:`build_lock_bundle_stmt` **同列同锁**（`FOR UPDATE OF Bundle`），
+    只是 WHERE 换成 ``id`` —— 红冲已经拿着 `bundle_id`，不必再反查一次 `bundle_no`。
+    """
+    return (
+        select(*_LOCK_COLUMNS)
+        .select_from(Bundle)
+        .join(BundlingOrder, BundlingOrder.id == Bundle.doc_id)
+        .join(Color, Color.color_code == Bundle.color_code, isouter=True)
+        .join(Size, Size.size_code == Bundle.size_code, isouter=True)
+        .outerjoin(User, User.id == Bundle.counted_by)
+        .where(Bundle.id == bundle_id, Bundle.deleted_at.is_(None))
+        .with_for_update(of=Bundle)
+    )
+
+
+def build_reset_counted_stmt(bundle_id: UUID, operator_id: UUID) -> Update:
+    """红冲的**同事务清空** `bundles.counted_*`（该手回到未计件，§5.3 步骤 3）。
+
+    ⚠️ 只清这三列，**不碰** `bundle_qty` / `hands`（BR-PW-32）。回写三列是计件侧的
+    特权，但 `bundle_qty` 是裁剪侧的权威 —— 红冲是「这手没人做了」，不是「这手变小了」。
+
+    ⚠️ `counted_by` / `counted_at` 置 ``NULL`` 而非 0 / now：判定「未计件」看
+    ``counted_at IS NULL``（`idx_bundles_counted_pending` 的谓词也是它），
+    置 0 或置 now 会让「该手有没有人做」的判定与这里的清空**分叉**。
+    """
+    return (
+        update(Bundle)
+        .where(Bundle.id == bundle_id, Bundle.deleted_at.is_(None))
+        .values(
+            counted_qty=Decimal(0),
+            counted_by=None,
+            counted_at=None,
+            updated_by=operator_id,
+            updated_at=datetime.now(tz=UTC),
+            version=Bundle.version + 1,
+        )
+    )
+
+
+def build_log_for_update_stmt(log_id: UUID) -> Select[Any]:
+    """红冲先按 id 取原流水（**要能判定是否已结算 / 已红冲 / 越权**）。
+
+    ⚠️ 返回类型按 `Select[Any]`：mypy 对 `Select` 的泛型是**不变的**，
+    写死 16 列的精确形状是纯噪音，且加列就要改签名。
+    """
+    cols: tuple[Any, ...] = (
+        PieceworkLog.id,
+        PieceworkLog.bundle_id,
+        PieceworkLog.bundle_no,
+        PieceworkLog.style_no,
+        PieceworkLog.operation_no,
+        PieceworkLog.employee_id,
+        PieceworkLog.workshop_id,
+        PieceworkLog.group_no,
+        PieceworkLog.work_date,
+        PieceworkLog.qty,
+        PieceworkLog.unit_price,
+        PieceworkLog.amount,
+        PieceworkLog.log_type,
+        PieceworkLog.payroll_id,
+        PieceworkLog.reversal_of_id,
+        PieceworkLog.created_by,
+    )
+    return (
+        select(*cols)
+        .where(PieceworkLog.id == log_id, PieceworkLog.deleted_at.is_(None))
+        .with_for_update(of=PieceworkLog)
+    )
