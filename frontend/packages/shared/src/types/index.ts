@@ -452,5 +452,22 @@ export type BundleListOut = ApiModel<'BundleListOut'>
 /** 打菲统计（`GET /api/v1/bundling-orders/statistics`）。 */
 export type BundlingStatisticsOut = ApiModel<'StatisticsOut'>
 
+// ---------------------------------------------------------------- 计件（T-PIECE-005）
+
+/** 计件流水类型（`piecework_logs.log_type`，ADR-0005 红冲机制）。 */
+export type PieceworkLogType = NonNullable<ApiModel<'PieceworkLogType'>>
+
+/** 计件流水列表行（`GET /api/v1/piecework-logs`）。★ `qty`（件数）与 `hands`（手数）并列。 */
+export type PieceworkLogRowOut = ApiModel<'LogRowOut'>
+
+/** 计件流水详情（`GET /api/v1/piecework-logs/{log_id}`）。 */
+export type PieceworkLogDetailOut = ApiModel<'LogDetailOut'>
+
+/** 汇总行（`GET /api/v1/piecework/summary`）。 */
+export type PieceworkSummaryRowOut = ApiModel<'SummaryRowOut'>
+
+/** 工位机今日大字卡（`GET /api/v1/piecework/stations/{station_no}/today`）。 */
+export type PieceworkStationTodayOut = ApiModel<'StationTodayOut'>
+
 export type { components } from '../api/schema.d.ts'
 export type { paths, operations } from '../api/schema.d.ts'

@@ -79,6 +79,7 @@ export const MENU_GROUPS: readonly MenuGroup[] = [
     children: [
       { key: 'cutting-orders', title: '裁剪单', permission: PERM.CUTTING_READ },
       { key: 'bundling-orders', title: '打菲单', permission: PERM.BUNDLING_READ },
+      { key: 'piecework-logs', title: '计件流水', permission: PERM.PIECEWORK_READ },
     ],
   },
   // T-WEB-004 曾把这一组删掉过（后端没有端点，菜单里点进去是 404）；

@@ -159,6 +159,13 @@ const routes: RouteRecordRaw[] = [
         component: () => import("@/views/bundling/LabelPrint.vue"),
         meta: { title: "标签打印", permission: PERM.BUNDLING_PRINT },
       },
+      // 计件流水台账（T-PIECE-005）：纯读，消费 T-PIECE-003 的只读端点
+      {
+        path: 'piecework/logs',
+        name: 'piecework-logs',
+        component: () => import('@/views/piecework/List.vue'),
+        meta: { title: '计件流水', permission: PERM.PIECEWORK_READ },
+      },
       // 打菲单没有单独的编辑页：改明细走 PUT /lines（T-BUND-010），表头改走 PATCH（详情页按钮）
       {
         path: 'system/users',
