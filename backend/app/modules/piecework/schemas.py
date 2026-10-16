@@ -266,6 +266,23 @@ class StationTodayOut(BaseModel):
     last_scanned_at: datetime | None = None
 
 
+class OperatorOptionOut(BaseModel):
+    """工位机 / 补录页的「操作员」候选（``GET /piecework/operators``，T-PIECE-006）。
+
+    ⚠️ ``value`` 是**用户 UUID**（不是工号）：计件请求体 ``employee_id`` 要的就是它。
+    ``label`` 必须是「工号 姓名」（05 §9.5.2 禁止只显示编码）—— 只给 UUID 的话
+    下拉里是一串人不可读的标识，组长根本挑不出人。
+
+    ⚠️ **与 base 的 ``OptionOut`` 不同**（那个 ``value`` 是业务编码字符串）：员工
+    天然没有「业务编码主键」，工号是登录凭据可改、UUID 才稳定，故这里 ``value`` 是 UUID。
+    """
+
+    value: UUID
+    label: str
+    sub: str | None = None
+    disabled: bool = False
+
+
 # ====================================================================== 红冲 / 补录（T-PIECE-004）
 
 

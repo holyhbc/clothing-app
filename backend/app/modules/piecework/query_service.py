@@ -29,12 +29,14 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import BusinessError, ErrorCode
 from app.core.numbering import business_today
 from app.core.permissions import AuthContext
 from app.core.scope import apply_data_scope
+from app.modules.auth.models import User
 from app.modules.piecework.models import PieceworkLog, PieceworkLogType
 from app.modules.piecework.query import (
     build_bundle_stmt,
@@ -53,6 +55,7 @@ from app.modules.piecework.schemas import (
     LogDetailOut,
     LogQuery,
     LogRowOut,
+    OperatorOptionOut,
     RelatedLog,
     StationTodayOut,
     SummaryRowOut,
@@ -86,6 +89,11 @@ CSV_COLUMNS: tuple[str, ...] = (
 #: 一个 FACTORY 范围的用户选「全部历史」就是全表扫描 + 全量 CSV，
 #: 在 2C VPS 上会把接口拖到分钟级，而且没有任何办法中途取消。
 EXPORT_LIMIT = 500
+
+#: 操作员候选的 offset 上限（05 §9.5.2：候选下拉靠**关键字**翻页，不靠深翻页）。
+#: 超过就报 ``10001`` —— 让调用方改用 ``q``，而不是让一条 ``OFFSET 50000`` 在
+#: 2C 的机器上把工位机页面卡住。
+OPERATOR_MAX_OFFSET = 10000
 
 
 class PieceworkQueryService:
@@ -323,6 +331,46 @@ class PieceworkQueryService:
             last_scanned_at=last["scanned_at"] if last else None,
         )
 
+    async def operators(
+        self,
+        *,
+        keyword: str | None,
+        workshop_id: UUID | None,
+        size: int,
+        offset: int,
+    ) -> list[OperatorOptionOut]:
+        """工位机 / 补录页的操作员候选（``GET /piecework/operators``，T-PIECE-006）。
+
+        ⚠️ **第一行就是 ``apply_data_scope``**（07 §3.2 铁律 1）：组长只看到本组、
+        主管看到本车间、计件员看到全厂。少了它，工位机下拉会列出全厂员工 ——
+        那既是越权（能看本不该看的人），也让组长在几百号人里挑不出人。
+
+        ⚠️ **``workshop_id`` 传了也只是再过滤一次，不能放大范围**（07 §3.2 铁律 1）：
+        传别的车间 id 依然查不到 —— 与 ``/system/users/options`` 同款口径。
+
+        ⚠️ **只回「在本数据范围内」的人，停用标 ``disabled``**（05 §9.5.2）：
+        工位机不该派活给停用的人，但历史下拉里偶尔仍需认人，故保留并置灰。
+        """
+        if offset > OPERATOR_MAX_OFFSET:
+            raise BusinessError(ErrorCode.PARAM_INVALID, "offset 过大，请改用关键字搜索")
+        stmt = apply_data_scope(select(User), User, self.ctx)
+        if workshop_id is not None:
+            stmt = stmt.where(User.workshop_id == workshop_id)
+        if keyword:
+            like = f"%{keyword.strip()}%"
+            stmt = stmt.where(User.employee_no.ilike(like) | User.name.ilike(like))
+        stmt = stmt.order_by(User.employee_no.asc()).offset(offset).limit(size)
+        rows = list((await self.session.execute(stmt)).scalars().all())
+        return [
+            OperatorOptionOut(
+                value=row.id,
+                label=f"{row.employee_no} {row.name}",
+                sub=None if row.is_active else "已停用",
+                disabled=not row.is_active,
+            )
+            for row in rows
+        ]
+
 
 def _csv_cell(row: LogRowOut, column: str) -> str:
     value = getattr(row, column)
@@ -340,4 +388,4 @@ def _related(row: Mapping[str, Any]) -> RelatedLog:
     )
 
 
-__all__ = ["CSV_COLUMNS", "EXPORT_LIMIT", "PieceworkQueryService"]
+__all__ = ["CSV_COLUMNS", "EXPORT_LIMIT", "OPERATOR_MAX_OFFSET", "PieceworkQueryService"]

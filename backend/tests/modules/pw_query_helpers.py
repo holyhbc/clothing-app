@@ -73,6 +73,7 @@ async def hdr(
     *,
     data_scope: DataScope = DataScope.FACTORY,
     workshop_id: Any = None,
+    group_no: str | None = None,
     user_id: Any = None,
 ) -> dict[str, str]:
     """造一个**权限点恰好等于 ``perms``** 的用户的请求头。
@@ -106,6 +107,7 @@ async def hdr(
         employee_no=f"Q{uuid4().hex[:7].upper()}",
         data_scope=data_scope,
         workshop_id=workshop_id if workshop_id is not None else world["workshop_id"],
+        group_no=group_no,
     )
     await UserRoleFactory.create(db_session, user_id=user.id, role_id=role.id)
     return await auth_headers(user_id=user.id)

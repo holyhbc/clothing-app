@@ -1,4 +1,4 @@
-"""计件只读端点（``docs/modules/04-计件.md`` §6.1 的 5 个 GET）。
+"""计件只读端点（``docs/modules/04-计件.md`` §6.1 的 6 个 GET）。
 
 与 :mod:`.router`（写路径）分开是 ADR-0031 的延续：写路径只有 1 个端点、
 读路径有 5 个，硬塞进一个文件会顶破 400 行，而且「读写混在一个 router 里」时，
@@ -41,6 +41,7 @@ from app.modules.piecework.schemas import (
     LogDetailOut,
     LogQuery,
     LogRowOut,
+    OperatorOptionOut,
     StationTodayOut,
     SummaryRowOut,
 )
@@ -223,3 +224,31 @@ async def piecework_station_today(
     _require(ctx, "piecework:read", "查看工位机统计")
     out = await PieceworkQueryService(session, ctx).station_today(station_no, work_date)
     return ok(StationTodayOut.model_validate(out).model_dump(mode="json"))
+
+
+@router.get(
+    "/piecework/operators",
+    response_model=ApiResponse[list[OperatorOptionOut]],
+    summary="操作员候选（工位机 / 补录用；数据范围内，label=「工号 姓名」）",
+    openapi_extra={"x-permission": "piecework:read"},
+)
+async def piecework_operators(
+    session: SessionDep,
+    ctx: ContextDep,
+    q: Annotated[str | None, Query(max_length=64)] = None,
+    workshop_id: UUID | None = None,
+    size: Annotated[int, Query(ge=1, le=20)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> dict[str, object]:
+    """工位机 / 补录页的「操作员」下拉（T-PIECE-006，04 §5.1 步骤 1）。
+
+    ⚠️ 权限是 ``piecework:read`` 而**不是** ``system:user:manage``：组长要能选本组
+    的工人来扫码计件，但绝不能因此拿到「系统用户管理」。数据范围在
+    :meth:`PieceworkQueryService.operators` 里用 ``apply_data_scope`` 强制
+    （07 §3.2 铁律 1）—— 组长只看到本组、主管本车间、计件员全厂。
+    """
+    _require(ctx, "piecework:read", "查看操作员候选")
+    rows = await PieceworkQueryService(session, ctx).operators(
+        keyword=q, workshop_id=workshop_id, size=size, offset=offset
+    )
+    return ok([row.model_dump(mode="json") for row in rows])

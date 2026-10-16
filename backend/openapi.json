@@ -2491,6 +2491,64 @@
         "title": "ApiResponse[list[AvailableOutputOut]]",
         "type": "object"
       },
+      "ApiResponse_list_OperatorOptionOut__": {
+        "properties": {
+          "code": {
+            "default": 0,
+            "description": "0 表示成功；非 0 为业务错误码",
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/OperatorOptionOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据；失败时为 null",
+            "title": "Data"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败时的结构化补充信息（字段级错误、冲突区间等）",
+            "title": "Details"
+          },
+          "message": {
+            "default": "ok",
+            "description": "面向用户的文案",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求追踪 ID，与响应头一致",
+            "title": "Request Id"
+          }
+        },
+        "title": "ApiResponse[list[OperatorOptionOut]]",
+        "type": "object"
+      },
       "ApiResponse_list_OptionOut__": {
         "properties": {
           "code": {
@@ -6924,6 +6982,42 @@
           "rate"
         ],
         "title": "OperationRateSetOut",
+        "type": "object"
+      },
+      "OperatorOptionOut": {
+        "description": "工位机 / 补录页的「操作员」候选（``GET /piecework/operators``，T-PIECE-006）。\n\n⚠️ ``value`` 是**用户 UUID**（不是工号）：计件请求体 ``employee_id`` 要的就是它。\n``label`` 必须是「工号 姓名」（05 §9.5.2 禁止只显示编码）—— 只给 UUID 的话\n下拉里是一串人不可读的标识，组长根本挑不出人。\n\n⚠️ **与 base 的 ``OptionOut`` 不同**（那个 ``value`` 是业务编码字符串）：员工\n天然没有「业务编码主键」，工号是登录凭据可改、UUID 才稳定，故这里 ``value`` 是 UUID。",
+        "properties": {
+          "disabled": {
+            "default": false,
+            "title": "Disabled",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "sub": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sub"
+          },
+          "value": {
+            "format": "uuid",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ],
+        "title": "OperatorOptionOut",
         "type": "object"
       },
       "OptionOut": {
@@ -18663,6 +18757,103 @@
         ],
         "x-idempotency-key": true,
         "x-permission": "piecework:count"
+      }
+    },
+    "/api/v1/piecework/operators": {
+      "get": {
+        "description": "工位机 / 补录页的「操作员」下拉（T-PIECE-006，04 §5.1 步骤 1）。\n\n⚠️ 权限是 ``piecework:read`` 而**不是** ``system:user:manage``：组长要能选本组\n的工人来扫码计件，但绝不能因此拿到「系统用户管理」。数据范围在\n:meth:`PieceworkQueryService.operators` 里用 ``apply_data_scope`` 强制\n（07 §3.2 铁律 1）—— 组长只看到本组、主管本车间、计件员全厂。",
+        "operationId": "piecework_operators_api_v1_piecework_operators_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workshop_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workshop Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_OperatorOptionOut__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "操作员候选（工位机 / 补录用；数据范围内，label=「工号 姓名」）",
+        "tags": [
+          "计件"
+        ],
+        "x-permission": "piecework:read"
       }
     },
     "/api/v1/piecework/stations/{station_no}/today": {

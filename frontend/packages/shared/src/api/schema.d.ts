@@ -1581,6 +1581,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/piecework/operators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 操作员候选（工位机 / 补录用；数据范围内，label=「工号 姓名」）
+         * @description 工位机 / 补录页的「操作员」下拉（T-PIECE-006，04 §5.1 步骤 1）。
+         *
+         *     ⚠️ 权限是 ``piecework:read`` 而**不是** ``system:user:manage``：组长要能选本组
+         *     的工人来扫码计件，但绝不能因此拿到「系统用户管理」。数据范围在
+         *     :meth:`PieceworkQueryService.operators` 里用 ``apply_data_scope`` 强制
+         *     （07 §3.2 铁律 1）—— 组长只看到本组、主管本车间、计件员全厂。
+         */
+        get: operations["piecework_operators_api_v1_piecework_operators_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/piecework/stations/{station_no}/today": {
         parameters: {
             query?: never;
@@ -4496,6 +4521,38 @@ export interface components {
              */
             request_id?: string | null;
         };
+        /** ApiResponse[list[OperatorOptionOut]] */
+        ApiResponse_list_OperatorOptionOut__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /**
+             * Data
+             * @description 业务数据；失败时为 null
+             */
+            data?: components["schemas"]["OperatorOptionOut"][] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
         /** ApiResponse[list[OptionOut]] */
         ApiResponse_list_OptionOut__: {
             /**
@@ -6988,6 +7045,33 @@ export interface components {
             /** Document Log Id */
             document_log_id?: string | null;
             rate: components["schemas"]["OperationRateOut"];
+        };
+        /**
+         * OperatorOptionOut
+         * @description 工位机 / 补录页的「操作员」候选（``GET /piecework/operators``，T-PIECE-006）。
+         *
+         *     ⚠️ ``value`` 是**用户 UUID**（不是工号）：计件请求体 ``employee_id`` 要的就是它。
+         *     ``label`` 必须是「工号 姓名」（05 §9.5.2 禁止只显示编码）—— 只给 UUID 的话
+         *     下拉里是一串人不可读的标识，组长根本挑不出人。
+         *
+         *     ⚠️ **与 base 的 ``OptionOut`` 不同**（那个 ``value`` 是业务编码字符串）：员工
+         *     天然没有「业务编码主键」，工号是登录凭据可改、UUID 才稳定，故这里 ``value`` 是 UUID。
+         */
+        OperatorOptionOut: {
+            /**
+             * Disabled
+             * @default false
+             */
+            disabled: boolean;
+            /** Label */
+            label: string;
+            /** Sub */
+            sub?: string | null;
+            /**
+             * Value
+             * Format: uuid
+             */
+            value: string;
         };
         /**
          * OptionOut
@@ -12146,6 +12230,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_CountPieceworkOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    piecework_operators_api_v1_piecework_operators_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                workshop_id?: string | null;
+                size?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_OperatorOptionOut__"];
                 };
             };
             /** @description Validation Error */
