@@ -166,6 +166,13 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/piecework/List.vue'),
         meta: { title: '计件流水', permission: PERM.PIECEWORK_READ },
       },
+      // 工位机扫码（T-PIECE-007）：链路 A 落地点，全局扫码捕获
+      {
+        path: 'piecework/scan',
+        name: 'piecework-scan',
+        component: () => import('@/views/piecework/scan/Scan.vue'),
+        meta: { title: '工位机扫码', permission: PERM.PIECEWORK_COUNT },
+      },
       // 打菲单没有单独的编辑页：改明细走 PUT /lines（T-BUND-010），表头改走 PATCH（详情页按钮）
       {
         path: 'system/users',

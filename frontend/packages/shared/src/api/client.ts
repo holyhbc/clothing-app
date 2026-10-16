@@ -209,6 +209,15 @@ export interface RequestOptions {
   auth?: boolean
   /** 带 `Idempotency-Key`（docs/05 §5）。 */
   idempotent?: boolean
+  /**
+   * 静默：业务失败时**不**触发全局 `onError` 提示（仍照常抛 `ApiError`）。
+   *
+   * ⚠️ 给「失败是预期分支」的接口用 —— 例如工位机扫码的 `32001`（码已被他人计）
+   * 与 `32006`（超产），`06 §2.5` 明确要求**黄色行内提示、不打断操作**；
+   * 全局 toast 会把这些正常业务分支渲染成「报错弹窗」。参数错误
+   * （`isParamError`）本就已静默，本开关覆盖其余业务码。
+   */
+  silent?: boolean
   signal?: AbortSignal
   headers?: Record<string, string>
 }
@@ -410,8 +419,9 @@ export class ApiClient {
         status: response.status,
       })
       // ⚠️ 参数错误走行内红字（isParamError），不在这里弹全局 toast ——
-      // 全局弹一次 + 行内再标一次，用户被同一条信息轰炸两次
-      if (!error.isParamError) this.reportError(error)
+      // 全局弹一次 + 行内再标一次，用户被同一条信息轰炸两次。
+      // `silent` 用于「失败是预期分支」的接口（工位机扫码 32001/32006）。
+      if (!error.isParamError && options.silent !== true) this.reportError(error)
       throw error
     }
 

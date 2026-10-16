@@ -469,5 +469,14 @@ export type PieceworkSummaryRowOut = ApiModel<'SummaryRowOut'>
 /** 工位机今日大字卡（`GET /api/v1/piecework/stations/{station_no}/today`）。 */
 export type PieceworkStationTodayOut = ApiModel<'StationTodayOut'>
 
+/** 扫码计件请求（`POST /api/v1/piecework/count`，工位机代员工计件，T-PIECE-002）。 */
+export type PieceworkCountIn = ApiModel<'CountPieceworkIn'>
+
+/** 扫码计件响应（手数 `hands` 为主计数、`qty` 为副计数，ADR-0016 §6）。 */
+export type PieceworkCountOut = ApiModel<'CountPieceworkOut'>
+
+/** 操作员候选（`GET /api/v1/piecework/operators`，T-PIECE-006）。 */
+export type PieceworkOperatorOptionOut = ApiModel<'OperatorOptionOut'>
+
 export type { components } from '../api/schema.d.ts'
 export type { paths, operations } from '../api/schema.d.ts'

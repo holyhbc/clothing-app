@@ -10,15 +10,27 @@
 import type {
   DownloadResult,
   PageData,
+  PieceworkCountIn,
+  PieceworkCountOut,
   PieceworkLogDetailOut,
   PieceworkLogRowOut,
   PieceworkLogType,
+  PieceworkOperatorOptionOut,
 } from '@garment/shared'
 import { http } from './http'
 
-export type { PieceworkLogDetailOut, PieceworkLogRowOut, PieceworkLogType }
+export type {
+  PieceworkCountIn,
+  PieceworkCountOut,
+  PieceworkLogDetailOut,
+  PieceworkLogRowOut,
+  PieceworkLogType,
+  PieceworkOperatorOptionOut,
+}
 
 const BASE = '/piecework-logs'
+const COUNT = '/piecework/count'
+const OPERATORS = '/piecework/operators'
 
 /**
  * 计件流水列表查询参数。
@@ -84,4 +96,45 @@ export function getPieceworkLog(logId: string): Promise<PieceworkLogDetailOut> {
  */
 export function exportPieceworkLogs(query: PieceworkLogQuery): Promise<DownloadResult> {
   return http.download(`${BASE}/export`, { query: { ...query } })
+}
+
+/**
+ * 扫码计件（`POST /api/v1/piecework/count`，T-PIECE-002 链路 A）。
+ *
+ * ⚠️ **带 `Idempotency-Key`**（`04 §5.1` / `09 §2.4`）：扫码枪连按或网络抖动会
+ *    重复提交同一个 `bundle_no`，幂等键让服务端返回**首次结果**而不是报冲突。
+ * ⚠️ 返回的 `today_hands/today_qty/today_amount` 是**服务端权威计数** ——
+ *    工位机大字卡必须用它覆盖，不要在前端累加（幂等命中会重复 +1）。
+ */
+export function countPiecework(
+  payload: PieceworkCountIn,
+  idempotencyKey?: string,
+): Promise<PieceworkCountOut> {
+  return http.post<PieceworkCountOut>(COUNT, payload, {
+    // 32001（他人已计）/ 32006（超产）是**预期分支**，走行内黄/红提示，不弹全局 toast（06 §2.5）。
+    silent: true,
+    ...(idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
+  })
+}
+
+/** 操作员候选查询参数（`GET /api/v1/piecework/operators`，T-PIECE-006）。 */
+export interface PieceworkOperatorQuery extends Record<
+  string,
+  string | number | null | undefined
+> {
+  /** 工号或姓名模糊关键字（≤64）。 */
+  q?: string
+  /** 车间 id（UUID）；只会**再收窄**范围，不会放大。 */
+  workshop_id?: string
+  /** 返回条数（1..20，默认 20）。 */
+  size?: number
+  /** 偏移（≥0，上限 10000）。 */
+  offset?: number
+}
+
+/** 操作员候选（数据范围内，`label` =「工号 姓名」）。 */
+export function listPieceworkOperators(
+  query: PieceworkOperatorQuery = {},
+): Promise<PieceworkOperatorOptionOut[]> {
+  return http.get<PieceworkOperatorOptionOut[]>(OPERATORS, { query: { ...query } })
 }
