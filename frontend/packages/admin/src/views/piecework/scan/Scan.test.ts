@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { ApiError } from '@garment/shared'
-import type { PieceworkCountOut } from '@garment/shared'
+import type { PieceworkCountIn, PieceworkCountOut } from '@garment/shared'
 import { countPiecework, listPieceworkOperators } from '@/api/piecework'
 import {
   BUNDLE_NO_PATTERN,
@@ -208,5 +208,53 @@ describe('Scan 组件：全局监听生命周期', () => {
     wrapper.unmount()
     // 卸载后再敲键盘不应影响（组件已销毁，这里只断言监听已移除，不抛错即可）
     expect(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'X' }))).not.toThrow()
+  })
+})
+
+describe('useScanMachine：T-PIECE-008 离线入队', () => {
+  type EnqueueFn = (payload: PieceworkCountIn, key: string) => Promise<boolean>
+
+  it('离线：不直连、入队（同一幂等键），phase=cached', async () => {
+    const enqueue = vi.fn<EnqueueFn>(() => Promise.resolve(true))
+    const machine = createScanMachine({
+      enqueue,
+      isOnline: () => false,
+      deviceId: () => 'DEV-1',
+    })
+    await machine.submit(VALID, CONFIG)
+    expect(countPiecework).not.toHaveBeenCalled()
+    expect(enqueue).toHaveBeenCalledTimes(1)
+    const call = enqueue.mock.calls[0]
+    expect(call?.[0].bundle_no).toBe(VALID)
+    expect(call?.[0].device_id).toBe('DEV-1')
+    expect(call?.[1]).toContain(VALID)
+    expect(machine.state.phase).toBe('cached')
+  })
+
+  it('在线可重试失败（网络错）→ 入队（同一键）', async () => {
+    vi.mocked(countPiecework).mockRejectedValue(new TypeError('Failed to fetch'))
+    const enqueue = vi.fn<EnqueueFn>(() => Promise.resolve(true))
+    const machine = createScanMachine({ enqueue, isOnline: () => true, deviceId: () => 'DEV-1' })
+    await machine.submit(VALID, CONFIG)
+    expect(enqueue).toHaveBeenCalledTimes(1)
+    expect(enqueue.mock.calls[0]?.[1]).toBe(vi.mocked(countPiecework).mock.calls[0]?.[1])
+    expect(machine.state.phase).toBe('cached')
+  })
+
+  it('在线永久业务错误（32006）不入队', async () => {
+    vi.mocked(countPiecework).mockRejectedValue(new ApiError(32006, '超过该手件数'))
+    const enqueue = vi.fn<EnqueueFn>(() => Promise.resolve(true))
+    const machine = createScanMachine({ enqueue, isOnline: () => true, deviceId: () => 'DEV-1' })
+    await machine.submit(VALID, CONFIG)
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(machine.state.phase).toBe('error')
+  })
+
+  it('离线且缓存不可用（IndexedDB 挂）→ 明确报错，不假装成功', async () => {
+    const enqueue = vi.fn<EnqueueFn>(() => Promise.resolve(false))
+    const machine = createScanMachine({ enqueue, isOnline: () => false, deviceId: () => 'DEV-1' })
+    await machine.submit(VALID, CONFIG)
+    expect(machine.state.phase).toBe('error')
+    expect(machine.state.message).toContain('离线缓存不可用')
   })
 })

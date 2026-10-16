@@ -12,8 +12,9 @@
  */
 import { reactive } from 'vue'
 import { ApiError } from '@garment/shared'
-import type { PieceworkCountOut } from '@garment/shared'
+import type { PieceworkCountIn, PieceworkCountOut } from '@garment/shared'
 import { countPiecework } from '@/api/piecework'
+import { classifyError } from './offline/useOfflineQueue'
 import { FLASH_MS, playTone } from './feedback'
 
 /**
@@ -36,7 +37,7 @@ export interface ScanConfig {
   qty: number | null
 }
 
-export type ScanPhase = 'idle' | 'success' | 'duplicate' | 'error'
+export type ScanPhase = 'idle' | 'success' | 'cached' | 'duplicate' | 'error'
 
 export interface ScanState {
   /** 扫码枪字符缓冲（Enter 前的累积）。 */
@@ -54,6 +55,18 @@ export interface ScanState {
   last: PieceworkCountOut | null
   /** 闪烁方向：成功绿 / 重复黄 / 失败红。 */
   flash: 'ok' | 'warn' | 'error' | null
+}
+
+/**
+ * 扫码状态机的可注入依赖（T-PIECE-008）。
+ *
+ * `enqueue` 由离队队列提供：在线可重试失败与离线时把**同一 `payload` + 同一 `key`**
+ * 交给它落库；不传则退化为 T-PIECE-007 的「只行内报错、不缓存」行为（既有测试即走这条）。
+ */
+export interface ScanDeps {
+  enqueue?: (payload: PieceworkCountIn, idempotencyKey: string) => Promise<boolean>
+  isOnline?: () => boolean
+  deviceId?: () => string | null
 }
 
 /** 判断键盘事件是否落在输入控件上（此时不应进入扫码缓冲）。 */
@@ -94,7 +107,8 @@ export function duplicateText(details: Record<string, unknown>): string {
   return `该码 ${handPart}已由 ${who}${timePart} 计 ${qty} 件`
 }
 
-export function createScanMachine() {
+export function createScanMachine(deps: ScanDeps = {}) {
+  const isOnline = deps.isOnline ?? (() => (typeof navigator === 'undefined' ? true : navigator.onLine))
   const state = reactive<ScanState>({
     buffer: '',
     phase: 'idle',
@@ -126,6 +140,14 @@ export function createScanMachine() {
     flash(kind)
   }
 
+  /** 离线 / 可重试失败已落本地队列：黄色提示，**不计入大字卡**（大字卡只用服务端权威值）。 */
+  function cached(): void {
+    state.phase = 'cached'
+    state.message = '已缓存到本地队列，联网后自动提交'
+    playTone('warn')
+    flash('warn')
+  }
+
   function reset(): void {
     state.buffer = ''
     state.phase = 'idle'
@@ -133,27 +155,49 @@ export function createScanMachine() {
     state.flash = null
   }
 
+  /** 组装请求体：`scanned_at` 在此刻固定（离线回放也用它归属日期，BR-PW-11）。 */
+  function buildPayload(
+    bundleNo: string,
+    config: ScanConfig,
+    employeeId: string,
+    stationId: string,
+  ): PieceworkCountIn {
+    const payload: PieceworkCountIn = {
+      bundle_no: bundleNo,
+      employee_id: employeeId,
+      scanned_at: new Date().toISOString(),
+      station_id: stationId,
+    }
+    const device = deps.deviceId?.() ?? null
+    if (device !== null) payload.device_id = device
+    if (config.qty !== null) payload.qty = String(config.qty)
+    return payload
+  }
+
   async function submit(bundleNo: string, config: ScanConfig): Promise<void> {
     if (!BUNDLE_NO_PATTERN.test(bundleNo)) {
       fail(`不是有效的打菲号：${escapeHint(bundleNo)}`, 'error')
       return
     }
-    if (config.employeeId === null || config.workstationNo === null || config.operationNo === null) {
+    const { employeeId, workstationNo, operationNo } = config
+    if (employeeId === null || workstationNo === null || operationNo === null) {
       fail('请先选定操作员、工序并填写工位号', 'error')
       return
     }
+    const key = idempotencyKey(bundleNo, config)
+    const payload = buildPayload(bundleNo, config, employeeId, workstationNo)
     state.busy = true
     try {
-      const out = await countPiecework(
-        {
-          bundle_no: bundleNo,
-          employee_id: config.employeeId,
-          scanned_at: new Date().toISOString(),
-          station_id: config.workstationNo,
-          ...(config.qty === null ? {} : { qty: String(config.qty) }),
-        },
-        idempotencyKey(bundleNo, config),
-      )
+      // 离线：不直连，直接落本地队列（设计 §6.2）。
+      if (!isOnline()) {
+        if (deps.enqueue !== undefined && (await deps.enqueue(payload, key))) {
+          cached()
+        } else {
+          fail('离线缓存不可用，请恢复网络后再扫', 'error')
+        }
+        return
+      }
+      const out = await countPiecework(payload, key)
       state.last = out
       state.todayHands = out.today_hands
       state.todayQty = out.today_qty
@@ -170,10 +214,19 @@ export function createScanMachine() {
       playTone('ok')
       flash('ok')
     } catch (error) {
-      if (error instanceof ApiError && error.code === 32001) {
+      const outcome = classifyError(error)
+      if (outcome === 'conflict' && error instanceof ApiError) {
+        // 在线即已确定是业务冲突，无需排队（设计 §6.2）。
         fail(duplicateText(error.details), 'warn')
       } else if (error instanceof ApiError && error.code === 32006) {
         fail('该手件数不足，请追加手（新裁剪 + 新打菲）', 'error')
+      } else if (outcome === 'retry' && deps.enqueue !== undefined) {
+        // 网络 / 服务端故障：复用同一 payload 与同一幂等键入队，联网后回放。
+        if (await deps.enqueue(payload, key)) {
+          cached()
+        } else {
+          fail(error instanceof ApiError ? error.message : '网络异常，请重试', 'error')
+        }
       } else if (error instanceof ApiError) {
         fail(error.message, 'error')
       } else {

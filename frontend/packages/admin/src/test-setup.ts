@@ -1,3 +1,6 @@
+// ④ `indexedDB`：见文件末尾注释。import 必须在顶部（ESM），说明放末尾保持编号连贯。
+import 'fake-indexeddb/auto'
+
 /**
  * 单测环境补丁。
  *
@@ -47,3 +50,10 @@ class NoopResizeObserver implements ResizeObserver {
   disconnect(): void {}
 }
 globalThis.ResizeObserver ??= NoopResizeObserver as unknown as typeof ResizeObserver
+
+/**
+ * ④ `indexedDB`：jsdom 没有实现 IndexedDB，而 T-PIECE-008 的离线队列（`idb`）用它。
+ *    `fake-indexeddb/auto` 把内存版挂到全局（import 在文件顶部）。用例之间共用同一个
+ *    内存库，需要清库时调 `offline/queue.ts` 的 `__resetQueueForTest()` —— 逐条删
+ *    清不掉索引残留，且已建立的连接会缓存旧库。
+ */

@@ -131,6 +131,10 @@ defineProps<{ state: ScanState }>()
   color: var(--color-success);
 }
 
+.display__result--cached {
+  color: var(--color-warning);
+}
+
 .display__result--duplicate {
   color: var(--color-warning);
 }
