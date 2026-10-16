@@ -11,7 +11,7 @@ from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from uuid import UUID
 
-from fastapi import Depends
+from fastapi import Depends, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -126,20 +126,17 @@ async def load_allowed_workshops(
     return frozenset(result)
 
 
-async def get_auth_context(
-    session: AsyncSession = Depends(get_db),
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-) -> AuthContext:
-    """装配请求上下文。
+async def _build_context(session: AsyncSession, token: str | None) -> AuthContext:
+    """用 access token 装配上下文。**唯一的鉴权实现**，各入口（Header / query）共用。
 
     :raises BusinessError: ``11001`` 未带 token、``11002`` token 非法/过期、
         ``11004`` 账号已停用
     """
     from app.modules.auth.service import AuthService
 
-    if credentials is None:
+    if not token:
         raise BusinessError(ErrorCode.UNAUTHORIZED, "未登录，请先登录")
-    payload = decode_token(credentials.credentials, expected_type=TOKEN_TYPE_ACCESS)
+    payload = decode_token(token, expected_type=TOKEN_TYPE_ACCESS)
 
     service = AuthService(session)
     user = await service.get_active_user(UUID(str(payload["sub"])))
@@ -147,6 +144,30 @@ async def get_auth_context(
     permissions = await load_permissions(session, user.id, role_ids or None)
     allowed = await load_allowed_workshops(session, user.id, role_ids or None)
     return user.to_auth_context(permissions=permissions, allowed_workshop_ids=allowed)
+
+
+async def get_auth_context(
+    session: AsyncSession = Depends(get_db),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> AuthContext:
+    """常规接口的请求上下文：token 只从 ``Authorization: Bearer`` 头取。"""
+    return await _build_context(session, credentials.credentials if credentials else None)
+
+
+async def get_sse_auth_context(
+    token: str | None = Query(
+        default=None,
+        description="浏览器 EventSource 无法自定义请求头，故事件流 token 可走 query（docs/05 §8）",
+    ),
+    session: AsyncSession = Depends(get_db),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> AuthContext:
+    """SSE 端点的请求上下文：**优先** ``Authorization`` 头，缺失再取 ``?token=``。
+
+    ⚠️ 两种入口共用 :func:`_build_context`，权限仍然**每次查库**（``07 §1.1``）；
+    ``?token=`` 只是换了个传输位置，不改变「token 只带身份」这条规则。
+    """
+    return await _build_context(session, credentials.credentials if credentials else token)
 
 
 def require_permission(

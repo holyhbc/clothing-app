@@ -165,13 +165,16 @@ async def test_method_not_allowed_returns_unified_envelope(client: AsyncClient) 
     assert body["request_id"] == resp.headers["X-Request-ID"]
 
 
-async def test_events_stream_returns_501_with_plan(client: AsyncClient) -> None:
-    """未实现端点返回 501 并说明计划阶段，不静默 404（docs/05 §1）。"""
+async def test_events_stream_requires_login(client: AsyncClient) -> None:
+    """``GET /events/stream`` 已是真实 SSE 端点（T-PIECE-010），未登录 → ``11001``。
+
+    替换原先的「501 占位 + planned_milestone」断言：占位端点已随本卡移除，
+    这里守「不再是 501、且鉴权把关」这两件事（真正的 SSE 行为见
+    ``tests/modules/test_events_stream.py``）。
+    """
     resp = await client.get("/api/v1/events/stream")
-    assert resp.status_code == 501
-    body = resp.json()
-    assert body["data"] is None
-    assert body["details"]["planned_milestone"] == "P2"
+    assert resp.status_code == 401
+    assert resp.json()["code"] == ErrorCode.UNAUTHORIZED
 
 
 # ---------------------------------------------------------------------------

@@ -42,6 +42,10 @@ class ErrorCode(IntEnum):
     IMPORT_FILE_FORMAT_ERROR = 11007
     IMPORT_DATA_INVALID = 11008
     EXPORT_RANGE_TOO_LARGE = 11011
+    #: 事件流（SSE）不可用：Redis 未配置或不可达。**只给 `GET /events/stream`** ——
+    #: 其余接口依赖 Redis 时都走降级（docs/01 §5「Redis 不是唯一数据源」），
+    #: 唯独 SSE 本身没有 Redis 就没有事件来源，只能回这个码让前端降级为轮询（05 §8）。
+    EVENT_STREAM_UNAVAILABLE = 11012
 
     # ---- 12xxx 权限 ----
     PERMISSION_DENIED = 12001
@@ -139,6 +143,7 @@ HTTP_STATUS_BY_CODE: dict[ErrorCode, int] = {
     ErrorCode.IMPORT_FILE_FORMAT_ERROR: HTTPStatus.UNPROCESSABLE_ENTITY,
     ErrorCode.IMPORT_DATA_INVALID: HTTPStatus.UNPROCESSABLE_ENTITY,
     ErrorCode.EXPORT_RANGE_TOO_LARGE: HTTPStatus.UNPROCESSABLE_ENTITY,
+    ErrorCode.EVENT_STREAM_UNAVAILABLE: HTTPStatus.SERVICE_UNAVAILABLE,
     ErrorCode.PERMISSION_DENIED: HTTPStatus.FORBIDDEN,
     ErrorCode.DATA_SCOPE_DENIED: HTTPStatus.FORBIDDEN,
     ErrorCode.BASE_DATA_NOT_FOUND: HTTPStatus.NOT_FOUND,

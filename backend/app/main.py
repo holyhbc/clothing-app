@@ -22,7 +22,6 @@ from app.core.config import get_settings
 from app.core.db import dispose_engine
 from app.core.errors import BusinessError
 from app.core.middleware import RequestIdMiddleware, register_exception_handlers
-from app.core.responses import ApiResponse
 
 API_PREFIX = "/api/v1"
 
@@ -55,7 +54,6 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
 
     _register_health_endpoints(app)
-    _register_placeholders(app)
     _register_module_routers(app)
     return app
 
@@ -69,6 +67,7 @@ def _register_module_routers(app: FastAPI) -> None:
     from app.modules.piecework.query_router import router as piecework_query_router
     from app.modules.piecework.router import router as piecework_router
     from app.modules.piecework.write_router import router as piecework_write_router
+    from app.modules.system.events import router as events_router
     from app.modules.system.router import router as system_router
 
     app.include_router(auth_router, prefix=API_PREFIX)
@@ -79,6 +78,7 @@ def _register_module_routers(app: FastAPI) -> None:
     app.include_router(piecework_query_router, prefix=API_PREFIX)
     app.include_router(piecework_write_router, prefix=API_PREFIX)
     app.include_router(system_router, prefix=API_PREFIX)
+    app.include_router(events_router, prefix=API_PREFIX)
 
 
 def _register_health_endpoints(app: FastAPI) -> None:
@@ -164,27 +164,6 @@ async def _check_redis() -> str:
     finally:
         await client.aclose()
     return "up"
-
-
-def _register_placeholders(app: FastAPI) -> None:
-    """占位端点：明确告知"未实现"而不是静默 404（docs/05 §1）。"""
-
-    @app.get(
-        f"{API_PREFIX}/events/stream",
-        tags=["系统"],
-        summary="SSE 事件流（P2 实现）",
-        response_model=ApiResponse[dict[str, str]],
-    )
-    async def events_stream_placeholder() -> JSONResponse:
-        return JSONResponse(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            content={
-                "code": 10008,
-                "message": "SSE 事件流尚未实现，计划在 P2（扫码计件）阶段交付",
-                "data": None,
-                "details": {"planned_milestone": "P2", "design": "docs/05-接口设计规范.md §8"},
-            },
-        )
 
 
 app = create_app()

@@ -153,12 +153,15 @@ def _schema(migration_url: str) -> Iterator[None]:
 
 @pytest_asyncio.fixture
 async def _clean_redis_namespace() -> AsyncIterator[None]:
-    """清掉 ``auth:login_fail:*`` 与 ``idem:*``。
+    """清掉 ``auth:login_fail:*``、``idem:*`` 与 ``erp:events``。
 
     ⚠️ 这是一个真实的测试隔离陷阱：Redis 里的登录失败计数**跨用例存活**，
     而数据库每个用例都回滚。两者语义不一致的后果是 —— 某个用例把 A001 锁了，
     后面所有用 A001 的用例都会拿到 10004，而且失败原因看起来毫不相干
     （"账号已停用"的用例报 429）。这类 bug 极难定位，所以在夹具层根治。
+
+    ``erp:events``（事件流，T-PIECE-010）同理：计件用例发的事件会留在流里，
+    下一个用例 ``XREAD`` 就会读到别人的事件 —— 断言「恰好一条」必然随机失败。
     """
     from app.core.cache import close_redis, get_redis
 
@@ -166,7 +169,7 @@ async def _clean_redis_namespace() -> AsyncIterator[None]:
     if client is None:
         yield  # 未配置 Redis 时幂等与锁定走进程内/DB 降级路径，无需清理
         return
-    for pattern in ("auth:login_fail:*", "idem:*"):
+    for pattern in ("auth:login_fail:*", "idem:*", "erp:events"):
         keys = [key async for key in client.scan_iter(match=pattern)]
         if keys:
             await client.delete(*keys)

@@ -27,6 +27,7 @@ from app.core.errors import BusinessError, ErrorCode
 from app.core.idempotency import load_idempotent, mark_idempotent_failed, store_idempotent
 from app.core.permissions import AuthContext, get_auth_context
 from app.core.responses import ApiResponse, ok
+from app.modules.piecework.events import publish_counted_event
 from app.modules.piecework.schemas import CountPieceworkIn, CountPieceworkOut
 from app.modules.piecework.service import PieceworkService
 
@@ -100,6 +101,11 @@ async def count_piecework(
             device_id=payload.device_id,
             idempotency_key=idempotent.key if idempotent is not None else None,
         )
+        # ⑪ 事件广播（04 §5.1 ⑪）：**提交之后**、**只在真新增时**。
+        #    幂等命中（`idempotent=true`）不重复发 —— 否则看板会把一次扫码显示两次。
+        #    best-effort：Redis 挂掉不影响这次已经成功的计件（docs/01 §5）。
+        if not out.idempotent:
+            await publish_counted_event(session, out=out, employee_id=payload.employee_id)
         # ⚠️ ``model_dump(mode="json")`` 是必需的：``work_date`` / ``id`` 是
         #   date / UUID，Pydantic 默认按 python 对象 dump，Redis 缓存会存成不可 JSON
         #   序列化的东西 → 下一个带同键的请求读缓存时炸。

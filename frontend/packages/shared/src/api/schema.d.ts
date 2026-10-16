@@ -1191,8 +1191,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** SSE 事件流（P2 实现） */
-        get: operations["events_stream_placeholder_api_v1_events_stream_get"];
+        /**
+         * SSE 事件流（实时提示；真值仍查接口）
+         * @description 订阅 `erp:events` 事件流。事件名见 docs/05 §8（当前：`piecework_counted`）。鉴权：`Authorization: Bearer` 头，或 `?token=`（EventSource 不能设请求头）。断线重连请带 `Last-Event-ID` 以续传。
+         */
+        get: operations["events_stream_api_v1_events_stream_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -11614,10 +11617,19 @@ export interface operations {
             };
         };
     };
-    events_stream_placeholder_api_v1_events_stream_get: {
+    events_stream_api_v1_events_stream_get: {
         parameters: {
-            query?: never;
-            header?: never;
+            query?: {
+                /** @description 逗号分隔的事件名白名单，如 piecework_counted */
+                events?: string | null;
+                /** @description 断点续传游标（优先级低于 Last-Event-ID 头） */
+                last_event_id?: string | null;
+                /** @description 浏览器 EventSource 无法自定义请求头，故事件流 token 可走 query（docs/05 §8） */
+                token?: string | null;
+            };
+            header?: {
+                "Last-Event-ID"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -11629,7 +11641,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_dict_str__str__"];
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
