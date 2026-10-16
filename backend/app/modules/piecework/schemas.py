@@ -24,6 +24,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.common.enums import RateSource
 from app.core.pydantic_types import Str
 from app.modules.piecework.models import PieceworkLogType
 
@@ -281,6 +282,30 @@ class OperatorOptionOut(BaseModel):
     label: str
     sub: str | None = None
     disabled: bool = False
+
+
+class PieceworkRateOut(BaseModel):
+    """计件单价查询的一行（``GET /piecework/rates``，T-PIECE-009）。
+
+    ⚠️ **不复用 base 的 ``OperationRateOut``**：那个的 ``is_current`` 口径是
+    ``effective_to IS NULL``（「长期有效」），而本端点按 ``work_date`` 生效 ——
+    一条**未来生效**的价 `effective_to IS NULL`，在 ``work_date`` 当天并不生效，
+    两个口径会打架。故单列一个响应，``is_current`` 一律按 ``work_date`` 判定。
+
+    ⚠️ 行已被「当天生效」过滤，故 ``is_current`` 恒为 ``True``；保留它是**显式语义**
+    —— 防止调用方拿它当 base 那个 ``effective_to IS NULL`` 来理解。
+    """
+
+    operation_no: str
+    style_no: str | None = Field(default=None, description="空 = 不限款号（档位2/3）")
+    product_category_id: UUID | None = Field(default=None, description="空 = 不限分类")
+    unit_price: Str = Field(description="工价；字符串（docs/05 §3）")
+    effective_from: date
+    effective_to: date | None = None
+    rate_source: RateSource = Field(description="该行所属档位（STYLE/CATEGORY/OPERATION）")
+    is_current: bool = Field(
+        default=True, description="该 work_date 当天是否生效（本端点恒为 true，见类注）"
+    )
 
 
 # ====================================================================== 红冲 / 补录（T-PIECE-004）

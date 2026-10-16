@@ -67,6 +67,65 @@ def build_rate_resolve_stmt(
     )
 
 
+def build_effective_rates_stmt(
+    *,
+    operation_no: str | None,
+    style_no: str,
+    category_id: UUID | None,
+    work_date: date,
+) -> Select[OperationRate]:
+    """某 (款号, 可选工序) 在 ``work_date`` **当天生效**的全部单价行（T-PIECE-009）。
+
+    与 :func:`build_rate_resolve_stmt` 是**同一套 ADR-0026 三档语义的两个视图**：
+
+        ========================  ==========================  ==========================
+        函数                       取几条                       用途
+        ========================  ==========================  ==========================
+        ``build_rate_resolve``    ``LIMIT 1``（命中那一档）    真正计件落库取价
+        ``build_effective``       全部适用行（最多三档各一条）  「当前生效单价列表」只读展示
+        ========================  ==========================  ==========================
+
+    ⚠️ **两条 SQL 的「生效区间」与「三档适用」谓词必须逐字一致**：展示用的价与真正
+    计件用的价若不是同一条，偏差只会在对账时暴露（「页面写着 0.42，工资按 0.35 算」），
+    而那时代码已经跑了几千条流水。改动任一条时**必须同步另一条**。
+
+    ⚠️ **``LIMIT 1`` 不是笔误**：这里**不**加 limit —— 「列表」的本意就是把当天的
+    三档都列出来（款号被分类价遮蔽时也要看得见，ADR-0026 §7 要求显示来源与遮蔽）。
+    ``operation_no`` 为 ``None`` 时跨工序返回，按 ``operation_no`` 归组。
+    """
+    tier = case(
+        (OperationRate.style_no == style_no, 0),
+        (OperationRate.product_category_id == category_id, 1),
+        else_=2,
+    )
+    stmt = select(OperationRate).where(
+        OperationRate.effective_from <= work_date,
+        or_(OperationRate.effective_to.is_(None), OperationRate.effective_to > work_date),
+        or_(
+            and_(
+                OperationRate.style_no == style_no,
+                OperationRate.product_category_id.is_(None),
+            ),
+            and_(
+                OperationRate.style_no.is_(None),
+                OperationRate.product_category_id == category_id,
+            ),
+            and_(
+                OperationRate.style_no.is_(None),
+                OperationRate.product_category_id.is_(None),
+            ),
+        ),
+        OperationRate.deleted_at.is_(None),
+    )
+    if operation_no is not None:
+        stmt = stmt.where(OperationRate.operation_no == operation_no)
+    return stmt.order_by(
+        OperationRate.operation_no.asc(),
+        tier,
+        OperationRate.effective_from.desc(),
+    )
+
+
 def rate_source_of(rate: OperationRate) -> RateSource:
     """由命中行的形态派生 ``rate_source``（ADR-0026 §2 三档）。"""
     if rate.style_no is not None:

@@ -138,7 +138,9 @@ async def test_tc_pw_op05_keyword_matches_no_or_name(
     assert str(user.id) in {r["value"] for r in await _names(client, headers, "关键字甲")}
 
 
-async def test_tc_pw_op06_disabled_marked(client, db_session, auth_headers, piecework_world) -> None:
+async def test_tc_pw_op06_disabled_marked(
+    client, db_session, auth_headers, piecework_world
+) -> None:
     user = await UserFactory.create(
         db_session,
         employee_no="OPD001",

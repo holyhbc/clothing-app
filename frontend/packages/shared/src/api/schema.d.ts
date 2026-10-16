@@ -1606,6 +1606,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/piecework/rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 计件单价查询（按 work_date 生效的适用行；T-PIECE-009）
+         * @description `04 §6.1` 的 ``GET /piecework/rates``（T-PIECE-009）。
+         *
+         *     ⚠️ **权限是 ``piecework:rate:manage``**（与维护单价同一权限点）：单价是敏感
+         *     金额口径，能查生效价的就该是有权设价的人。**数据范围 ``FACTORY``**，故不套
+         *     ``apply_data_scope``（与 ``/piecework/summary`` 那种按车间过滤的读不同）。
+         *
+         *     ⚠️ ``work_date`` 缺省**今天**（工厂当地日历 ``business_today``，不是宿主机本地日）
+         *     —— 与取价 ``resolve`` 的口径一致，否则「当天的价」在跨时区的 VPS 上会差一天。
+         *
+         *     ⚠️ 语义见 :func:`app.modules.piecework.rates.list_effective_rates`：按 ``work_date``
+         *     当天生效过滤（**不是** ``list_rates`` 的「生效起始日落在区间」）；无命中回 ``20004``。
+         */
+        get: operations["piecework_rates_api_v1_piecework_rates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/piecework/stations/{station_no}/today": {
         parameters: {
             query?: never;
@@ -4617,6 +4647,38 @@ export interface components {
              */
             request_id?: string | null;
         };
+        /** ApiResponse[list[PieceworkRateOut]] */
+        ApiResponse_list_PieceworkRateOut__: {
+            /**
+             * Code
+             * @description 0 表示成功；非 0 为业务错误码
+             * @default 0
+             */
+            code: number;
+            /**
+             * Data
+             * @description 业务数据；失败时为 null
+             */
+            data?: components["schemas"]["PieceworkRateOut"][] | null;
+            /**
+             * Details
+             * @description 失败时的结构化补充信息（字段级错误、冲突区间等）
+             */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Message
+             * @description 面向用户的文案
+             * @default ok
+             */
+            message: string;
+            /**
+             * Request Id
+             * @description 请求追踪 ID，与响应头一致
+             */
+            request_id?: string | null;
+        };
         /** ApiResponse[list[RoleOptionOut]] */
         ApiResponse_list_RoleOptionOut__: {
             /**
@@ -7602,6 +7664,52 @@ export interface components {
              * Format: date
              */
             work_date: string;
+        };
+        /**
+         * PieceworkRateOut
+         * @description 计件单价查询的一行（``GET /piecework/rates``，T-PIECE-009）。
+         *
+         *     ⚠️ **不复用 base 的 ``OperationRateOut``**：那个的 ``is_current`` 口径是
+         *     ``effective_to IS NULL``（「长期有效」），而本端点按 ``work_date`` 生效 ——
+         *     一条**未来生效**的价 `effective_to IS NULL`，在 ``work_date`` 当天并不生效，
+         *     两个口径会打架。故单列一个响应，``is_current`` 一律按 ``work_date`` 判定。
+         *
+         *     ⚠️ 行已被「当天生效」过滤，故 ``is_current`` 恒为 ``True``；保留它是**显式语义**
+         *     —— 防止调用方拿它当 base 那个 ``effective_to IS NULL`` 来理解。
+         */
+        PieceworkRateOut: {
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Effective To */
+            effective_to?: string | null;
+            /**
+             * Is Current
+             * @description 该 work_date 当天是否生效（本端点恒为 true，见类注）
+             * @default true
+             */
+            is_current: boolean;
+            /** Operation No */
+            operation_no: string;
+            /**
+             * Product Category Id
+             * @description 空 = 不限分类
+             */
+            product_category_id?: string | null;
+            /** @description 该行所属档位（STYLE/CATEGORY/OPERATION） */
+            rate_source: components["schemas"]["RateSource"];
+            /**
+             * Style No
+             * @description 空 = 不限款号（档位2/3）
+             */
+            style_no?: string | null;
+            /**
+             * Unit Price
+             * @description 工价；字符串（docs/05 §3）
+             */
+            unit_price: string;
         };
         /**
          * PieceworkReverseIn
@@ -12264,6 +12372,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_list_OperatorOptionOut__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    piecework_rates_api_v1_piecework_rates_get: {
+        parameters: {
+            query: {
+                /** @description 款号（必填） */
+                style_no: string;
+                /** @description 工序号；缺省=跨工序 */
+                operation_no?: string | null;
+                work_date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_PieceworkRateOut__"];
                 };
             };
             /** @description Validation Error */

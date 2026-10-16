@@ -31,17 +31,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.errors import BusinessError, ErrorCode
-from app.core.numbering import BUSINESS_TZ
+from app.core.numbering import BUSINESS_TZ, business_today
 from app.core.permissions import AuthContext, get_auth_context
 from app.core.responses import ApiResponse, PageData, ok, page_ok
 from app.modules.piecework import query_service
 from app.modules.piecework.models import PieceworkLogType
 from app.modules.piecework.query_service import PieceworkQueryService
+from app.modules.piecework.rates import list_effective_rates
 from app.modules.piecework.schemas import (
     LogDetailOut,
     LogQuery,
     LogRowOut,
     OperatorOptionOut,
+    PieceworkRateOut,
     StationTodayOut,
     SummaryRowOut,
 )
@@ -250,5 +252,42 @@ async def piecework_operators(
     _require(ctx, "piecework:read", "查看操作员候选")
     rows = await PieceworkQueryService(session, ctx).operators(
         keyword=q, workshop_id=workshop_id, size=size, offset=offset
+    )
+    return ok([row.model_dump(mode="json") for row in rows])
+
+
+@router.get(
+    "/piecework/rates",
+    response_model=ApiResponse[list[PieceworkRateOut]],
+    summary="计件单价查询（按 work_date 生效的适用行；T-PIECE-009）",
+    openapi_extra={"x-permission": "piecework:rate:manage"},
+)
+async def piecework_rates(
+    session: SessionDep,
+    ctx: ContextDep,
+    style_no: Annotated[str, Query(min_length=1, max_length=32, description="款号（必填）")],
+    operation_no: Annotated[
+        str | None, Query(max_length=16, description="工序号；缺省=跨工序")
+    ] = None,
+    work_date: date | None = None,
+) -> dict[str, object]:
+    """`04 §6.1` 的 ``GET /piecework/rates``（T-PIECE-009）。
+
+    ⚠️ **权限是 ``piecework:rate:manage``**（与维护单价同一权限点）：单价是敏感
+    金额口径，能查生效价的就该是有权设价的人。**数据范围 ``FACTORY``**，故不套
+    ``apply_data_scope``（与 ``/piecework/summary`` 那种按车间过滤的读不同）。
+
+    ⚠️ ``work_date`` 缺省**今天**（工厂当地日历 ``business_today``，不是宿主机本地日）
+    —— 与取价 ``resolve`` 的口径一致，否则「当天的价」在跨时区的 VPS 上会差一天。
+
+    ⚠️ 语义见 :func:`app.modules.piecework.rates.list_effective_rates`：按 ``work_date``
+    当天生效过滤（**不是** ``list_rates`` 的「生效起始日落在区间」）；无命中回 ``20004``。
+    """
+    _require(ctx, "piecework:rate:manage", "查看计件单价")
+    rows = await list_effective_rates(
+        session,
+        style_no=style_no,
+        operation_no=operation_no,
+        work_date=work_date or business_today(),
     )
     return ok([row.model_dump(mode="json") for row in rows])
