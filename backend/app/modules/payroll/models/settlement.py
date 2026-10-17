@@ -27,10 +27,8 @@ payroll_periods                      周期（用户自定义起止区间，非�
    **不建外键**：车间停用重组、人事离职都是合法的档案维护动作（同 §7.1 口径），
    数据范围过滤走 ``app/core/scope.py`` 的列名约定。
 
-## 本文件**不包含**的东西
-
-无 relationship、无 service / repository / router —— 那些随 T-PAY-003 起补。
-现在建空壳只会让「工资模块已就位」看起来比实际完整（同 ``piecework/__init__.py``）。
+工资单域三表（``payroll_sheets`` / ``payroll_details`` / ``bank_payment_files``，
+T-PAY-002 / 迁移 0021）见 :mod:`app.modules.payroll.models.sheet`。
 """
 
 from __future__ import annotations
@@ -84,7 +82,7 @@ class PayrollPeriodStatus(StrEnum):
 #: 0009/0012/0014/0019 各踩过一次）。
 PAYROLL_PERIOD_STATUS = SAEnum(PayrollPeriodStatus, name="payroll_period_status", create_type=False)
 
-#: ``document_status``（迁移 0009 建，含 ``PAID``）—— 结算单复用，不重建。
+#: ``document_status``（迁移 0009 建，含 ``PAID``）—— 结算单 / 工资单复用，不重建。
 DOCUMENT_STATUS = SAEnum(DocumentStatus, name="document_status", create_type=False)
 
 #: 结算行快照的「原始流水类型」（PG enum 由迁移 0019 建）。

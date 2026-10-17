@@ -178,6 +178,12 @@ SCOPE_SPECS: dict[str, ScopeSpec] = {
     "piecework_settlements": ScopeSpec(
         workshop_column="workshop_id", group_column=None, user_column="created_by"
     ),
+    # 工资单（T-PAY-002 / 迁移 0021）。车间是数据范围过滤依据；
+    #   ⚠️ 员工端 `SELF` 落在 `payroll_details.employee_id`（那张表无 workshop_id，
+    #   故不在此登记，由 T-PAY-009 按 05 §10 处理）。本卡只建表，不写 service。
+    "payroll_sheets": ScopeSpec(
+        workshop_column="workshop_id", group_column=None, user_column="created_by"
+    ),
     "stock_ledgers": ScopeSpec(workshop_column=None, group_column=None, user_column="created_by"),
     # WIP 是**车间在制品**（裁片），天然属于某个车间，车间范围必须过滤。
     # ⚠️ 这条是 T-BASE-006 建完 `wip_stocks` 之后被 `test_scope.py` 的守卫逼出来的 ——

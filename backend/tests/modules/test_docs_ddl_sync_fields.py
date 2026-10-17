@@ -24,6 +24,7 @@ T-CUT-001a 就是在搬运裁剪单四表时当场撞出 `hands_total` 声明位
 | `stock_ledgers` / `stock_ledger_lines` / `stock_reservations` | `modules/06` §3.3/§3.4/§3.5 | §7.2.5 | T-BASE-008 |
 | `cutting_outputs` / `cutting_scrap_records` | `modules/02` §3.6/§3.7 | §7.7.5 | T-BASE-008 |
 | `bom_items` | `modules/01` §3.3 | §7.15.4 | T-BASE-008 |
+| `payroll_sheets` / `payroll_details` / `bank_payment_files` | `modules/05` §3.4/§3.5/§3.6 | §7.6.4~§7.6.6 | T-PAY-002 |
 
 ## 为什么单独一个文件
 
@@ -79,6 +80,10 @@ FIELD_TABLE_SOURCES: dict[str, tuple[str, str, str]] = {
     "cutting_scrap_records": ("modules/02-裁剪.md", "### 3.7 `cutting_scrap_records`", "### 3.8 "),
     # 组件 BOM（T-BASE-008）
     "bom_items": ("modules/01-基础资料.md", "**`bom_items`（组件 BOM", "### 3.4 "),
+    # 工资单域（T-PAY-002；bank_payment_files 为 append-only 记录表，按既有口径登记）
+    "payroll_sheets": ("modules/05-工资.md", "### 3.4 `payroll_sheets`", "### 3.5 "),
+    "payroll_details": ("modules/05-工资.md", "### 3.5 `payroll_details`", "### 3.6 "),
+    "bank_payment_files": ("modules/05-工资.md", "### 3.6 `bank_payment_files`", "### 3.7 "),
 }
 
 #: **字段表里有、`04 §7` 刻意不建列** → 为什么不建。
