@@ -34,6 +34,17 @@ export type {
   TokenStorage,
 } from './api/client.ts'
 
+// ---- SSE 事件流 ----
+export { EventStreamClient } from './sse/eventStream.ts'
+export type {
+  EventSourceFactory,
+  EventSourceLike,
+  EventSourceListener,
+  EventStreamOptions,
+  StreamEvent,
+  StreamStatus,
+} from './sse/eventStream.ts'
+
 // ---- 枚举 ----
 export {
   DOCUMENT_STATUSES,
