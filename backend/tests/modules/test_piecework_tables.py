@@ -10,7 +10,7 @@ TC-PW-T04             ``ck_piecework_logs_sign`` 真拦「非红冲行为负」
 TC-PW-T05             ``ck_piecework_logs_whole`` 真拦 28.5 件
 TC-PW-T06             ``bundle_id`` 外键存在、指向 ``bundles.id``、RESTRICT，
                       且真拦未知码
-TC-PW-T07             ``payroll_id`` **无**外键（``piecework_settlements`` 未建）
+TC-PW-T07             ``payroll_id`` 有外键 → ``piecework_settlements.id``（T-PAY-001 补）
 TC-PW-T08             ``erp_app`` 对本表**无 DELETE**（04 §6.2.1）
 TC-PW-T09             ``alembic downgrade 0018`` 干净删两表 + 枚举（真跑迁移）
 TC-PW-T10             本表已从 ``scope.PENDING_TABLES`` 移出，且仍在 ``SCOPE_SPECS``
@@ -200,14 +200,19 @@ async def test_reversal_of_id_is_self_referencing_restrict(db_session) -> None:
 # ------------------------------------------------------------ TC-PW-T07
 
 
-async def test_payroll_id_deliberately_has_no_foreign_key(db_session) -> None:
-    """TC-PW-T07：``payroll_id`` **无** FK —— ``piecework_settlements`` 是工资阶段的表。
+async def test_payroll_id_has_foreign_key_to_settlements(db_session) -> None:
+    """TC-PW-T07：``payroll_id`` 有 FK → ``piecework_settlements.id``（T-PAY-001 / 迁移 0020）。
 
-    ⚠️ 这条钉死一个「没做」：工资本卡建完那张表后会回来加 FK，届时本条应该改成
-    「有 FK 且指向 piecework_settlements」。留着是为了让「暂缓」这件事在测试里可见，
-    而不是靠「谁记得」。
+    ⚠️ 0019 建表时结算表还不存在，刻意只建列；工资侧建完那张表的**同一提交**补 FK，
+    本条断言随之从「无 FK」翻成「有 FK 且指向 piecework_settlements」——
+    这正是原先那条用例注释预告的翻转，不是为通过测试而放松。
     """
-    assert await column_fk_names(db_session, LOG, "payroll_id") == []
+    assert await column_fk_names(db_session, LOG, "payroll_id") == ["fk_piecework_logs_payroll"]
+    definition = await constraint_def(db_session, "fk_piecework_logs_payroll")
+    assert definition is not None
+    assert "piecework_settlements" in definition
+    # 结算单只软删（INV-7）：FK **不加** ON DELETE（PG 默认 NO ACTION）
+    assert "ON DELETE" not in definition.upper()
 
 
 async def test_employee_and_workshop_have_no_foreign_keys(db_session) -> None:

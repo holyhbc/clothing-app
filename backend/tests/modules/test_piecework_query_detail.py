@@ -25,13 +25,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from decimal import Decimal
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy import update
 
 from app.core.numbering import BUSINESS_TZ, business_today
 from app.modules.piecework.models import PieceworkLog
 from app.modules.piecework.service import PieceworkService
+from tests.factories.payroll import seed_settlement
 from tests.factories.piecework_world import bind, ctx_for
 from tests.modules.pw_query_helpers import (
     LOGS,
@@ -137,11 +138,13 @@ async def test_tc_pw_q09_is_settled_uses_payroll_id(
     """★ ``is_settled`` 的判据是 ``payroll_id IS NULL``，**不是布尔列**（04 §7.1）：
     两个来源必然漂移，而结算回写是 service 行为、不允许手工填。
 
-    ⚠️ 这里直接 UPDATE ``payroll_id`` 来造「已结算」，而不是去建一张工资结算表 ——
-    那张表还不存在，而这条用例要验的是**筛选条件用哪一列**，不是结算功能。"""
+    ⚠️ 这里直接 UPDATE ``payroll_id`` 来造「已结算」—— 只造最小真实结算单满足 FK
+    （迁移 0020 起 ``payroll_id`` 有外键），这条用例要验的是**筛选条件用哪一列**，
+    不是结算功能。"""
     ids = await seed(db_session, piecework_world, count=3)
+    settlement = await seed_settlement(db_session, workshop_id=piecework_world["workshop_id"])
     await db_session.execute(
-        update(PieceworkLog).where(PieceworkLog.id == ids[0]).values(payroll_id=uuid4())
+        update(PieceworkLog).where(PieceworkLog.id == ids[0]).values(payroll_id=settlement.id)
     )
     headers = await hdr(db_session, auth_headers, piecework_world, READ_PERMS)
 

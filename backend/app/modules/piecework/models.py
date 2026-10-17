@@ -38,6 +38,11 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID as PgUUID  # noqa: N811 —— 别名照抄 docs/04 §2
 from sqlalchemy.orm import Mapped, mapped_column
 
+# ⚠️ **必须 import**：``piecework_logs.payroll_id`` 的外键目标是
+#    ``piecework_settlements``（T-PAY-001 / 迁移 0020 补），它定义在工资模块。
+#    不 import 则 ``Base.metadata`` 里没有那张表，SQLAlchemy 解析外键时抛
+#    ``NoReferencedTableError``。本 import 只为注册模型，**不**反向依赖工资业务。
+import app.modules.payroll.models  # noqa: F401  —— 仅为把结算表注册进 metadata
 from app.common.models import BaseModel
 
 
@@ -77,9 +82,10 @@ class PieceworkLog(BaseModel):
     ``work_date`` 由它按 ``Asia/Shanghai`` 推导（BR-PW-11）。给 ``DEFAULT now()``
     会让「历史补录」与「实时扫码」落成同一条口径，之后再也分不开。
 
-    ⚠️ ``payroll_id`` **只建列不建外键**（``piecework_settlements`` 是工资阶段的表，
-    本卡还不存在）；``bundle_id`` **建外键**（BR-PW-30：`bundle_no` 是可变字符串
-    格式，FK 不会被格式变更打断，且可直接 JOIN 取码的行数口径）。
+    ⚠️ ``payroll_id`` 的外键（→ ``piecework_settlements.id``）由 **T-PAY-001 /
+    迁移 0020 补上**（0019 建表时结算表还不存在，刻意只建列）；``bundle_id``
+    **建外键**（BR-PW-30：`bundle_no` 是可变字符串格式，FK 不会被格式变更打断，
+    且可直接 JOIN 取码的行数口径）。
     """
 
     __tablename__ = "piecework_logs"
@@ -183,8 +189,12 @@ class PieceworkLog(BaseModel):
         default=PieceworkLogType.SCAN,
         server_default=text("'SCAN'"),  # 同上：server_default 必须与迁移一致
     )
-    # ⚠️ 刻意无 ForeignKey：piecework_settlements 是工资阶段的表，由那张卡补
-    payroll_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
+    # ⚠️ FK → piecework_settlements.id（T-PAY-001 / 迁移 0020 补）；
+    #   不加 ON DELETE：结算单只软删（INV-7），PG 默认 NO ACTION 即可
+    payroll_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("piecework_settlements.id", name="fk_piecework_logs_payroll"),
+        nullable=True,
+    )
     reversal_of_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("piecework_logs.id", name="fk_piecework_logs_reversal_of", ondelete="RESTRICT"),
         nullable=True,

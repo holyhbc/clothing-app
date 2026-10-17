@@ -17,9 +17,10 @@ bundles ──── piecework_logs     计件流水（append-only，纠错靠�
 2. **符号用 ``log_type`` 表达，不用负金额字段**（``04 §4`` REV-2026-10 例外）：
    ``REVERSAL`` 行 ``qty`` 与 ``amount`` 为负，其余为正，由 ``ck_piecework_logs_sign``
    兜住。⚠️ 旧的 ``qty > 0`` CHECK 会拒掉红冲行，**不得**再用。
-3. **外键只建两处**（表见 ``docs/04 §7.1`` 的「两处外键的取舍」）：``bundle_id``
-   → ``bundles.id``、``reversal_of_id`` 自引用。``payroll_id`` **刻意不建** ——
-   ``piecework_settlements`` 是工资阶段的表，本卡还不存在。
+3. **外键三处**（表见 ``docs/04 §7.1`` 的「两处外键的取舍」）：``bundle_id``
+   → ``bundles.id``、``reversal_of_id`` 自引用、``payroll_id`` →
+   ``piecework_settlements.id``（T-PAY-001 / 迁移 0020 补上 —— 0019 建表时
+   结算表还不存在，故当时刻意只建列）。
 4. **公共字段与车间/用户列一律不建外键**：人事离职、车间停用重组都是合法的档案维护
    动作，建 FK 会阻止它们；数据范围过滤走 ``app/core/scope.py`` 的列名约定。
 

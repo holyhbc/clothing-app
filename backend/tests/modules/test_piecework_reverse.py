@@ -25,7 +25,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 from typing import Any
-from uuid import uuid4
 
 import pytest
 from sqlalchemy import select, update
@@ -34,6 +33,7 @@ from app.common.enums import DataScope
 from app.modules.bundling.models import Bundle
 from app.modules.piecework.models import PieceworkLog, PieceworkLogType
 from app.modules.piecework.service import PieceworkService
+from tests.factories.payroll import seed_settlement
 from tests.modules.pw_query_helpers import hdr
 
 REV = "/api/v1/piecework-logs"
@@ -124,10 +124,13 @@ async def test_tc_pw_r01_reverse_creates_reversal_and_clears_counted(
 async def test_tc_pw_r02_reverse_settled_raises_32003(
     client, db_session, auth_headers, piecework_world
 ) -> None:
-    """已结算（payroll_id 非空）不可红冲 → 32003。"""
+    """已结算（payroll_id 非空）不可红冲 → 32003。
+
+    ⚠️ 用真实结算单满足 ``payroll_id`` 的外键（迁移 0020 起有 FK），不放松断言。"""
     original = await _count_one(db_session, piecework_world)
+    settlement = await seed_settlement(db_session, workshop_id=piecework_world["workshop_id"])
     await db_session.execute(
-        update(PieceworkLog).where(PieceworkLog.id == original.id).values(payroll_id=uuid4())
+        update(PieceworkLog).where(PieceworkLog.id == original.id).values(payroll_id=settlement.id)
     )
     headers = await hdr(db_session, auth_headers, piecework_world, REVERSE_PERMS)
     response = await client.post(

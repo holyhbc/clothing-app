@@ -76,8 +76,10 @@ P1_PENDING_TABLES = frozenset(
         "purchase_order_lines",
         "purchase_arrivals",
         "purchase_arrival_lines",
-        # §7.6 工资结算周期
-        "payroll_periods",
+        # §7.6 结算域三表（``payroll_periods`` / ``piecework_settlements`` /
+        # ``piecework_settlement_lines``，T-PAY-001 已建，迁移 0020）——
+        # 搬运 DDL 与建表在**同一提交**完成，故不在此白名单留痕；
+        # TD-01/02 从此对三表**真比对**。⚠️ 不要加回来。
         # §7.0 打菲件表 / §7.16 打菲单表+明细+标签打印（T-BUND-001 已建，迁移 0014）——
         # 移出本白名单意味着 TD-02 / TD-04 从此对它们**真比对**而不是跳过；
         # ⚠️ 不要加回来：加回等于让它们「文档写错也不抓」（与下一条注释同款）。
