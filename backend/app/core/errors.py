@@ -114,6 +114,24 @@ class ErrorCode(IntEnum):
     #: ⚠️ 超产**只能**靠追加手解决（新裁剪 + 新打菲），不许改数绕过。
     PIECEWORK_OVER_PRODUCTION = 32006
 
+    # ---- 33xxx 工资 ----
+    #: ⚠️ **整段随 T-PAY-003 提前登记**（原计划 T-PAY-009）：本卡（结算周期 service）
+    #: 要报 ``33003``（周期已关闭）/ ``33004``（区间重叠），而守卫
+    #: ``tests/test_errors_registry.py`` 明确要求「往一个段加码就要把整段补齐」——
+    #: 所以 ``33001``~``33004`` 一次登记全，``"33"`` 同步进 ``IMPLEMENTED_SEGMENTS``。
+    #: ⚠️ ``60001`` / ``60002``（财务凭证）**不登记**：归 M9，``"60"`` 段保持未实现
+    #: （Q-PL09 / L-124，见 ``docs/modules/P2-工资-实施说明.md §8.1``）。
+    #: 工资单已发放，不可反审核（``05 §4``；T-PAY-005/008）
+    PAYROLL_SHEET_ALREADY_PAID = 33001
+    #: 结算期间重复（同「周期 + 车间」已有结算单；``05 §4``；T-PAY-004）
+    SETTLEMENT_PERIOD_DUPLICATED = 33002
+    #: 工资结算周期已关闭，不可再结算或加单（``05 §4`` / BR-PR-19）；
+    #: ⚠️ 本卡 ``close`` 的前置「区间内仍有草稿/已提交结算单」也复用本码
+    PAYROLL_PERIOD_CLOSED = 33003
+    #: 结算周期区间与既有周期重叠（含完全相同；``period_code`` 重复亦由唯一约束兜底转本码；
+    #: ``05 §4`` / BR-PR-19）
+    PAYROLL_PERIOD_OVERLAP = 33004
+
     # ---- 40xxx 库存 ----
     STOCK_INSUFFICIENT = 40001
     #: 布批可用库存不足（ADR-0022：裁剪领料 > 可用量）
@@ -170,6 +188,10 @@ HTTP_STATUS_BY_CODE: dict[ErrorCode, int] = {
     ErrorCode.PIECEWORK_NOT_BOUND: HTTPStatus.FORBIDDEN,
     ErrorCode.PIECEWORK_QTY_NOT_INTEGER: HTTPStatus.UNPROCESSABLE_ENTITY,
     ErrorCode.PIECEWORK_OVER_PRODUCTION: HTTPStatus.CONFLICT,
+    ErrorCode.PAYROLL_SHEET_ALREADY_PAID: HTTPStatus.CONFLICT,
+    ErrorCode.SETTLEMENT_PERIOD_DUPLICATED: HTTPStatus.CONFLICT,
+    ErrorCode.PAYROLL_PERIOD_CLOSED: HTTPStatus.CONFLICT,
+    ErrorCode.PAYROLL_PERIOD_OVERLAP: HTTPStatus.CONFLICT,
     ErrorCode.STOCK_INSUFFICIENT: HTTPStatus.CONFLICT,
     ErrorCode.BATCH_STOCK_INSUFFICIENT: HTTPStatus.CONFLICT,
     ErrorCode.INTERNAL: HTTPStatus.INTERNAL_SERVER_ERROR,

@@ -23,7 +23,7 @@
 **要做**：
 - [ ] 管理端 router（`05 §6.1` / `§6.1.1`）：结算单、工资单、周期全套端点，OpenAPI tag=`工资`
 - [ ] 每个端点 `require_permission(...)` + `apply_data_scope` + 统一响应包装 + 错误码声明
-- [ ] **错误码**：`ErrorCode` 整段补 `33001~33004`；把 `"33"` 加进 `IMPLEMENTED_SEGMENTS`（守卫要求整段补齐）
+- [x] **错误码**：`ErrorCode` 整段补 `33001~33004`；把 `"33"` 加进 `IMPLEMENTED_SEGMENTS`（守卫要求整段补齐）—— ⚠️ **已由 T-PAY-003 提前实现**（T-PAY-003 的 service 需 `33003`/`33004`，守卫要求整段；本卡不再重复，只需确认 `test_errors_registry.py` 全绿）
 - [ ] **`60001`/`60002` 不登记**（归 M9，"60" 段保持未实现，见 Q-PL09）
 - [ ] **`RoleSeed` 按 `05 §10` 下发**（R4）：`workshop_supervisor` 补 `payroll:read/settle/approve/reverse`；
       `line_leader` 补 `payroll:read`；`accountant` 补 `payroll:read/pay/export`；

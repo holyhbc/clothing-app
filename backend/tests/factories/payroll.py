@@ -13,11 +13,14 @@ FK 建了之后那会直接 ``ForeignKeyViolationError``。本模块提供「建
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
+from sqlalchemy import select
+
+from app.common.enums import DocumentStatus
 from app.modules.payroll.models import (
     BankPaymentFile,
     PayrollDetail,
@@ -165,3 +168,126 @@ async def seed_sheet(
     session.add(sheet)
     await session.flush()
     return sheet
+
+
+# ------------------------------------------------------------ 周期 service 用例（T-PAY-003）
+
+#: ``cutting_boundary`` 用例的固定款号 / 工序（每个用例独立事务、跑完回滚，故不撞唯一键）
+BOUNDARY_STYLE_NO = "PAY-BOUND-1"
+BOUNDARY_OPERATION_NO = "OP01"
+
+
+async def seed_period(session: Any, **over: Any) -> PayrollPeriod:
+    """建一条周期并 flush（默认区间 ``2099-12`` —— 与 ``period_row`` 一致）。"""
+    period = period_row(**over)
+    session.add(period)
+    await session.flush()
+    return period
+
+
+async def seed_piecework_log(
+    session: Any, *, work_date: date, workshop_id: UUID, **over: Any
+) -> Any:
+    """灌一条计件流水（区间取数核对用例用）。
+
+    ⚠️ 复用 :func:`tests.factories.piecework.log_row`：它已给出「一条合法流水」的
+    全部默认值（``qty=60`` / ``amount=21.0000`` / ``payroll_id=None`` / ``SCAN``），
+    用例只覆盖自己要破坏 / 指定的字段。⚠️ 用**历史区间**（2026-07/08）而不是今天，
+    避免与真提交的并发用例（它们的 ``work_date`` 是 ``business_today()``）互相污染。
+    """
+    from tests.factories.piecework import log_row
+
+    log = log_row(work_date=work_date, workshop_id=workshop_id, **over)
+    session.add(log)
+    await session.flush()
+    return log
+
+
+async def seed_boundary_orders(
+    session: Any,
+    *,
+    style_no: str = BOUNDARY_STYLE_NO,
+    cutting_dates: list[date],
+    bundling_dates: list[date],
+) -> dict[str, Any]:
+    """造「车间 + 款号 + 工序 + 若干已审核裁剪/打菲单」，用于 ``cutting_boundary``。
+
+    ⚠️ **完成日列取 ``approved_at``**（见 ``service/common.py`` 的 Q-PL11 说明）：
+    裁剪单只需表头即可（边界查询只读 ``style_no`` / ``status`` / ``approved_at``），
+    不必铺三层明细；打菲单需要一张真实的来源裁剪单满足它自己的外键。
+    """
+    from app.modules.base.models import ProductCategory, Style
+    from app.modules.bundling.models import BundlingOrder
+    from app.modules.cutting.models import CuttingOrder
+    from tests.factories.bundling import ensure_operation
+    from tests.factories.user import OPERATOR_ID, WorkshopFactory
+
+    workshop = await WorkshopFactory.create(session)
+    category = (
+        await session.execute(select(ProductCategory).where(ProductCategory.code == "SET"))
+    ).scalar_one()
+    style = Style(
+        style_no=style_no,
+        name="周期边界款",
+        category_id=category.id,
+        created_by=OPERATOR_ID,
+        updated_by=OPERATOR_ID,
+    )
+    session.add(style)
+    # ⚠️ **get-or-create，不能盲目 INSERT**：``operations.operation_no`` 是**全局唯一**
+    # （``uq_operations_no``），而真提交的持久化世界（``tests/factories/
+    # piecework_world_persisted.py``）会往共享测试库留下一条 ``OP01``（L-099）。
+    # 直接 INSERT 会在全量跑（前面跑过持久化世界）时撞唯一约束，而**隔离子跑却绿** ——
+    # 这正是 L-094「测试库污染、报错点与真因隔三层」的那一类。复用 bundling 工厂的
+    # ``ensure_operation``（先查后建）即对残留 ``OP01`` 免疫。
+    await ensure_operation(session, BOUNDARY_OPERATION_NO)
+    await session.flush()
+
+    cutting_rows = [
+        CuttingOrder(
+            doc_no=f"CT-{day:%Y%m%d}-{index:06d}",
+            workshop_id=workshop.id,
+            style_id=style.id,
+            style_no=style_no,
+            color_codes="WHT",
+            doc_date=day,
+            status=DocumentStatus.APPROVED,
+            approved_by=OPERATOR_ID,
+            approved_at=datetime.combine(day, time(10, 0), tzinfo=UTC),
+            created_by=OPERATOR_ID,
+            updated_by=OPERATOR_ID,
+        )
+        for index, day in enumerate(cutting_dates, start=1)
+    ]
+    session.add_all(cutting_rows)
+    await session.flush()
+    source_cutting_order_id = cutting_rows[0].id
+
+    bundling_rows = [
+        BundlingOrder(
+            doc_no=f"BD-{day:%Y%m%d}-{index:06d}",
+            status=DocumentStatus.APPROVED,
+            doc_date=day,
+            workshop_id=workshop.id,
+            style_no=style_no,
+            operation_no=BOUNDARY_OPERATION_NO,
+            color_group="WHT",
+            color_code="WHT",
+            bundle_qty=60,
+            output_qty=Decimal("60"),
+            source_cutting_order_id=source_cutting_order_id,
+            approved_by=OPERATOR_ID,
+            approved_at=datetime.combine(day, time(10, 0), tzinfo=UTC),
+            created_by=OPERATOR_ID,
+            updated_by=OPERATOR_ID,
+        )
+        for index, day in enumerate(bundling_dates, start=1)
+    ]
+    session.add_all(bundling_rows)
+    await session.flush()
+    return {
+        "workshop": workshop,
+        "style": style,
+        "cutting_orders": cutting_rows,
+        "bundling_orders": bundling_rows,
+    }
