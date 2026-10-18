@@ -28,6 +28,7 @@ from app.modules.payroll.models import (
     PayrollPeriodStatus,
     PayrollSheet,
     PieceworkSettlement,
+    PieceworkSettlementLine,
 )
 
 #: 固定周期区间 —— 与 piecework 夹具的 ``WORK_DATE``（2099-12-31）落在同一区间内。
@@ -70,6 +71,34 @@ def settlement_row(period_id: UUID, workshop_id: UUID, **over: Any) -> Piecework
     }
     base.update(over)
     return PieceworkSettlement(**base)
+
+
+def settlement_line_row(
+    doc_id: UUID, piecework_log_id: UUID, **over: Any
+) -> PieceworkSettlementLine:
+    """一条**合法**的结算行（一流水一行；`piecework_log_id` 唯一）。
+
+    `group_no` 在行表 NOT NULL，故默认给 `"G1"`；`qty`/`unit_price`/`amount` 默认与
+    :func:`tests.factories.piecework.log_row` 一致（60 件 × 0.35 = 21）。
+    """
+    base: dict[str, Any] = {
+        "doc_id": doc_id,
+        "line_no": 1,
+        "piecework_log_id": piecework_log_id,
+        "employee_id": uuid4(),
+        "group_no": "G1",
+        "style_no": "E2E-2026-0001",
+        "operation_no": "01",
+        "work_date": PERIOD_END,
+        "log_type": "SCAN",
+        "qty": Decimal("60"),
+        "unit_price": Decimal("0.350000"),
+        "amount": Decimal("21.0000"),
+        "created_by": uuid4(),
+        "updated_by": uuid4(),
+    }
+    base.update(over)
+    return PieceworkSettlementLine(**base)
 
 
 async def seed_settlement(session: Any, *, workshop_id: UUID | None = None) -> PieceworkSettlement:
