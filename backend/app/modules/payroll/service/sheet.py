@@ -49,8 +49,10 @@ from app.modules.payroll.models import (
     PieceworkSettlement,
     PieceworkSettlementLine,
 )
+from app.modules.payroll.service.sheet_approve import SheetApproveMixin
 from app.modules.payroll.service.sheet_state import SHEET_DOC_PREFIX
 from app.modules.payroll.service.sheet_state_mixin import SheetStateMixin
+from app.modules.payroll.voucher_port import NullVoucherGateway, VoucherPort
 
 logger = logging.getLogger("app.payroll")
 
@@ -74,15 +76,18 @@ class _GroupAgg:
     mixed: bool = False
 
 
-class PayrollSheetService(SheetStateMixin):
+class PayrollSheetService(SheetApproveMixin, SheetStateMixin):
     """工资单 service：``create`` 生成 + 继承轻状态迁移。
 
     ⚠️ state 的持久化助手（``_apply_status`` / ``_write_log`` / ``_get_sheet`` 等）
     在 :class:`~.sheet_state_support.SheetStoreMixin`，经 :class:`SheetStateMixin` 继承。
     """
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, *, voucher_port: VoucherPort | None = None) -> None:
         self.session = session
+        self.voucher_port: VoucherPort = (
+            voucher_port if voucher_port is not None else NullVoucherGateway()
+        )
 
     # ================================================================== 生成
 

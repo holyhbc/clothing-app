@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | payroll |
 | 负责人 | backend-dev |
-| 状态 | `todo` |
+| 状态 | `done` |
 | 优先级 | P2 |
 | 依赖 | T-PAY-006 |
 | 被依赖 | T-PAY-008 |
@@ -21,12 +21,12 @@
 ## 范围
 
 **要做**：
-- [ ] `approve`：SUBMITTED→APPROVED，`payroll:approve`；制单人≠审核人；`total_net = total_gross - total_deduction`
-- [ ] `approve` 副作用：调 `VoucherPort.create_accrual(sheet)`（借贷平衡校验由 M9 实现，P2 只留调用点）
-- [ ] `reverse`：APPROVED→SUBMITTED，`payroll:reverse`，**必填原因**；`status != PAID`（已发放 → `33001`）；
+- [x] `approve`：SUBMITTED→APPROVED，`payroll:approve`；制单人≠审核人；`total_net = total_gross - total_deduction`
+- [x] `approve` 副作用：调 `VoucherPort.create_accrual(sheet)`（借贷平衡校验由 M9 实现，P2 只留调用点）
+- [x] `reverse`：APPROVED→SUBMITTED，`payroll:reverse`，**必填原因**；`status != PAID`（已发放 → `33001`）；
       副作用：`VoucherPort.reverse_accrual(sheet)`
-- [ ] `VoucherPort` 协议（`Protocol`）+ `NullVoucherGateway`（返回 `None`，记 `TODO(业务待确认: Q-PL09)`）
-- [ ] 回写 `accrual_voucher_no`（空适配器下为 `NULL`）
+- [x] `VoucherPort` 协议（`Protocol`）+ `NullVoucherGateway`（返回 `None`，记 `TODO(业务待确认: Q-PL09)`）
+- [x] 回写 `accrual_voucher_no`（空适配器下为 `NULL`）
 
 **不做**：
 - **不建凭证引擎**（M9 范围，见 Q-PL09 选项 A）
@@ -43,43 +43,52 @@
 
 ## 实现要点
 
-- [ ] **唯一凭证收敛点**：全模块只有 `voucher_port.py` 一处 import 凭证相关；M9 接入时只改这里
-- [ ] `approve` 与计提同事务；`reverse` 与红冲同事务
-- [ ] 空适配器**不得静默吞错**：M9 未接入时返回 `None` 并 WARN，不抛异常（发放流程可继续）
-- [ ] `document_logs` 含金额与（若有的）凭证号
+- [x] **唯一凭证收敛点**：全模块只有 `voucher_port.py` 一处 import 凭证相关；M9 接入时只改这里
+- [x] `approve` 与计提同事务；`reverse` 与红冲同事务
+- [x] 空适配器**不得静默吞错**：M9 未接入时返回 `None` 并 WARN，不抛异常（发放流程可继续）
+- [x] `document_logs` 含金额与（若有的）凭证号
 
 ## 验收标准
 
-- [ ] TC-08（已发放不可反审核 `33001`）落成
-- [ ] `approve`/`reverse` 副作用对称（`08 §5` 第 6 条）
-- [ ] `VoucherPort` 契约测试：空适配器返回 `None`、`accrual_voucher_no` 为 `NULL`、不抛异常
-- [ ] ⚠️ **TC-06 的凭证断言标「待 M9」**，不得声称全绿（Q-PL09 未拍板前）
-- [ ] 闸门 1-4 通过
+- [x] TC-08（已发放不可反审核 `33001`）落成
+- [x] `approve`/`reverse` 副作用对称（`08 §5` 第 6 条）
+- [x] `VoucherPort` 契约测试：空适配器返回 `None`、`accrual_voucher_no` 为 `NULL`、不抛异常
+- [x] ⚠️ **TC-06 的凭证断言标「待 M9」**，不得声称全绿（Q-PL09 未拍板前）
+- [x] 闸门 1-4 通过（另跑闸门 5 镜像构建成功）
 
 ## 测试清单
 
 | # | 用例 | 期望 | 结果 |
 | --- | --- | --- | --- |
-| TC-08 | 对 `PAID` 工资单 `reverse` | `33001`，状态不变 | |
-| TC-PAY-V01 | `approve` 调用 `VoucherPort.create_accrual` 一次 | 通过 | |
-| TC-PAY-V02 | 空适配器下 `accrual_voucher_no` 为 `NULL` | 通过 | |
-| TC-PAY-V03 | `reverse` 调用 `reverse_accrual` 一次 | 通过 | |
-| TC-PAY-V04 | 并发审核/反审核 | 一成一败 `10003` | |
+| TC-08 | 对 `PAID` 工资单 `reverse` | `33001`，状态 / 凭证不变，端口不被调用 | ✅ |
+| TC-PAY-V01 | `approve` 调用 `VoucherPort.create_accrual` 一次 | 通过 + 回写凭证号 | ✅ |
+| TC-PAY-V02 | 空适配器下 `accrual_voucher_no` 为 `NULL` | `approve` / `reverse` 两路均不抛异常 | ✅ |
+| TC-PAY-V03 | `reverse` 调用 `reverse_accrual` 一次 | 通过 + 清空计提凭证号 | ✅ |
+| TC-PAY-V04 | 并发审核/反审核 | 一成一败 `10003`，无中间态 | ✅ |
+| — | 自审 `10005` / `total_net` 不符 / 缺原因 `10006` / 权限 `12001` | 分别拒绝且状态不变 | ✅ |
+| TC-06 | 凭证借贷平衡 | ⏸️ **待 M9**：只测 VoucherPort 契约（调用点 / 返回值），不断言真实凭证 | ⏸️ 待 M9 |
 
 ## 实际改动（完成后回填）
 
 | 文件 | 行数 | 说明 |
 | --- | --- | --- |
-| | +0 / -0 | |
+| `backend/app/modules/payroll/voucher_port.py` | +76 / -0 | 新增：`VoucherPort` Protocol + `NullVoucherGateway`（唯一凭证收敛点） |
+| `backend/app/modules/payroll/service/sheet_approve.py` | +285 / -0 | 新增：`SheetApproveMixin.approve` / `reverse`（凭证与状态同事务） |
+| `backend/app/modules/payroll/service/sheet_state.py` | +12 / -0 | 迁移表按动作补 `approve`/`reverse` + 权限映射 |
+| `backend/app/modules/payroll/service/sheet.py` | +6 / -1 | 继承 `SheetApproveMixin`（MRO）+ 注入 `voucher_port`（默认 `NullVoucherGateway`） |
+| `backend/tests/modules/test_payroll_sheet_approve.py` | +398 / -0 | 新增：9 用例（TC-08 / V01~V04 + 4 前置） |
+
+**手写合计**：约 **+777 / -1**（≤1200 软上限；单文件最大 **399** 行 ≤400，ADR-0030）。**无迁移、无 router、无新权限点 / 错误码、无生成物。**
 
 **提交记录**：
-- `<hash>` feat(payroll): 工资单审核/反审核 + 计提凭证收敛点（T-PAY-007）
+- 未提交（按本轮指令不 commit；建议信息 `feat(payroll): 工资单审核/反审核 + 计提凭证收敛点（T-PAY-007）`）
 
 ## 遗留问题
 
 | # | 问题 | 登记到 |
 | --- | --- | --- |
-| Q-PL09：凭证未生成；M9 建表后是否回补历史计提 | modules/05 §12 / docs/12 L-124 |
+| Q-PL09：凭证未生成；M9 建表后是否回补历史计提（计提侧收敛点本卡已落地，凭证号落 `NULL`） | modules/05 §12 / docs/12 L-124 |
+| L-130：`VoucherPort` 实施为 `async`（同事务写库需要）+ `total_net` 平衡双检复用 `10008` | docs/12 L-130 |
 
 ## 自检清单
 
@@ -90,3 +99,4 @@
 | 日期 | 变更内容 | 操作人 |
 | --- | --- | --- |
 | 2026-10-17 | 初版 | AI |
+| 2026-10-18 | 落地：`approve`/`reverse` + `VoucherPort` 收敛点；回填实际改动 / 测试结果；状态置 `done` | AI |

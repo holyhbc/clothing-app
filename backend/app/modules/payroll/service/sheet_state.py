@@ -4,18 +4,22 @@
 :class:`~app.modules.payroll.service.sheet_state_mixin.SheetStateMixin`（轻迁移编排）
 与 :class:`~app.modules.payroll.service.sheet.PayrollSheetService`（``create``）。
 
-============  ===========================  ================  ==================================
-动作          迁移                         权限点            副作用
-============  ===========================  ================  ==================================
+============  ===========================  =================  ==================================
+动作          迁移                         权限点             副作用
+============  ===========================  =================  ==================================
 ``update``    DRAFT/REJECTED（原状态）      ``payroll:settle`` 白名单 ``doc_date``/``remark`` + 表头金额重算
 ``submit``    DRAFT/REJECTED → SUBMITTED   ``payroll:settle`` 前置：明细非空
 ``withdraw``  SUBMITTED → DRAFT            ``payroll:settle`` 撤回人 = 制单人
 ``reject``    SUBMITTED → REJECTED         ``payroll:approve`` **必填原因**（``rejected_reason``）
 ``cancel``    DRAFT/REJECTED → CANCELLED   ``payroll:settle`` **必填原因**（``cancelled_reason``）
-============  ===========================  ================  ==================================
+``approve``   SUBMITTED → APPROVED         ``payroll:approve`` 计提凭证（``VoucherPort``，T-PAY-007）
+``reverse``   APPROVED → SUBMITTED         ``payroll:reverse`` **必填原因** + 红冲计提（T-PAY-007）
+============  ===========================  =================  ==================================
 
-``approve`` / ``reverse`` / ``pay`` 归 T-PAY-007/008。``update`` 不登记在
-:data:`TRANSITIONS`：它的目标状态 = 原状态，另由 ``_assert_updatable`` 判定。
+``approve`` / ``reverse`` 的业务编排（含凭证副作用）归 T-PAY-007，见
+:mod:`~app.modules.payroll.service.sheet_approve`；本表只声明它们的合法性。
+``pay`` 归 T-PAY-008。``update`` 不登记在 :data:`TRANSITIONS`：它的目标状态 = 原状态，
+另由 ``_assert_updatable`` 判定。
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ SHEET_DOC_PREFIX: Final[str] = "PR"
 
 SETTLE_PERMISSION: Final[str] = "payroll:settle"
 APPROVE_PERMISSION: Final[str] = "payroll:approve"
+REVERSE_PERMISSION: Final[str] = "payroll:reverse"
 
 #: 动作 → 权限点（05 §4.2 / §10）。
 PERMISSION_BY_ACTION: Final[dict[str, str]] = {
@@ -40,6 +45,8 @@ PERMISSION_BY_ACTION: Final[dict[str, str]] = {
     "withdraw": SETTLE_PERMISSION,
     "reject": APPROVE_PERMISSION,
     "cancel": SETTLE_PERMISSION,
+    "approve": APPROVE_PERMISSION,
+    "reverse": REVERSE_PERMISSION,
 }
 
 #: 迁移表：**按动作**登记 ``(允许的起始状态集, 目标状态)``（08 §3.1 / §1.2 R1）。
@@ -54,6 +61,10 @@ TRANSITIONS: Final[dict[str, tuple[frozenset[DocumentStatus], DocumentStatus]]] 
         frozenset({DocumentStatus.DRAFT, DocumentStatus.REJECTED}),
         DocumentStatus.CANCELLED,
     ),
+    "approve": (frozenset({DocumentStatus.SUBMITTED}), DocumentStatus.APPROVED),
+    # ⚠️ reverse 只允许从 APPROVED 出发；PAID 由 sheet_approve._assert_not_paid 先拦成 33001
+    # （PAID 不在本表里，若先走状态机会报 10007，语义不对）。
+    "reverse": (frozenset({DocumentStatus.APPROVED}), DocumentStatus.SUBMITTED),
 }
 
 #: 可编辑状态（``update``）：``DRAFT`` / ``REJECTED``。
@@ -66,6 +77,7 @@ __all__ = [
     "DOC_TYPE_PAYROLL_SHEET",
     "EDITABLE_STATUSES",
     "PERMISSION_BY_ACTION",
+    "REVERSE_PERMISSION",
     "SETTLE_PERMISSION",
     "SHEET_DOC_PREFIX",
     "TRANSITIONS",
