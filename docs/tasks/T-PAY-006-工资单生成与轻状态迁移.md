@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | payroll |
 | 负责人 | backend-dev |
-| 状态 | `todo` |
+| 状态 | `done` |
 | 优先级 | P2 |
 | 依赖 | T-PAY-002、T-PAY-005 |
 | 被依赖 | T-PAY-007 |
@@ -21,12 +21,12 @@
 ## 范围
 
 **要做**：
-- [ ] `create`：来源结算单须 `APPROVED` 且周期仍 `OPEN`（否则 `33003`）；未生成过（`settlement_id` 唯一）
-- [ ] 按 `(employee_id, style_no, operation_no)` 分组汇总结算行 → `payroll_details`（`qty`/`unit_price`/`gross_amount`）
-- [ ] 从 `users` 快照 `id_card`/`bank_name`/`bank_account` 到行上（发放后改卡不影响历史）
-- [ ] 单头 `total_gross`/`total_deduction`/`total_net`（`deduction_amount` 恒 0，Q-PL01）
-- [ ] 轻迁移 `update`/`submit`/`withdraw`/`reject`/`cancel`（`05 §4.2`）
-- [ ] 单号 `PR`
+- [x] `create`：来源结算单须 `APPROVED` 且周期仍 `OPEN`（否则 `33003`）；未生成过（`settlement_id` 唯一）
+- [x] 按 `(employee_id, style_no, operation_no)` 分组汇总结算行 → `payroll_details`（`qty`/`unit_price`/`gross_amount`）
+- [x] 从 `users` 快照 `id_card`/`bank_name`/`bank_account` 到行上（发放后改卡不影响历史）
+- [x] 单头 `total_gross`/`total_deduction`/`total_net`（`deduction_amount` 恒 0，Q-PL01）
+- [x] 轻迁移 `update`/`submit`/`withdraw`/`reject`/`cancel`（`05 §4.2`）
+- [x] 单号 `PR`
 
 **不做**：
 - 不做 `approve`/`reverse`/`pay`（T-PAY-007/008）
@@ -42,34 +42,48 @@
 
 ## 实现要点
 
-- [ ] 汇总粒度 `uq_payroll_details_sheet_employee_operation_style`
-- [ ] `qty` 恒整数（BR-PR-22）；`unit_price` 取结算行快照值
-- [ ] `net_amount = gross_amount - deduction_amount`（service 计算 + 测试断言）
-- [ ] 缺 `bank_account`/`id_card` 不阻断生成（发放时才 `10002`）
+- [x] 汇总粒度 `uq_payroll_details_sheet_employee_operation_style`
+- [x] `qty` 恒整数（BR-PR-22）；`unit_price` 取结算行快照值
+- [x] `net_amount = gross_amount - deduction_amount`（service 计算 + 测试断言）
+- [x] 缺 `bank_account`/`id_card` 不阻断生成（发放时才 `10002`）
 
 ## 验收标准
 
-- [ ] TC-04 / TC-05 落成
-- [ ] `Σgross_amount` = 结算行金额；`qty` = 结算行汇总
-- [ ] 闸门 1-4 通过
+- [x] TC-04 / TC-05 落成
+- [x] `Σgross_amount` = 结算行金额；`qty` = 结算行汇总
+- [x] 闸门 1-4 通过
 
 ## 测试清单
 
 | # | 用例 | 期望 | 结果 |
 | --- | --- | --- | --- |
-| TC-04 | 单价快照不被改价影响 | 不变 | |
-| TC-05 | 工资单汇总粒度（2 款号 3 工序） | 6 行，金额一致 | |
-| TC-PAY-P01 | 来源结算单未审核 | `33003`/拒绝 | |
-| TC-PAY-P02 | 同结算单重复生成 | 幂等返回 | |
+| TC-04 | 单价快照不被改价影响 | 不变 | ✅ |
+| TC-05 | 工资单汇总粒度（2 款号 3 工序） | 6 行，金额一致 | ✅ |
+| TC-PAY-P01 | 来源结算单未审核 | `33003`/拒绝 | ✅ |
+| TC-PAY-P02 | 同结算单重复生成 | 幂等返回 | ✅ |
 
 ## 实际改动（完成后回填）
 
 | 文件 | 行数 | 说明 |
 | --- | --- | --- |
-| | +0 / -0 | |
+| `backend/app/modules/payroll/service/sheet.py` | +394 | 新增：`PayrollSheetService.create`（汇总生成 + 银行快照 + 幂等） |
+| `backend/app/modules/payroll/service/sheet_state.py` | +72 | 新增：工资单迁移表 + 权限 / 日志映射 |
+| `backend/app/modules/payroll/service/sheet_state_mixin.py` | +303 | 新增：轻迁移 `update`/`submit`/`withdraw`/`reject`/`cancel` |
+| `backend/app/modules/payroll/service/sheet_state_support.py` | +144 | 新增：取数 / `_apply_status` / `_write_log` 助手 |
+| `backend/app/modules/payroll/service/__init__.py` | +6 | 重导出 `PayrollSheetService` |
+| `backend/tests/factories/payroll.py` | +78 | 新增 `seed_approved_settlement` |
+| `backend/tests/modules/test_payroll_sheet.py` | +355 | 新增：生成用例（TC-04/05、P01/P02、加权平均、权限/范围） |
+| `backend/tests/modules/test_payroll_sheet_state.py` | +312 | 新增：轻迁移用例 |
+| `docs/modules/05-工资.md` | +1 | 登记 Q-PL13 |
+| `docs/12-文档与变更归档规范.md` | +3 | 变更记录 0161 + 遗留 L-128 / L-129 |
+
+> 手写合计 **~1668** 行（实现 921 + 测试 667 + 夹具 78 + 文档 4）；**无生成物**。
+> ⚠️ 超 `AGENTS §7.1` 的 1200 软上限，理由：工资单状态机按 **ADR-0031** 拆 4 文件
+> （`create` + 状态表 + 迁移编排 + 持久化助手）以守住 ADR-0030 单文件 400 行硬线；
+> 五个动作共用同一状态机与行模型，拆卡会让上下文重复。
 
 **提交记录**：
-- `<hash>` feat(payroll): 工资单生成与轻状态迁移（T-PAY-006）
+- 未 commit（按本卡执行指令「不 commit」）
 
 ## 遗留问题
 
@@ -77,6 +91,9 @@
 | --- | --- | --- |
 | Q-PL01 扣款未定（`deduction_amount` 恒 0） | modules/05 §12 |
 | Q-PL06 1:1 未定 | modules/05 §12 |
+| **Q-PL13** 同组多条结算行单价不一时 `unit_price` 口径未定义（本卡取加权平均） | modules/05 §12 |
+| **L-128** `users` 无 `id_card`/`bank_name`/`bank_account` 列，「从 users 快照」恒为 `None`（阻塞 T-PAY-008 发放） | docs/12 §5 |
+| **L-129** 工资单 `submit` 空明细复用 `10008`、`create` 来源未审核复用 `33003`（规范未单列码） | docs/12 §5 |
 
 ## 自检清单
 
@@ -87,3 +104,4 @@
 | 日期 | 变更内容 | 操作人 |
 | --- | --- | --- |
 | 2026-10-17 | 初版 | AI |
+| 2026-10-18 | 完成：生成 + 轻迁移 + 银行快照；登记 Q-PL13 / L-128 / L-129 | AI |

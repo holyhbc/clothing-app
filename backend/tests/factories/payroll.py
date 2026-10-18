@@ -13,6 +13,7 @@ FK 建了之后那会直接 ``ForeignKeyViolationError``。本模块提供「建
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from typing import Any
@@ -320,3 +321,80 @@ async def seed_boundary_orders(
         "cutting_orders": cutting_rows,
         "bundling_orders": bundling_rows,
     }
+
+
+# ------------------------------------------------------------ 工资单生成用例（T-PAY-006）
+
+
+async def seed_approved_settlement(
+    session: Any,
+    *,
+    specs: Sequence[Mapping[str, Any]],
+    period: PayrollPeriod | None = None,
+    workshop_id: UUID | None = None,
+    created_by: UUID | None = None,
+) -> PieceworkSettlement:
+    """造一张 **APPROVED** 结算单 + 逐行（``specs`` 每项 = 一条结算行 = 一条真实流水）。
+
+    ``specs`` 每项键：``employee_id`` / ``style_no`` / ``operation_no`` / ``qty`` /
+    ``unit_price``；``amount`` 缺省 = ``qty × unit_price``，``group_no`` 缺省 ``"G1"``。
+    供 T-PAY-006 工资单汇总用例按任意 ``(员工, 款号, 工序)`` 组合造数。
+    """
+    if period is None:
+        period = await seed_period(session, period_code=f"SH-{uuid4().hex[:8]}")
+    workshop = workshop_id if workshop_id is not None else uuid4()
+    logs: list[Any] = []
+    for index, spec in enumerate(specs, start=1):
+        qty = Decimal(spec["qty"])
+        unit_price = Decimal(spec["unit_price"])
+        logs.append(
+            await seed_piecework_log(
+                session,
+                work_date=PERIOD_END,
+                workshop_id=workshop,
+                # 唯一 bundle_no：``uq_piecework_logs_idem`` 不含 style_no，默认值会撞键
+                bundle_no=f"BD-20991231-{index:06d}",
+                employee_id=spec["employee_id"],
+                style_no=spec["style_no"],
+                operation_no=spec["operation_no"],
+                group_no=spec.get("group_no", "G1"),
+                qty=qty,
+                unit_price=unit_price,
+                amount=Decimal(spec.get("amount", qty * unit_price)),
+            )
+        )
+    total_qty = sum((log.qty for log in logs), start=Decimal("0"))
+    total_amount = sum((log.amount for log in logs), start=Decimal("0"))
+    settlement = settlement_row(
+        period.id,
+        workshop,
+        doc_no=f"PW-20991231-{uuid4().hex[:6]}",
+        status=DocumentStatus.APPROVED,
+        approved_by=created_by if created_by is not None else uuid4(),
+        approved_at=datetime(2099, 12, 31, 9, 0, tzinfo=UTC),
+        created_by=created_by if created_by is not None else uuid4(),
+        line_count=len(logs),
+        total_qty=total_qty,
+        total_amount=total_amount,
+        employee_count=len({log.employee_id for log in logs}),
+        group_count=len({log.group_no or "" for log in logs}),
+    )
+    session.add(settlement)
+    await session.flush()
+    for index, log in enumerate(logs, start=1):
+        session.add(
+            settlement_line_row(
+                settlement.id,
+                log.id,
+                line_no=index,
+                employee_id=log.employee_id,
+                style_no=log.style_no,
+                operation_no=log.operation_no,
+                work_date=log.work_date,
+                qty=log.qty,
+                unit_price=log.unit_price,
+                amount=log.amount,
+            )
+        )
+    await session.flush()
+    return settlement
