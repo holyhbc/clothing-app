@@ -47,7 +47,7 @@ if TYPE_CHECKING:
 class User(BaseModel):
     """员工 / 用户。
 
-    一个自然人一个账号。车间为空表示非车间人员（财务、仓管）。
+    一个自然人一个账号。车间为空表示非车间人员（财务、仓管）。代发三字段见 T-BASE-012（05 §3.5），敏感 PII。
     """
 
     __tablename__ = "users"
@@ -90,6 +90,9 @@ class User(BaseModel):
         server_default=text("false"),
         comment="首次登录强制改密",
     )
+    id_card: Mapped[str | None] = mapped_column(String(32), comment="身份证号（代发快照来源）")
+    bank_name: Mapped[str | None] = mapped_column(String(128), comment="开户行（代发快照来源）")
+    bank_account: Mapped[str | None] = mapped_column(String(64), comment="银行卡号（代发快照来源）")
 
     __table_args__ = (
         # 04 §2 要求 ck_<table>_version_positive；Mixin 不拼表名（会生成错误约束名），

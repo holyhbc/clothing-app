@@ -32,6 +32,12 @@ class UserOut(BaseModel):
     data_scope: DataScope
     is_active: bool = Field(description="false = 已停用，无法登录（11004）")
     must_change_password: bool
+    # T-BASE-012：代发资料（工资单生成时快照到 payroll_details，05 §3.5）。
+    # ⚠️ **敏感 PII**：仅出现在 system:user:manage 保护的用户管理出参里
+    # （docs/07 §5）；**不得**加进 UserOptionOut 等候选出参。
+    id_card: str | None = Field(default=None, description="身份证号；代发资料（敏感）")
+    bank_name: str | None = Field(default=None, description="开户行；代发资料（敏感）")
+    bank_account: str | None = Field(default=None, description="银行卡号；代发资料（敏感）")
     role_codes: list[str] = Field(default_factory=list, description="已授予的角色 code")
     version: int = Field(description="乐观锁；PATCH 必传（docs/05 §2）")
     created_at: str
@@ -49,6 +55,10 @@ class UserCreate(BaseModel):
     data_scope: DataScope = Field(description="数据范围。这是**用户属性**，不从角色合并")
     workshop_id: UUID | None = None
     group_no: Annotated[str | None, Field(default=None, max_length=32)] = None
+    # 代发资料（可空；长度与 04 §7.6.5 快照列一致）。敏感 PII，仅本接口可见。
+    id_card: Annotated[str | None, Field(default=None, max_length=32)] = None
+    bank_name: Annotated[str | None, Field(default=None, max_length=128)] = None
+    bank_account: Annotated[str | None, Field(default=None, max_length=64)] = None
     role_codes: list[Annotated[str, Field(max_length=32)]] = Field(
         default_factory=list, description="授予的角色 code"
     )
@@ -67,6 +77,10 @@ class UserPatch(BaseModel):
     data_scope: DataScope | None = None
     workshop_id: UUID | None = None
     group_no: Annotated[str | None, Field(default=None, max_length=32)] = None
+    # 代发资料（未传不动；PATCH 语义见 docs/05 §2）。
+    id_card: Annotated[str | None, Field(default=None, max_length=32)] = None
+    bank_name: Annotated[str | None, Field(default=None, max_length=128)] = None
+    bank_account: Annotated[str | None, Field(default=None, max_length=64)] = None
     must_change_password: bool | None = None
     remark: Annotated[str | None, Field(default=None, max_length=500)] = None
     version: int = Field(description="乐观锁；不匹配返回 10005（docs/05 §2）")

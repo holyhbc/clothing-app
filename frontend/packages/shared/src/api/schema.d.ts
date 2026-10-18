@@ -9403,6 +9403,10 @@ export interface components {
          * @description 新建用户。
          */
         UserCreate: {
+            /** Bank Account */
+            bank_account?: string | null;
+            /** Bank Name */
+            bank_name?: string | null;
             /** @description 数据范围。这是**用户属性**，不从角色合并 */
             data_scope: components["schemas"]["DataScope"];
             /**
@@ -9412,6 +9416,8 @@ export interface components {
             employee_no: string;
             /** Group No */
             group_no?: string | null;
+            /** Id Card */
+            id_card?: string | null;
             /**
              * Must Change Password
              * @description 默认 true：新建账号强制首次登录改密
@@ -9460,6 +9466,16 @@ export interface components {
          * @description 用户列表 / 详情行。**刻意不含** ``password_hash`` 与 ``phone``（docs/05 §3）。
          */
         UserOut: {
+            /**
+             * Bank Account
+             * @description 银行卡号；代发资料（敏感）
+             */
+            bank_account?: string | null;
+            /**
+             * Bank Name
+             * @description 开户行；代发资料（敏感）
+             */
+            bank_name?: string | null;
             /** Created At */
             created_at: string;
             data_scope: components["schemas"]["DataScope"];
@@ -9472,6 +9488,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Id Card
+             * @description 身份证号；代发资料（敏感）
+             */
+            id_card?: string | null;
             /**
              * Is Active
              * @description false = 已停用，无法登录（11004）
@@ -9504,9 +9525,15 @@ export interface components {
          * @description 局部更新用户。⚠️ 未传的字段不动（docs/05 §2 的 PATCH 语义）。
          */
         UserPatch: {
+            /** Bank Account */
+            bank_account?: string | null;
+            /** Bank Name */
+            bank_name?: string | null;
             data_scope?: components["schemas"]["DataScope"] | null;
             /** Group No */
             group_no?: string | null;
+            /** Id Card */
+            id_card?: string | null;
             /** Must Change Password */
             must_change_password?: boolean | null;
             /** Name */

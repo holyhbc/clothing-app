@@ -54,6 +54,10 @@ class UserWriteMixin:
                 data_scope=payload.data_scope.value,
                 workshop_id=payload.workshop_id,
                 group_no=payload.group_no,
+                # T-BASE-012：代发资料（可空；工资单生成时快照到 payroll_details）。
+                id_card=payload.id_card,
+                bank_name=payload.bank_name,
+                bank_account=payload.bank_account,
                 is_active=True,
                 # ⚠️ 默认**强制改密**：新建的账号其口令是管理员设的，
                 # 用户必须自己换一遍才算真正持有。docs/07 §1.1 同口径。
@@ -94,12 +98,22 @@ class UserWriteMixin:
                 f"用户已被他人修改（当前版本 {user.version}，请刷新后重试）",
             )
         # ⚠️ **不允许改工号**：它被 document_logs.doc_no 引用，也是登录凭据。
+        # ⚠️ ``changes``（给日志的 from/to）与 ``values``（给 UPDATE 的目标值）**必须分开**。
+        #    此前把 ``changes`` 直接 ``.values(**changes)`` 传进 UPDATE，于是每列被赋成
+        #    ``{"from":..., "to":...}`` 这样的 dict，asyncpg 报
+        #    ``invalid input ... (expected str, got dict)`` —— 也就是**用户 PATCH 从来没成功过**。
+        #    T-BASE-012 的 TC-BANK-02（只改 bank_account）第一次覆盖了这条成功路径才发现。
         changes: dict[str, Any] = {}
+        values: dict[str, Any] = {}
         for field in (
             "name",
             "data_scope",
             "workshop_id",
             "group_no",
+            # T-BASE-012：代发资料也走同一 PATCH 语义（未传不动）。
+            "id_card",
+            "bank_name",
+            "bank_account",
             "must_change_password",
             "remark",
         ):
@@ -109,6 +123,7 @@ class UserWriteMixin:
             stored = value.value if isinstance(value, DataScope) else value
             if getattr(user, field) != stored:
                 changes[field] = {"from": getattr(user, field), "to": stored}
+                values[field] = stored
         if not changes:
             return await self.get_user(user_id)
 
@@ -116,7 +131,7 @@ class UserWriteMixin:
             await self.session.execute(
                 update(User)
                 .where(User.id == user_id)
-                .values(**changes, version=User.version + 1, updated_by=self.ctx.user_id)
+                .values(**values, version=User.version + 1, updated_by=self.ctx.user_id)
             )
             await write_document_log(
                 self.session,

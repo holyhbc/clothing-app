@@ -117,6 +117,11 @@ class UserQueryMixin:
             data_scope=DataScope(row.data_scope),
             is_active=row.is_active,
             must_change_password=row.must_change_password,
+            # T-BASE-012：代发资料出参映射（UserOut 不走 from_attributes 的这条
+            # 构造路径，必须显式带上，否则新字段恒为默认 None）。
+            id_card=row.id_card,
+            bank_name=row.bank_name,
+            bank_account=row.bank_account,
             role_codes=role_codes,
             version=row.version,
             created_at=row.created_at.isoformat(),

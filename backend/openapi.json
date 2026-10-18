@@ -10976,6 +10976,30 @@
         "additionalProperties": false,
         "description": "新建用户。",
         "properties": {
+          "bank_account": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Account"
+          },
+          "bank_name": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Name"
+          },
           "data_scope": {
             "$ref": "#/components/schemas/DataScope",
             "description": "数据范围。这是**用户属性**，不从角色合并"
@@ -10998,6 +11022,18 @@
               }
             ],
             "title": "Group No"
+          },
+          "id_card": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Card"
           },
           "must_change_password": {
             "default": true,
@@ -11100,6 +11136,30 @@
       "UserOut": {
         "description": "用户列表 / 详情行。**刻意不含** ``password_hash`` 与 ``phone``（docs/05 §3）。",
         "properties": {
+          "bank_account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "银行卡号；代发资料（敏感）",
+            "title": "Bank Account"
+          },
+          "bank_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "开户行；代发资料（敏感）",
+            "title": "Bank Name"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -11126,6 +11186,18 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "id_card": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "身份证号；代发资料（敏感）",
+            "title": "Id Card"
           },
           "is_active": {
             "description": "false = 已停用，无法登录（11004）",
@@ -11189,6 +11261,30 @@
         "additionalProperties": false,
         "description": "局部更新用户。⚠️ 未传的字段不动（docs/05 §2 的 PATCH 语义）。",
         "properties": {
+          "bank_account": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Account"
+          },
+          "bank_name": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Name"
+          },
           "data_scope": {
             "anyOf": [
               {
@@ -11210,6 +11306,18 @@
               }
             ],
             "title": "Group No"
+          },
+          "id_card": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Card"
           },
           "must_change_password": {
             "anyOf": [
