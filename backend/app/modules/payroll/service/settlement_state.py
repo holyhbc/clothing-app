@@ -16,8 +16,7 @@ R1 统一入口 + ``_assert_transition``；R2 每次迁移写 ``document_logs``�
 R3 ``WHERE id=? AND version=? AND status=?`` 条件 UPDATE，``rowcount==0 → 10003``；
 R7 状态字段**只**由 :meth:`SettlementStateMixin._apply_status` 写。
 
-本卡**没有审核**：``approve`` / ``reverse`` 要回写 / 清空 ``piecework_logs.payroll_id``，
-归 T-PAY-005。故这里不登记这两条迁移，也不碰计件流水。
+``approve`` / ``reverse`` 归 T-PAY-005（:mod:`.settlement_approve`，要回写 / 清空计件流水）。
 """
 
 from __future__ import annotations
@@ -361,11 +360,13 @@ class SettlementStateMixin:
         from_status: str | None,
         to_status: str,
         reason: str | None = None,
+        changed_fields: dict[str, Any] | None = None,
     ) -> None:
         """写 ``document_logs``（08 R2：谁、何时、从什么状态到什么状态、为什么）。
 
         ⚠️ 必须在 ``_apply_status`` **之前**调用：Core UPDATE 会 ``expire`` ORM 行，
         之后再读 ``settlement.doc_no`` 在 async 下会 ``MissingGreenlet``（同打菲/周期）。
+        ``changed_fields`` 供 T-PAY-005 记 ``occupied_log_count`` / ``released_log_count``。
         """
         self.session.add(
             DocumentLog(
@@ -378,7 +379,7 @@ class SettlementStateMixin:
                 operator_id=operator_id,
                 operator_name="系统",  # TODO: 接真实操作人姓名（同打菲/周期 _write_log）
                 reason=reason,
-                changed_fields=None,
+                changed_fields=changed_fields,
             )
         )
 

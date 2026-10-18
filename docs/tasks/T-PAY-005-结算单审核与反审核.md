@@ -4,7 +4,7 @@
 | --- | --- |
 | 模块 | payroll |
 | 负责人 | backend-dev |
-| 状态 | `todo` |
+| 状态 | `done`（2026-10-17） |
 | 优先级 | P2 |
 | 依赖 | T-PAY-004 |
 | 被依赖 | T-PAY-006、T-PAY-010 |
@@ -60,26 +60,32 @@
 
 | # | 用例 | 期望 | 结果 |
 | --- | --- | --- | --- |
-| TC-03 | 审核回写 / 反审核释放 | `payroll_id` 全写入 / 全清空 | |
-| TC-26 | `payroll_id IS NULL` 保证不重复结算 | `33002` + 唯一索引兜底 | |
-| TC-PAY-A01 | 制单人自审 | `10005` | |
-| TC-PAY-A02 | 下游工资已审核再反审核结算单 | `33001` | |
-| TC-PAY-A03 | 并发审核/反审核 | 一成一败 `10003` | |
+| TC-03 | 审核回写 / 反审核释放 | `payroll_id` 全写入 / 全清空 | ✅ |
+| TC-26 | `payroll_id IS NULL` 保证不重复结算 | `33002` + 唯一索引兜底 | ✅ |
+| TC-PAY-A01 | 制单人自审 | `10005` | ✅ |
+| TC-PAY-A02 | 下游工资已审核再反审核结算单 | `33001` | ✅ |
+| TC-PAY-A03 | 并发审核/反审核 | 一成一败 `10003` | ✅ |
+| 附加 | `rowcount` 不等 / 汇总不符 → 整体回滚；反审核缺原因 `10006`；无权限 `12001` | 拒绝 | ✅ |
 
 ## 实际改动（完成后回填）
 
 | 文件 | 行数 | 说明 |
 | --- | --- | --- |
-| | +0 / -0 | |
+| `backend/app/modules/payroll/service/settlement_approve.py` | +361 | `SettlementApproveMixin`：`approve` 占用 / `reverse` 释放（同一事务、rowcount 核对、下游校验） |
+| `backend/app/modules/payroll/service/settlement.py` | 改 | 组合类接入 mixin |
+| `backend/app/modules/payroll/service/settlement_state.py` | 改 | `_assert_not_self_approval` / 行加载助手 |
+| `backend/app/modules/payroll/state.py` | 改 | 迁移表补 `approve`/`reverse` + 权限/动作常量 |
+| `backend/tests/factories/payroll_approve.py` | +212 | 审核/反审核夹具（含下游工资单） |
+| `backend/tests/modules/test_payroll_settlement_approve.py` | +385 | TC-03/26 + A01/A02/A03 + rowcount/totals 回滚 |
 
 **提交记录**：
-- `<hash>` feat(payroll): 结算单审核/反审核（T-PAY-005）
+- `<待主代理提交>` feat(payroll): 结算单审核/反审核（T-PAY-005）
 
 ## 遗留问题
 
 | # | 问题 | 登记到 |
 | --- | --- | --- |
-| | | docs/12 §遗留问题清单 |
+| `approve` 汇总不符 / 流水被占用复用 `33002`（结算域唯一相关码） | docs/12 L-127 |
 
 ## 自检清单
 
@@ -90,3 +96,4 @@
 | 日期 | 变更内容 | 操作人 |
 | --- | --- | --- |
 | 2026-10-17 | 初版 | AI |
+| 2026-10-17 | 完成：审核占用 / 反审核释放（同事务、rowcount 核对、下游 `33001`）；定向 27 passed，全量 **1217 passed / 91.23%**（1 项无关失败 L-126）；副作用对称性与并发一成一败均有用例 | AI |

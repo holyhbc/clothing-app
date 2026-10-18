@@ -2,8 +2,9 @@
 
 结算单 ``PieceworkSettlement`` 的**状态合法性**只在这一处声明，由
 :class:`~app.modules.payroll.service.settlement_state.SettlementStateMixin` 消费。
-本卡（T-PAY-004）只做**轻迁移** —— ``submit`` / ``withdraw`` / ``reject`` / ``cancel``；
-``approve`` / ``reverse`` 归 T-PAY-005（要回写 ``piecework_logs.payroll_id``）。
+T-PAY-004 落地**轻迁移**（``submit`` / ``withdraw`` / ``reject`` / ``cancel``）；
+T-PAY-005 追加 ``approve`` / ``reverse``（要回写 / 释放 ``piecework_logs.payroll_id``，
+副作用在 :mod:`~app.modules.payroll.service.settlement_approve`）。
 
 ## 为什么按**动作**登记，而不是按「起始状态 → 允许的目标集合」
 
@@ -21,6 +22,8 @@
 ``withdraw``  SUBMITTED → DRAFT            ``payroll:settle`` —
 ``reject``    SUBMITTED → REJECTED         ``payroll:approve`` 是
 ``cancel``    DRAFT/REJECTED → CANCELLED    ``payroll:settle`` 是
+``approve``   SUBMITTED → APPROVED         ``payroll:approve`` —（副作用：占用流水）
+``reverse``   APPROVED → SUBMITTED         ``payroll:reverse`` 是（副作用：释放流水）
 ============  ===========================  ================  ==========
 
 ``CANCELLED`` 是终态：它不在任何动作的 ``allowed_from`` 里，再迁移一律被
@@ -45,6 +48,7 @@ SETTLEMENT_DOC_PREFIX: Final[str] = "PW"
 #: 权限点（05 §10 / 07 §2.2）。
 SETTLE_PERMISSION: Final[str] = "payroll:settle"
 APPROVE_PERMISSION: Final[str] = "payroll:approve"
+REVERSE_PERMISSION: Final[str] = "payroll:reverse"
 
 #: 动作 → 权限点。``create`` 也走 ``payroll:settle``（05 §4.1 / §10）。
 PERMISSION_BY_ACTION: Final[dict[str, str]] = {
@@ -53,10 +57,12 @@ PERMISSION_BY_ACTION: Final[dict[str, str]] = {
     "withdraw": SETTLE_PERMISSION,
     "reject": APPROVE_PERMISSION,
     "cancel": SETTLE_PERMISSION,
+    "approve": APPROVE_PERMISSION,
+    "reverse": REVERSE_PERMISSION,
 }
 
 #: 必填原因的动作（05 §4 BR-PR-11；缺 → ``10006``）。
-REASON_REQUIRED_ACTIONS: Final[frozenset[str]] = frozenset({"reject", "cancel"})
+REASON_REQUIRED_ACTIONS: Final[frozenset[str]] = frozenset({"reject", "cancel", "reverse"})
 
 #: 动作 → ``document_logs.action``（取值来自 ``DocumentAction``，不散落字面量）。
 LOG_ACTION_BY_ACTION: Final[dict[str, str]] = {
@@ -65,6 +71,8 @@ LOG_ACTION_BY_ACTION: Final[dict[str, str]] = {
     "withdraw": DocumentAction.WITHDRAW.value,
     "reject": DocumentAction.REJECT.value,
     "cancel": DocumentAction.CANCEL.value,
+    "approve": DocumentAction.APPROVE.value,
+    "reverse": DocumentAction.REVERSE.value,
 }
 
 #: 迁移表：**按动作**登记 ``(允许的起始状态集, 目标状态)``（08 §3.1 / §1.2 R1）。
@@ -79,6 +87,8 @@ SETTLEMENT_TRANSITIONS: Final[dict[str, tuple[frozenset[DocumentStatus], Documen
         frozenset({DocumentStatus.DRAFT, DocumentStatus.REJECTED}),
         DocumentStatus.CANCELLED,
     ),
+    "approve": (frozenset({DocumentStatus.SUBMITTED}), DocumentStatus.APPROVED),
+    "reverse": (frozenset({DocumentStatus.APPROVED}), DocumentStatus.SUBMITTED),
 }
 
 __all__ = [
@@ -87,6 +97,7 @@ __all__ = [
     "LOG_ACTION_BY_ACTION",
     "PERMISSION_BY_ACTION",
     "REASON_REQUIRED_ACTIONS",
+    "REVERSE_PERMISSION",
     "SETTLEMENT_DOC_PREFIX",
     "SETTLEMENT_TRANSITIONS",
     "SETTLE_PERMISSION",

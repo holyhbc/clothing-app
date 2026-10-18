@@ -48,6 +48,7 @@ from app.modules.payroll.models import (
     PieceworkSettlement,
     PieceworkSettlementLine,
 )
+from app.modules.payroll.service.settlement_approve import SettlementApproveMixin
 from app.modules.payroll.service.settlement_state import SettlementStateMixin
 from app.modules.payroll.state import SETTLEMENT_DOC_PREFIX
 from app.modules.piecework.models import PieceworkLog
@@ -55,8 +56,14 @@ from app.modules.piecework.models import PieceworkLog
 logger = logging.getLogger("app.payroll")
 
 
-class PieceworkSettlementService(SettlementStateMixin):
-    """结算单 service：``create`` 生成 + 轻状态迁移（继承状态 Mixin）。"""
+class PieceworkSettlementService(SettlementApproveMixin, SettlementStateMixin):
+    """结算单 service：``create`` 生成 + 完整状态迁移（继承状态 / 审核 Mixin）。
+
+    ⚠️ MRO = ``SettlementApproveMixin`` → ``SettlementStateMixin``：``approve`` / ``reverse``
+    在第一个 Mixin，``_apply_status`` / ``_write_log`` / ``_assert_transition`` 等唯一实现
+    在第二个（审核 Mixin 只在 ``TYPE_CHECKING`` 下声明它们的形状）。两份 Mixin **都不重写**
+    对方的方法，故状态字段仍只有 :meth:`SettlementStateMixin._apply_status` 一个写入口。
+    """
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
