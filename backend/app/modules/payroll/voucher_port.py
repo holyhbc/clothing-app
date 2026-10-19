@@ -36,7 +36,8 @@ class VoucherPort(Protocol):
     """工资单 → 财务凭证的**单向端口**（M9 接入时实现）。
 
     ``approve`` 调 :meth:`create_accrual` 生成计提凭证；``reverse`` 调
-    :meth:`reverse_accrual` 红冲计提凭证。两者都返回凭证号，未接入时返回 ``None``。
+    :meth:`reverse_accrual` 红冲计提凭证；``pay`` 调 :meth:`create_payment` 生成付款凭证
+    （T-PAY-008）。三者都返回凭证号，未接入时返回 ``None``。
     """
 
     async def create_accrual(self, sheet: PayrollSheet) -> str | None:
@@ -45,6 +46,14 @@ class VoucherPort(Protocol):
 
     async def reverse_accrual(self, sheet: PayrollSheet) -> str | None:
         """红冲计提凭证（红字反向，不 UPDATE 原凭证），返回红冲凭证号；未接入 → ``None``。"""
+        ...  # pragma: no cover —— Protocol 桩不可执行，不计覆盖（同 AuthProvider）
+
+    async def create_payment(self, sheet: PayrollSheet) -> str | None:
+        """生成**付款**凭证（借 应付职工薪酬 / 贷 银行存款），返回凭证号；未接入 → ``None``。
+
+        ⚠️ 与 :meth:`create_accrual` 同事务：``pay`` 在把状态迁到 ``PAID`` 的同一个事务里
+        调它，端口抛错则整体回滚，绝不留下「已 PAID 而没凭证」的半个状态（08 §1.2 R4）。
+        """
         ...  # pragma: no cover —— Protocol 桩不可执行，不计覆盖（同 AuthProvider）
 
 
@@ -69,6 +78,13 @@ class NullVoucherGateway:
         logger.warning(
             "计提凭证红冲未生成：财务凭证模块（M9）未接入（TODO Q-PL09）",
             extra={"doc_no": sheet.doc_no, "accrual_voucher_no": sheet.accrual_voucher_no},
+        )
+        return None
+
+    async def create_payment(self, sheet: PayrollSheet) -> str | None:
+        logger.warning(
+            "付款凭证未生成：财务凭证模块（M9）未接入（TODO Q-PL09）",
+            extra={"doc_no": sheet.doc_no, "total_net": str(sheet.total_net)},
         )
         return None
 

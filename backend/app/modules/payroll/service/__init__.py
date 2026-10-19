@@ -12,11 +12,15 @@
   —— 工资单状态表 / 轻迁移 / 持久化助手（T-PAY-006）
 - :mod:`~app.modules.payroll.service.sheet` —— 工资单组合类 ``PayrollSheetService``
   （``create`` 汇总生成 + 继承轻状态迁移）
+- :mod:`~app.modules.payroll.service.sheet_approve` —— 工资单审核 / 反审核 + 计提凭证
+- :mod:`~app.modules.payroll.service.pay` —— 工资单发放（``pay``）+ 代发导出（T-PAY-008）
+- :mod:`~app.modules.payroll.service.bank_file` —— 代发 CSV 渲染与记录构造（``05 §6.4``）
 
 本包只做聚合 / 重导出，**不放业务逻辑**：外部
 ``from app.modules.payroll.service import X`` 的导入面稳定（ADR-0031 §包的重导出约定）。
 """
 
+from app.modules.payroll.service.bank_file import BankFileExport
 from app.modules.payroll.service.common import (
     ACTION_CLOSE,
     ACTION_REOPEN,
@@ -42,6 +46,7 @@ __all__ = [
     "PERIOD_MANAGE_PERMISSION",
     "SOURCE_CUTTING_BOUNDARY",
     "SOURCE_MANUAL",
+    "BankFileExport",
     "PayrollPeriodService",
     "PayrollSheetService",
     "PeriodCreated",

@@ -36,6 +36,10 @@ SHEET_DOC_PREFIX: Final[str] = "PR"
 SETTLE_PERMISSION: Final[str] = "payroll:settle"
 APPROVE_PERMISSION: Final[str] = "payroll:approve"
 REVERSE_PERMISSION: Final[str] = "payroll:reverse"
+#: 发放（``pay``，05 §4.2）与代发导出（``GET .../bank-file``）的权限点。
+#: 二者都已在 ``07 §2.2`` / ``05 §10`` 登记，本卡只声明、不新增。
+PAY_PERMISSION: Final[str] = "payroll:pay"
+EXPORT_PERMISSION: Final[str] = "payroll:export"
 
 #: 动作 → 权限点（05 §4.2 / §10）。
 PERMISSION_BY_ACTION: Final[dict[str, str]] = {
@@ -47,6 +51,8 @@ PERMISSION_BY_ACTION: Final[dict[str, str]] = {
     "cancel": SETTLE_PERMISSION,
     "approve": APPROVE_PERMISSION,
     "reverse": REVERSE_PERMISSION,
+    "pay": PAY_PERMISSION,
+    "export": EXPORT_PERMISSION,
 }
 
 #: 迁移表：**按动作**登记 ``(允许的起始状态集, 目标状态)``（08 §3.1 / §1.2 R1）。
@@ -65,6 +71,9 @@ TRANSITIONS: Final[dict[str, tuple[frozenset[DocumentStatus], DocumentStatus]]] 
     # ⚠️ reverse 只允许从 APPROVED 出发；PAID 由 sheet_approve._assert_not_paid 先拦成 33001
     # （PAID 不在本表里，若先走状态机会报 10007，语义不对）。
     "reverse": (frozenset({DocumentStatus.APPROVED}), DocumentStatus.SUBMITTED),
+    # 发放：APPROVED → PAID（05 §4.2）。PAID 后再 pay 由 pay._assert_not_already_paid
+    # 先拦成 33001（PAID 不在起始集里，先走状态机会报 10007，语义不对，同 reverse 口径）。
+    "pay": (frozenset({DocumentStatus.APPROVED}), DocumentStatus.PAID),
 }
 
 #: 可编辑状态（``update``）：``DRAFT`` / ``REJECTED``。
@@ -76,6 +85,8 @@ __all__ = [
     "APPROVE_PERMISSION",
     "DOC_TYPE_PAYROLL_SHEET",
     "EDITABLE_STATUSES",
+    "EXPORT_PERMISSION",
+    "PAY_PERMISSION",
     "PERMISSION_BY_ACTION",
     "REVERSE_PERMISSION",
     "SETTLE_PERMISSION",

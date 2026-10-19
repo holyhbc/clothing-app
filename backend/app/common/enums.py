@@ -140,6 +140,13 @@ class DocumentAction(StrEnum):
     #: ⚠️ 记在**打菲单**的日志里（``document_logs`` 以单据为维度），码号进
     #: ``changed_fields.bundle_no``：「谁在什么时候作废了哪一手」要能被查出来。
     VOID_CODE = "VOID_CODE"
+    #: 工资单**发放**（T-PAY-008，``docs/08 §2.4`` 的 ``pay`` 动作）。
+    #: ⚠️ 它是「单据迁移」而不是「改单据状态但状态不变」的动作：
+    #: ``from_status=APPROVED`` / ``to_status=PAID``。通用动作表（08 §1.1）未覆盖
+    #: ``pay``（它只存在于工资单），为本模块就近补一个枚举值；
+    #: ``document_logs.action`` 是 ``varchar(32)``、**不是 PG enum**，故**无需迁移**。
+    #: 复用别的动作名（如 ``APPROVE``）会让「审核」与「发放」在审计里无法区分。
+    PAY = "PAY"
 
 
 class LabelExportFormat(StrEnum):

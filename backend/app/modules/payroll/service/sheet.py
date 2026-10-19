@@ -49,6 +49,7 @@ from app.modules.payroll.models import (
     PieceworkSettlement,
     PieceworkSettlementLine,
 )
+from app.modules.payroll.service.pay import PayrollPayMixin
 from app.modules.payroll.service.sheet_approve import SheetApproveMixin
 from app.modules.payroll.service.sheet_state import SHEET_DOC_PREFIX
 from app.modules.payroll.service.sheet_state_mixin import SheetStateMixin
@@ -76,11 +77,13 @@ class _GroupAgg:
     mixed: bool = False
 
 
-class PayrollSheetService(SheetApproveMixin, SheetStateMixin):
-    """工资单 service：``create`` 生成 + 继承轻状态迁移。
+class PayrollSheetService(PayrollPayMixin, SheetApproveMixin, SheetStateMixin):
+    """工资单 service：``create`` 生成 + 轻状态迁移 + 审核计提（T-PAY-007）+ 发放（T-PAY-008）。
 
     ⚠️ state 的持久化助手（``_apply_status`` / ``_write_log`` / ``_get_sheet`` 等）
-    在 :class:`~.sheet_state_support.SheetStoreMixin`，经 :class:`SheetStateMixin` 继承。
+    在 :class:`~.sheet_state_support.SheetStoreMixin`，经 :class:`SheetStateMixin` 继承；
+    ``pay`` / 代发导出在 :class:`~.pay.PayrollPayMixin`，``approve`` / ``reverse`` 在
+    :class:`~.sheet_approve.SheetApproveMixin`。三者共用唯一一份状态机与日志助手。
     """
 
     def __init__(self, session: AsyncSession, *, voucher_port: VoucherPort | None = None) -> None:
